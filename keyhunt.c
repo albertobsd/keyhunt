@@ -15,6 +15,7 @@ gcc -o keyhunt keyhunt.o base58.o rmd160.o sha256.o bloom.o murmurhash2.o -lgmp 
 #include <unistd.h>
 #include <pthread.h>
 #include <time.h>
+#include "keccak/keccak-tiny.h"
 #include "base58/libbase58.h"
 #include "rmd160/rmd160.h"
 #include "sha256/sha256.h"
@@ -66,6 +67,7 @@ void *thread_process_range(void *vargp);
 
 void init_doublingG(struct Point *P);
 char *pubkeytopubaddress(char *pkey,int length);
+char *pubkeytopubaddress_eth(char *pkey,int length);
 char *bit_range_str_min;
 char *bit_range_str_max;
 
@@ -299,7 +301,7 @@ int main(int argc, char **argv)	{
     }
   }
   if(FLAGMODE == 1 && FLAGCRYPTO == CRYPTO_NONE) {  //When none crypto is defined the default search is for Bitcoin
-    FLAGCRYPTO == CRYPTO_BTC;
+    FLAGCRYPTO = CRYPTO_BTC;
     printf("Setting search for btc adddress\n");
   }
   if(FLAGFILE == 0) {
@@ -644,11 +646,27 @@ void init_doublingG(struct Point *P)	{
 		i++;
 	}
 }
+char *pubkeytopubaddress_eth(char *pkey,int length)	{
+		char *temp,*pubaddress = calloc(MAXLENGTHADDRESS,1);
+		char *digest = malloc(32);
+		if(digest == NULL || pubaddress == NULL)	{
+			fprintf(stderr,"error malloc()\n");
+			exit(0);
+		}
+		pubaddress[0] = '0';
+		pubaddress[1] = 'x';
+		shake256(digest, 256, pkey, length);
+		temp = tohex(digest+12,20);
+		strcpy(pubaddress+2,temp);
+		free(temp);
+		free(digest);
+		return pubaddress;
+}
 
 char *pubkeytopubaddress(char *pkey,int length)	{
-	char *pubaddress = calloc(MAXLENGTHADDRESS,1);
+	char *pubaddress = calloc(MAXLENGTHADDRESS+10,1);
 	char *digest = malloc(60);
-	long unsigned int pubaddress_size = MAXLENGTHADDRESS;
+	long unsigned int pubaddress_size = MAXLENGTHADDRESS+10;
 	if(pubaddress == NULL || digest == NULL)	{
 		fprintf(stderr,"error malloc()\n");
 		exit(0);
@@ -665,7 +683,9 @@ char *pubkeytopubaddress(char *pkey,int length)	{
 	//digest [0 +RMD160 20 bytes+SHA256 32 bytes+....0]
 	sha256(digest+21, 32, digest+21);
 	//digest [0 +RMD160 20 bytes+SHA256 32 bytes+....0]
-	b58enc(pubaddress,&pubaddress_size,digest,25);
+	if(!b58enc(pubaddress,&pubaddress_size,digest,25)){
+		fprintf(stderr,"error b58enc\n");
+	}
 	free(digest);
 	return pubaddress;	// pubaddress need to be free by te caller funtion
 }
@@ -767,11 +787,15 @@ void *thread_process(void *vargp)	{
         public_key_compressed[0] = 0x03;
       }
       if(FLAGMODE ) { // FLAGMODE == 1 search for address but for what crypto ?
-        if( FLAGCRYPTO & CRYPTO_BTC != 0) {
+        if( (FLAGCRYPTO & CRYPTO_BTC) != 0) {
           mpz_export((public_key_uncompressed+1),&longtemp,1,8,1,0,R.x);
           mpz_export((public_key_uncompressed+33),&longtemp,1,8,1,0,R.y);
           public_address_compressed = pubkeytopubaddress(public_key_compressed,33);
           public_address_uncompressed = pubkeytopubaddress(public_key_uncompressed,65);
+					/*
+					printf("Testing for %s\n",public_address_compressed);
+					printf("Testing for %s\n",public_address_uncompressed);
+					*/
           if(FLAGVANITY)  {
             if(strncmp(public_address_uncompressed,vanity,len_vanity) == 0)	{
               hextemp = malloc(65);
@@ -836,9 +860,35 @@ void *thread_process(void *vargp)	{
           free(public_address_compressed);
           free(public_address_uncompressed);
         }
-        if( FLAGCRYPTO & CRYPTO_ETH != 0) {
-
-        }
+				//printf("Resultado %i\n",FLAGCRYPTO & CRYPTO_ETH);
+        if( (FLAGCRYPTO & CRYPTO_ETH) != 0) {
+					/*
+					mpz_export((public_key_uncompressed+1),&longtemp,1,8,1,0,R.x);
+          mpz_export((public_key_uncompressed+33),&longtemp,1,8,1,0,R.y);
+          public_address_uncompressed = pubkeytopubaddress_eth(public_key_uncompressed+1,64);
+					//printf("Testing for %s\n",public_address_uncompressed);
+					r = bloom_check(&bloom,public_address_uncompressed,MAXLENGTHADDRESS);
+    			if(r) {
+    				r = searchbinary(DATABUFFER,public_address_uncompressed,MAXLENGTHADDRESS,N);
+    	      if(r) {
+              hextemp = malloc(65);
+              mpz_get_str(hextemp,16,random_key_mpz);
+              public_key_uncompressed_hex = tohex(public_key_uncompressed+1,64);
+    					pthread_mutex_lock(&write_keys);
+    					keys = fopen("keys.txt","a+");
+    					if(keys != NULL)	{
+    						fprintf(keys,"PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,public_address_uncompressed);
+    						fclose(keys);
+    					}
+    					printf("HIT!! PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,public_address_uncompressed);
+    					pthread_mutex_unlock(&write_keys);
+              free(public_key_uncompressed_hex);
+              free(hextemp);
+    	      }
+						free(public_address_uncompressed);
+					}
+					*/
+				}
       }
       else  {   //FLAGMODE  == 0
         r = bloom_check(&bloom,public_key_compressed+1,MAXLENGTHADDRESS);
@@ -930,11 +980,15 @@ void *thread_process_range(void *vargp)	{
 			public_key_compressed[0] = 0x03;
 		}
     if(FLAGMODE)  { // FLAGMODE == 1
-      if( FLAGCRYPTO & CRYPTO_BTC != 0) {
+      if( (FLAGCRYPTO & CRYPTO_BTC) != 0) {
         mpz_export((public_key_uncompressed+1),&longtemp,1,8,1,0,R.x);
         mpz_export((public_key_uncompressed+33),&longtemp,1,8,1,0,R.y);
         public_address_compressed = pubkeytopubaddress(public_key_compressed,33);
         public_address_uncompressed = pubkeytopubaddress(public_key_uncompressed,65);
+				/*
+				printf("Testing for %s\n",public_address_compressed);
+				printf("Testing for %s\n",public_address_uncompressed);
+				*/
         if(FLAGVANITY)  {
           if(strncmp(public_address_uncompressed,vanity,len_vanity) == 0)	{
             hextemp = malloc(65);
@@ -999,7 +1053,32 @@ void *thread_process_range(void *vargp)	{
         free(public_address_uncompressed);
       }
       if( ( FLAGCRYPTO & CRYPTO_ETH ) != 0) {
-
+				/*
+				mpz_export((public_key_uncompressed+1),&longtemp,1,8,1,0,R.x);
+				mpz_export((public_key_uncompressed+33),&longtemp,1,8,1,0,R.y);
+				public_address_uncompressed = pubkeytopubaddress_eth(public_key_uncompressed+1,64);
+				//printf("Testing for %s\n",public_address_uncompressed);
+				r = bloom_check(&bloom,public_address_uncompressed,MAXLENGTHADDRESS);
+				if(r) {
+					r = searchbinary(DATABUFFER,public_address_uncompressed,MAXLENGTHADDRESS,N);
+					if(r) {
+						hextemp = malloc(65);
+						mpz_get_str(hextemp,16,key_mpz);
+						public_key_uncompressed_hex = tohex(public_key_uncompressed+1,64);
+						pthread_mutex_lock(&write_keys);
+						keys = fopen("keys.txt","a+");
+						if(keys != NULL)	{
+							fprintf(keys,"PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,public_address_uncompressed);
+							fclose(keys);
+						}
+						printf("HIT!! PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,public_address_uncompressed);
+						pthread_mutex_unlock(&write_keys);
+						free(public_key_uncompressed_hex);
+						free(hextemp);
+					}
+					free(public_address_uncompressed);
+				}
+				*/
       }
     }
     else  { // FLAGMODE == 0

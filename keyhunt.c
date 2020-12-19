@@ -389,7 +389,7 @@ int main(int argc, char **argv)	{
   }
   else  {
     while(i < N)  {
-      hextemp == fgets(aux,MAXLENGTHADDRESS,fd);
+      hextemp = fgets(aux,MAXLENGTHADDRESS,fd);
 			if(hextemp == aux)	{
 	      trim(aux," \t\n\r");
 	      memset(DATABUFFER + (i*MAXLENGTHADDRESS),0,MAXLENGTHADDRESS);
@@ -403,7 +403,6 @@ int main(int argc, char **argv)	{
 	      i++;
 			}
 			else	{
-				trim(aux," \t\n\r");
 				printf("Omiting line : %s\n",aux);
 			}
     }

@@ -1,10 +1,6 @@
 /*
-gcc -O3 -c -o keyhunt.o keyhunt.c
-gcc -O3 -c -o rmd160.o rmd160/rmd160.c
-gcc -O3 -c -o sha256.o sha256/sha256.c
-
-gcc -o keyhunt keyhunt.o base58.o rmd160.o sha256.o bloom.o murmurhash2.o -lgmp -lm -lpthread
-./keyhunt
+Develop by Luis Alberto
+email: alberto.bsd@gmail.com
 */
 
 #include <stdio.h>
@@ -45,7 +41,7 @@ struct tothread {
   char *rpt;  //rng per thread
 };
 
-const char *version = "0.1.20201217";
+const char *version = "0.1.20201218";
 const char *EC_constant_N = "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141";
 const char *EC_constant_P = "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f";
 const char *EC_constant_Gx = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
@@ -73,7 +69,7 @@ char *bit_range_str_max;
 
 
 
-const char *modes[2] = {"address","xpoint"};
+const char *modes[2] = {"xpoint","address"};
 const char *cryptos[3] = {"btc","eth","all"};
 const char *default_filename = "addresses.txt";
 

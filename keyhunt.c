@@ -208,11 +208,11 @@ int main(int argc, char **argv)	{
         switch(indexOf(optarg,modes,2)) {
           case 0: //xpoint
             FLAGMODE = 0;
-            printf("Setting mode xpoint");
+            printf("Setting mode xpoint\n");
           break;
           case 1: //address
             FLAGMODE = 1;
-            printf("Setting mode address");
+            printf("Setting mode address\n");
           break;
           default:
             FLAGMODE = 1;

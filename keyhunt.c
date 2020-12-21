@@ -141,9 +141,10 @@ int main(int argc, char **argv)	{
 				printf("-e\t\tThe file is already Sorted descendent. This skip the sorting process.\n");
 				printf("\t\tYour file MUST be sordted if no you are going to lose collisions\n");
         printf("-f filename\tSpecify filename with addresses or xpoint\n");
-				printf("-g debugcount\tJust for the stats, mark as counted every debugcount keys\n");
+				printf("-g debugcount\tJust for the stats, mark as counted every debugcount keys	\n");
         printf("-m mode\t\tmode of search for cryptos. < xpoint , address >  default: address (more slow)\n");
 				printf("-n uptoN\tCheck for N secuential numbers before the random chossen this only work with -R option\n");
+				//printf("-o file\t\tSet the file to sav\n");
         printf("-r SR:EN\tStarRange:EndRange, the end range can be omited for search from start range to N-1 ECC value\n");
 				printf("-R\t\tRandom/Secuential this is the default behaivor, can't use this with range option -r\n");
         printf("-s ns\t\tNumber of seconds for the stats output, 0 to omit output.\n");
@@ -453,11 +454,12 @@ int main(int argc, char **argv)	{
 	free(aux);
   fclose(fd);
 	printf("bloomfilter completed\n");
-  printf("sorting data\n");
+
 	if(FLAGALREADYSORTED)	{
 	  printf("File mark already sorted, skipping sort proccess\n");
 	}
 	else	{
+		printf("sorting data\n");
 		quicksort(DATABUFFER,0,N-1);
 	}
   printf("%i values were loaded and sorted\n",N);

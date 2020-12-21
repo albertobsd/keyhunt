@@ -1,4 +1,7 @@
+
 keyhunt
+test_bloom.c
+xpoints.c
 *.txt
 # Prerequisites
 *.d

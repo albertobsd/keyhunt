@@ -41,7 +41,7 @@ struct tothread {
   char *rpt;  //rng per thread
 };
 
-const char *version = "0.1.20201218";
+const char *version = "0.1.20201221";
 const char *EC_constant_N = "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141";
 const char *EC_constant_P = "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f";
 const char *EC_constant_Gx = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
@@ -99,6 +99,7 @@ int FLAGFILE = 0;
 int FLAGVANITY = 0;
 int FLAGMODE = 1;
 int FLAGCRYPTO = 0;
+int FLAGALREADYSORTED = 0;
 
 int len_vanity;
 int bitrange;
@@ -111,8 +112,8 @@ int main(int argc, char **argv)	{
   Tokenizer t;  //tokenizar
   char *filename;
 	FILE *fd;
-  char *hextemp,*aux;
-	int readed,i,s,continue_flag,check_flag,r;
+  char *hextemp,*aux,*aux2;
+	int readed,i,s,continue_flag,check_flag,r,lenaux,lendiff;
   uint64_t total = 0;
 	uint32_t seconds = 0;
   mpz_t n_range_start;
@@ -127,7 +128,7 @@ int main(int argc, char **argv)	{
   mpz_init_set_str(EC.n, EC_constant_N, 16);
 	mpz_init_set_str(G.x , EC_constant_Gx, 16);
 	mpz_init_set_str(G.y , EC_constant_Gy, 16);
-  while ((c = getopt (argc, argv, "hb:c:f:g:m:r:R:s:t:v:")) != -1) {
+  while ((c = getopt (argc, argv, "ehRb:c:f:g:m:n:r:s:t:v:")) != -1) {
     switch(c) {
 			case 'h':
         FLAGHELP = 1;
@@ -135,16 +136,18 @@ int main(int argc, char **argv)	{
         printf("\nUsage:\n-h\t\tshow this help\n");
 				printf("-b bits\t\tFor some puzzles you only need some numbers of bits in the test keys.\n");
 				printf("\t\tThis option only is valid with the Random option -R\n");
-				printf("-c crypto\tSearch for specific crypo. < btc, eth, all > default: btc valid only w/ -m address \n");
+				printf("-c crypto\tSearch for specific crypo. < btc, eth, all > valid only w/ -m address \n");
 				printf("\t\teth option is under develop sorry :(\n");
-        printf("-f filename\tfile name with addresses default: addresses.txt\n");
-				printf("-g debugcount\tJust for the stats, mark as counted every debugcount keys default: 1048576\n");
+				printf("-e\t\tThe file is already Sorted descendent. This skip the sorting process.\n");
+				printf("\t\tYour file MUST be sordted if no you are going to lose collisions\n");
+        printf("-f filename\tSpecify filename with addresses or xpoint\n");
+				printf("-g debugcount\tJust for the stats, mark as counted every debugcount keys\n");
         printf("-m mode\t\tmode of search for cryptos. < xpoint , address >  default: address (more slow)\n");
+				printf("-n uptoN\tCheck for N secuential numbers before the random chossen this only work with -R option\n");
         printf("-r SR:EN\tStarRange:EndRange, the end range can be omited for search from start range to N-1 ECC value\n");
-				printf("-R upto\t\tRandom/Secuential this is the default behaivor, can't use this with range option -r\n");
-				printf("\t\tupto is a Decimal number, this is how many secuential keys you want to test until next random, default: 4294967295\n");
-        printf("-s ns\t\tNumber of seconds for the stats output, 0 to omit output, Default 30 seconds\n");
-        printf("-t tn\t\tThreads number, must be positive integer, default : 1\n\n");
+				printf("-R\t\tRandom/Secuential this is the default behaivor, can't use this with range option -r\n");
+        printf("-s ns\t\tNumber of seconds for the stats output, 0 to omit output.\n");
+        printf("-t tn\t\tThreads number, must be positive integer\n\n");
 				printf("-v va\t\tSearch for vanity Address, only with -m address\n");
         printf("\nExample\n\n");
         printf("%s -t 16 -r 00000001:FFFFFFFF -s 0\n\n",argv[0]);
@@ -193,6 +196,9 @@ int main(int argc, char **argv)	{
         }
         optarg;
       break;
+			case 'e':
+				FLAGALREADYSORTED = 1;
+			break;
 			case 'f':
         FLAGFILE = 1;
         filename = optarg;
@@ -220,16 +226,21 @@ int main(int argc, char **argv)	{
           break;
         }
       break;
+			case 'n':
+				N_SECUENTIAL_MAX = strtol(optarg,NULL,10);
+				if(N_SECUENTIAL_MAX <= 0)	{
+					N_SECUENTIAL_MAX = 0xFFFFFFFF;
+				}
+				printf("Setting N upto: %u\n",N_SECUENTIAL_MAX);
+			break;
       case 'v':
         FLAGVANITY = 1;
         vanity = optarg;
         len_vanity = strlen(optarg);
       break;
 			case 'R':
-				N_SECUENTIAL_MAX = strtol(optarg,NULL,10);
-				if(N_SECUENTIAL_MAX == 0)	{
-					N_SECUENTIAL_MAX = 0xFFFFFFFF;
-				}
+				FLAGRANGE = 0;
+				printf("Setting random mode\n");
 			break;
       case 'r':
         if(optarg != NULL)  {
@@ -296,6 +307,10 @@ int main(int argc, char **argv)	{
       break;
     }
   }
+	if(DEBUGCOUNT  > N_SECUENTIAL_MAX)	{
+		DEBUGCOUNT = N_SECUENTIAL_MAX - 1;
+		//printf("Setting debug count to %u",N_SECUENTIAL_MAX);
+	}
   if(FLAGMODE == 1 && FLAGCRYPTO == CRYPTO_NONE) {  //When none crypto is defined the default search is for Bitcoin
     FLAGCRYPTO = CRYPTO_BTC;
     printf("Setting search for btc adddress\n");
@@ -361,16 +376,24 @@ int main(int argc, char **argv)	{
   do {
 		DATABUFFER = malloc(MAXLENGTHADDRESS*N);
 	} while(DATABUFFER == NULL);
-	//printf("Max address: %u\n",MAXLENGTHADDRESS);
   printf("init bloom filter for %u elements\n",N);
-	if(bloom_init(&bloom,2*N,0.001)  == 1){
-		fprintf(stderr,"error bloom_init\n");
-		exit(0);
+	if(2*N < 1000)	{
+		if(bloom_init(&bloom,1000,0.001)  == 1){
+			fprintf(stderr,"error bloom_init\n");
+			exit(0);
+		}
+	}
+	else	{
+		if(bloom_init(&bloom,2*N,0.001)  == 1){
+			fprintf(stderr,"error bloom_init\n");
+			exit(0);
+		}
 	}
   printf("loading data and making bloomfilter\n");
 	i = 0;
 	aux = malloc(2*MAXLENGTHADDRESS);
   if(FLAGMODE)  { //Address
+		aux = malloc(2*MAXLENGTHADDRESS);
     while(i < N)  {
 			memset(aux,0,2*MAXLENGTHADDRESS);
   		memset(DATABUFFER + (i*MAXLENGTHADDRESS),0,MAXLENGTHADDRESS);
@@ -388,18 +411,38 @@ int main(int argc, char **argv)	{
     }
   }
   else  {
+		aux = malloc(3*MAXLENGTHADDRESS);
     while(i < N)  {
-      hextemp = fgets(aux,MAXLENGTHADDRESS,fd);
+			memset(aux,0,3*MAXLENGTHADDRESS);
+      hextemp = fgets(aux,3*MAXLENGTHADDRESS,fd);
 			if(hextemp == aux)	{
 	      trim(aux," \t\n\r");
-	      memset(DATABUFFER + (i*MAXLENGTHADDRESS),0,MAXLENGTHADDRESS);
-	      if(isValidHex(aux)) {
-	        hexs2bin(aux,DATABUFFER + (i*MAXLENGTHADDRESS));
+				lenaux = strlen(aux);
+				memset(DATABUFFER + (i*MAXLENGTHADDRESS),0,MAXLENGTHADDRESS);
+				if(isValidHex(aux)) {
+					if(lenaux <= 64)	{
+						if(lenaux < 64)	{
+							aux2 = calloc(3*MAXLENGTHADDRESS,1);
+							lendiff = 64 - lenaux;
+							memcpy(aux2+lendiff,aux,lenaux);
+							memset(aux2,'0',lendiff);
+							memcpy(aux,aux2,3*MAXLENGTHADDRESS);
+							free(aux2);
+						}
+						if(hexs2bin(aux,DATABUFFER + (i*MAXLENGTHADDRESS)))	{
+								bloom_add(&bloom, DATABUFFER + (i*MAXLENGTHADDRESS),MAXLENGTHADDRESS);
+						}
+						else	{
+							printf("error hexs2bin\n");
+						}
+					}
+					else	{
+						printf("Omiting line : %s\n",aux);
+					}
 	      }
 	      else  {
 	        printf("Ignoring invalid hexvalue %s\nAre you sure that your file are X points?",aux);
 	      }
-	      bloom_add(&bloom, DATABUFFER + (i*MAXLENGTHADDRESS),MAXLENGTHADDRESS);
 	      i++;
 			}
 			else	{
@@ -411,7 +454,12 @@ int main(int argc, char **argv)	{
   fclose(fd);
 	printf("bloomfilter completed\n");
   printf("sorting data\n");
-  quicksort(DATABUFFER,0,N-1);
+	if(FLAGALREADYSORTED)	{
+	  printf("File mark already sorted, skipping sort proccess\n");
+	}
+	else	{
+		quicksort(DATABUFFER,0,N-1);
+	}
   printf("%i values were loaded and sorted\n",N);
 
 	init_doublingG(&G);
@@ -480,10 +528,10 @@ int main(int argc, char **argv)	{
         total = 0;
         i = 0;
         while(i < NTHREADS) {
-          total += steps[i] * DEBUGCOUNT;
+          total +=(uint64_t)( (uint64_t)steps[i] * (uint64_t)DEBUGCOUNT);
           i++;
         }
-        printf("Total %lu keys in %u secods: %lu keys/s\n",total,seconds,(uint64_t) ((uint64_t)total/(uint64_t)seconds));
+        printf("Total %llu keys in %lu secods: %lu keys/s\n",total,seconds,(uint64_t) ((uint64_t)total/(uint64_t)seconds));
       }
     }
   }while(continue_flag);
@@ -720,6 +768,7 @@ void *thread_process(void *vargp)	{
 	struct Point R,temporal;
 	uint64_t count = 0;
 	int r,thread_number;
+	char *hexstrpoint;
 	char *public_key_compressed,*public_key_uncompressed;
   char *hextemp,*public_key_compressed_hex,*public_key_uncompressed_hex;
   char *eth_address;
@@ -740,10 +789,11 @@ void *thread_process(void *vargp)	{
 	}
   public_key_compressed = malloc(33);
   public_key_uncompressed = malloc(65);
+	hexstrpoint = malloc(65);
   tt = (struct tothread *)vargp;
   thread_number = tt->nt;
   free(tt);
-	if(public_key_compressed == NULL || public_key_uncompressed == NULL)	{
+	if(public_key_compressed == NULL || public_key_uncompressed == NULL || hexstrpoint == NULL)	{
 		fprintf(stderr,"error malloc!\n");
 		exit(0);
 	}
@@ -774,17 +824,22 @@ void *thread_process(void *vargp)	{
 		do {
 			mpz_set(temporal.x,R.x);
 			mpz_set(temporal.y,R.y);
-			mpz_export((public_key_compressed+1),&longtemp,1,8,1,0,R.x);
+
+			gmp_sprintf(hexstrpoint,"%0.64Zx",R.x);
+			hexs2bin(hexstrpoint,public_key_compressed+1);
+
       if(mpz_tstbit(R.y, 0) == 0)	{	// Even
         public_key_compressed[0] = 0x02;
       }
-      else	{
+      else	{	//Odd
         public_key_compressed[0] = 0x03;
       }
       if(FLAGMODE ) { // FLAGMODE == 1 search for address but for what crypto ?
         if( (FLAGCRYPTO & CRYPTO_BTC) != 0) {
-          mpz_export((public_key_uncompressed+1),&longtemp,1,8,1,0,R.x);
-          mpz_export((public_key_uncompressed+33),&longtemp,1,8,1,0,R.y);
+					memcpy(public_key_uncompressed+1,public_key_compressed+1,32);
+					gmp_sprintf(hexstrpoint,"%0.64Zx",R.y);
+					hexs2bin(hexstrpoint,public_key_uncompressed+33);
+
           public_address_compressed = pubkeytopubaddress(public_key_compressed,33);
           public_address_uncompressed = pubkeytopubaddress(public_key_uncompressed,65);
 					/*
@@ -886,6 +941,7 @@ void *thread_process(void *vargp)	{
 				}
       }
       else  {   //FLAGMODE  == 0
+
         r = bloom_check(&bloom,public_key_compressed+1,MAXLENGTHADDRESS);
   			if(r) {
   				r = searchbinary(DATABUFFER,public_key_compressed+1,MAXLENGTHADDRESS,N);
@@ -921,7 +977,8 @@ void *thread_process_range(void *vargp)	{
   struct tothread *tt;
 	struct Point R,temporal;
 	uint64_t count = 0;
-	int r,thread_number;
+	int r,thread_number,found = 0;
+	char *hexstrpoint;
   char *public_key_compressed,*public_key_uncompressed;
   char *hextemp,*public_key_compressed_hex,*public_key_uncompressed_hex;
   char *eth_address;
@@ -942,8 +999,9 @@ void *thread_process_range(void *vargp)	{
 
   public_key_compressed = malloc(33);
   public_key_uncompressed = malloc(65);
+	hexstrpoint = malloc(65);
 
-	if(public_key_compressed == NULL || public_key_uncompressed == NULL)	{
+	if(public_key_compressed == NULL || public_key_uncompressed == NULL || hexstrpoint == NULL)	{
 		fprintf(stderr,"error malloc!\n");
 		exit(0);
 	}
@@ -960,14 +1018,16 @@ void *thread_process_range(void *vargp)	{
   free(tt);
   Scalar_Multiplication(G, &R, key_mpz);
 
-
   public_key_uncompressed[0] = 0x04;
   count = 0;
 
 	while(mpz_cmp(key_mpz,max_mpz) < 0 ) {
 		mpz_set(temporal.x,R.x);
 		mpz_set(temporal.y,R.y);
-		mpz_export((public_key_compressed+1),&longtemp,1,8,1,0,R.x);
+		//hexstrpoint
+		gmp_sprintf(hexstrpoint,"%0.64Zx",R.x);
+		hexs2bin(hexstrpoint,public_key_compressed+1);
+
 		if(mpz_tstbit(R.y, 0) == 0)	{	// Even
 			public_key_compressed[0] = 0x02;
 		}
@@ -976,14 +1036,13 @@ void *thread_process_range(void *vargp)	{
 		}
     if(FLAGMODE)  { // FLAGMODE == 1
       if( (FLAGCRYPTO & CRYPTO_BTC) != 0) {
-        mpz_export((public_key_uncompressed+1),&longtemp,1,8,1,0,R.x);
-        mpz_export((public_key_uncompressed+33),&longtemp,1,8,1,0,R.y);
+				memcpy(public_key_uncompressed+1,public_key_compressed+1,32);
+				gmp_sprintf(hexstrpoint,"%0.64Zx",R.y);
+				hexs2bin(hexstrpoint,public_key_uncompressed+33);
+
         public_address_compressed = pubkeytopubaddress(public_key_compressed,33);
         public_address_uncompressed = pubkeytopubaddress(public_key_uncompressed,65);
-				/*
-				printf("Testing for %s\n",public_address_compressed);
-				printf("Testing for %s\n",public_address_uncompressed);
-				*/
+
         if(FLAGVANITY)  {
           if(strncmp(public_address_uncompressed,vanity,len_vanity) == 0)	{
             hextemp = malloc(65);
@@ -1077,10 +1136,17 @@ void *thread_process_range(void *vargp)	{
       }
     }
     else  { // FLAGMODE == 0
+			/*
+			public_key_compressed_hex = tohex(public_key_compressed+1,32);
+			printf("Buscando %s\n",public_key_compressed_hex);
+			free(public_key_compressed_hex);
+			*/
+			//printf("Checking: %s\n",hexstrpoint);
       r = bloom_check(&bloom,public_key_compressed+1,MAXLENGTHADDRESS);
   		if(r) {
   			r = searchbinary(DATABUFFER,public_key_compressed+1,MAXLENGTHADDRESS,N);
         if(r) {
+					found++;
           hextemp = malloc(65);
           mpz_get_str(hextemp,16,key_mpz);
           public_key_compressed_hex = tohex(public_key_compressed,33);
@@ -1105,6 +1171,7 @@ void *thread_process_range(void *vargp)	{
 		Point_Addition(&temporal,&G,&R);
 	}
 	printf("Testing Keys %lu\n",count);
+	printf("Found %i\n",found);
   ends[thread_number] = 1;
 }
 
@@ -1133,7 +1200,6 @@ int partition (char *arr, int low, int high)  {
 void quicksort(char *arr, int low, int high)  {
   int pi;
   if (low < high)  {
-			//putc('.',stdout);
       pi = partition(arr, low, high);
       quicksort(arr, low, pi - 1);
       quicksort(arr, pi + 1, high);

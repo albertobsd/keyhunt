@@ -1,5 +1,5 @@
 Version 0.1.20201222
-- Fixed some ugly bug in the searchbinary function
+- Fixed some ugly bug in the searchbinary function thanks to Ujang
 - Added to stdout the vanitykeys found with -v option
 
 Version 0.1.20201221

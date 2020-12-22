@@ -41,7 +41,7 @@ struct tothread {
   char *rpt;  //rng per thread
 };
 
-const char *version = "0.1.20201221";
+const char *version = "0.1.20201222";
 const char *EC_constant_N = "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141";
 const char *EC_constant_P = "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f";
 const char *EC_constant_Gx = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
@@ -52,7 +52,7 @@ void Point_Doubling(struct Point *P, struct Point *R);
 void Point_Addition(struct Point *P, struct Point *Q, struct Point *R);
 void Scalar_Multiplication(struct Point P, struct Point *R, mpz_t m);
 void Point_Negation(struct Point A, struct Point *S);
-int searchbinary(char *BUFFER,char *data,int length,int N);
+int searchbinary(char *BUFFER,char *data,int length,int _N);
 void quicksort(char *arr, int low, int high);
 int partition (char *arr, int low, int high);
 void swap(char *a,char *b);
@@ -457,12 +457,14 @@ int main(int argc, char **argv)	{
 
 	if(FLAGALREADYSORTED)	{
 	  printf("File mark already sorted, skipping sort proccess\n");
+		printf("%i values were loaded\n",N);
 	}
 	else	{
 		printf("sorting data\n");
 		quicksort(DATABUFFER,0,N-1);
+		printf("%i values were loaded and sorted\n",N);
 	}
-  printf("%i values were loaded and sorted\n",N);
+
 
 	init_doublingG(&G);
 
@@ -735,16 +737,15 @@ char *pubkeytopubaddress(char *pkey,int length)	{
 	return pubaddress;	// pubaddress need to be free by te caller funtion
 }
 
-int searchbinary(char *buffer,char *data,int length,int N) {
+int searchbinary(char *buffer,char *data,int length,int _N) {
 	char *temp_read;
   int r = 0,rcmp,current_offset,half,min,max,current;
   min = 0;
   current = 0;
-  max = N;
-  half = N;
-	//c =0;
+  max = _N;
+  half = _N;
   while(!r && half >= 1) {
-    half = half/2;
+    half = (max - min)/2;
 		temp_read = buffer + ((current+half) * length);
     rcmp = memcmp(data,temp_read,length);
     if(rcmp == 0)  {
@@ -752,10 +753,10 @@ int searchbinary(char *buffer,char *data,int length,int N) {
     }
     else  {
       if(rcmp < 0) { //data < temp_read
-        max = (max-half-1);
+        max = (max-half);
       }
       else  { // data > temp_read
-        min = (min+half+1);
+        min = (min+half);
       }
 			current = min;
     }
@@ -769,7 +770,7 @@ void *thread_process(void *vargp)	{
   struct tothread *tt;
 	struct Point R,temporal;
 	uint64_t count = 0;
-	int r,thread_number;
+	int r,thread_number,found;
 	char *hexstrpoint;
 	char *public_key_compressed,*public_key_uncompressed;
   char *hextemp,*public_key_compressed_hex,*public_key_uncompressed_hex;
@@ -799,6 +800,7 @@ void *thread_process(void *vargp)	{
 		fprintf(stderr,"error malloc!\n");
 		exit(0);
 	}
+	found = 0;
 	do {
 		pthread_mutex_lock(&write_random);
 		if(FLAGBITRANGE)	{
@@ -810,7 +812,7 @@ void *thread_process(void *vargp)	{
 		}
 		pthread_mutex_unlock(&write_random);
     hextemp  = malloc(65);
-    mpz_get_str(hextemp,16,random_key_mpz);
+		gmp_sprintf(hextemp,"%0.64Zx",random_key_mpz);
 		pthread_mutex_lock(&write_range);
 		printf("Thread %i : Setting up base key: %s\n",thread_number,hextemp);
 		range_file = fopen("./ranges.txt","a+");
@@ -823,6 +825,7 @@ void *thread_process(void *vargp)	{
 		Scalar_Multiplication(G, &R, random_key_mpz);
     count = 0;
     public_key_uncompressed[0] = 0x04;
+
 		do {
 			mpz_set(temporal.x,R.x);
 			mpz_set(temporal.y,R.y);
@@ -851,22 +854,24 @@ void *thread_process(void *vargp)	{
           if(FLAGVANITY)  {
             if(strncmp(public_address_uncompressed,vanity,len_vanity) == 0)	{
               hextemp = malloc(65);
-              mpz_get_str(hextemp,16,random_key_mpz);
+							gmp_sprintf(hextemp,"%0.64Zx",random_key_mpz);
       				vanityKeys = fopen("vanitykeys.txt","a+");
       				if(vanityKeys != NULL)	{
-      					fprintf(vanityKeys,"PrivKey: %s\n%s\n",hextemp,public_address_uncompressed);
+      					fprintf(vanityKeys,"PrivKey: %s\nAddress uncompressed: %s\n",hextemp,public_address_uncompressed);
       					fclose(vanityKeys);
       				}
+							printf("Vanity privKey: %s\nAddress uncompressed:  %s\n",hextemp,public_address_uncompressed);
               free(hextemp);
       			}
             if(strncmp(public_address_compressed,vanity,len_vanity) == 0)	{
               hextemp = malloc(65);
-              mpz_get_str(hextemp,16,random_key_mpz);
+              gmp_sprintf(hextemp,"%0.64Zx",random_key_mpz);
       				vanityKeys = fopen("vanitykeys.txt","a+");
       				if(vanityKeys != NULL)	{
-      					fprintf(vanityKeys,"PrivKey: %s\n%s\n",hextemp,public_address_compressed);
+      					fprintf(vanityKeys,"Vanity privKey: %s\nAddress compressed:  %s\n",hextemp,public_address_compressed);
       					fclose(vanityKeys);
       				}
+							printf("Vanity privKey: %s\nAddress compressed: %s\n",hextemp,public_address_compressed);
               free(hextemp);
       			}
           }
@@ -874,8 +879,9 @@ void *thread_process(void *vargp)	{
     			if(r) {
     				r = searchbinary(DATABUFFER,public_address_compressed,MAXLENGTHADDRESS,N);
     	      if(r) {
+							found++;
               hextemp = malloc(65);
-              mpz_get_str(hextemp,16,random_key_mpz);
+              gmp_sprintf(hextemp,"%0.64Zx",random_key_mpz);
               public_key_compressed_hex = tohex(public_key_compressed,33);
     					pthread_mutex_lock(&write_keys);
     					keys = fopen("keys.txt","a+");
@@ -894,8 +900,9 @@ void *thread_process(void *vargp)	{
     			if(r) {
     				r = searchbinary(DATABUFFER,public_address_uncompressed,MAXLENGTHADDRESS,N);
     	      if(r) {
+							found++;
               hextemp = malloc(65);
-              mpz_get_str(hextemp,16,random_key_mpz);
+              gmp_sprintf(hextemp,"%0.64Zx",random_key_mpz);
               public_key_uncompressed_hex = tohex(public_key_uncompressed,65);
     					pthread_mutex_lock(&write_keys);
     					keys = fopen("keys.txt","a+");
@@ -948,8 +955,9 @@ void *thread_process(void *vargp)	{
   			if(r) {
   				r = searchbinary(DATABUFFER,public_key_compressed+1,MAXLENGTHADDRESS,N);
   	      if(r) {
+						found++;
             hextemp = malloc(65);
-            mpz_get_str(hextemp,16,random_key_mpz);
+            gmp_sprintf(hextemp,"%0.64Zx",random_key_mpz);
             public_key_compressed_hex = tohex(public_key_compressed,33);
   					pthread_mutex_lock(&write_keys);
   					keys = fopen("./keys.txt","a+");
@@ -973,6 +981,7 @@ void *thread_process(void *vargp)	{
 		}while(count <= N_SECUENTIAL_MAX);
 	} while(1);
 	printf("Testing Keys %lu\n",count);
+	printf("Found %i\n",found);
 }
 
 void *thread_process_range(void *vargp)	{
@@ -1023,7 +1032,7 @@ void *thread_process_range(void *vargp)	{
   public_key_uncompressed[0] = 0x04;
   count = 0;
 
-	while(mpz_cmp(key_mpz,max_mpz) < 0 ) {
+	while(mpz_cmp(key_mpz,max_mpz) <= 0 ) {
 		mpz_set(temporal.x,R.x);
 		mpz_set(temporal.y,R.y);
 		//hexstrpoint
@@ -1044,35 +1053,42 @@ void *thread_process_range(void *vargp)	{
 
         public_address_compressed = pubkeytopubaddress(public_key_compressed,33);
         public_address_uncompressed = pubkeytopubaddress(public_key_uncompressed,65);
-
+				/*
+				printf("Testing: %s\n",public_address_compressed);
+				printf("Testing: %s\n",public_address_uncompressed);
+				*/
         if(FLAGVANITY)  {
           if(strncmp(public_address_uncompressed,vanity,len_vanity) == 0)	{
             hextemp = malloc(65);
-            mpz_get_str(hextemp,16,key_mpz);
+						gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
             vanityKeys = fopen("vanitykeys.txt","a+");
             if(vanityKeys != NULL)	{
-              fprintf(vanityKeys,"PrivKey: %s\n%s\n",hextemp,public_address_uncompressed);
+              fprintf(vanityKeys,"Vanity PrivKey: %s\nAddress uncompressed: %s\n",hextemp,public_address_uncompressed);
               fclose(vanityKeys);
             }
+						printf("Vanity privKey: %s\nAddress uncompressed: %s\n",hextemp,public_address_uncompressed);
             free(hextemp);
           }
           if(strncmp(public_address_compressed,vanity,len_vanity) == 0)	{
-            hextemp = malloc(65);
-            mpz_get_str(hextemp,16,key_mpz);
+						hextemp = malloc(65);
+            gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
             vanityKeys = fopen("vanitykeys.txt","a+");
             if(vanityKeys != NULL)	{
-              fprintf(vanityKeys,"PrivKey: %s\n%s\n",hextemp,public_address_compressed);
+              fprintf(vanityKeys,"PrivKey: %s\nAddress compressed: %s\n",hextemp,public_address_compressed);
               fclose(vanityKeys);
             }
+						printf("Vanity privKey: %s\nAddress compressed: %s\n",hextemp,public_address_compressed);
             free(hextemp);
           }
         }
         r = bloom_check(&bloom,public_address_compressed,MAXLENGTHADDRESS);
         if(r) {
+					//printf("bloom_check: %i  for %s\n",r,public_address_compressed);
           r = searchbinary(DATABUFFER,public_address_compressed,MAXLENGTHADDRESS,N);
           if(r) {
+						found++;
             hextemp = malloc(65);
-            mpz_get_str(hextemp,16,key_mpz);
+						gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
             public_key_compressed_hex = tohex(public_key_compressed,33);
             pthread_mutex_lock(&write_keys);
             keys = fopen("keys.txt","a+");
@@ -1087,11 +1103,14 @@ void *thread_process_range(void *vargp)	{
           }
         }
         r = bloom_check(&bloom,public_address_uncompressed,MAXLENGTHADDRESS);
+
         if(r) {
+					//printf("bloom_check: %i  for %s\n",r,public_address_uncompressed);
           r = searchbinary(DATABUFFER,public_address_uncompressed,MAXLENGTHADDRESS,N);
           if(r) {
+						found++;
             hextemp = malloc(65);
-            mpz_get_str(hextemp,16,key_mpz);
+						gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
             public_key_uncompressed_hex = tohex(public_key_uncompressed,65);
             pthread_mutex_lock(&write_keys);
             keys = fopen("keys.txt","a+");
@@ -1150,7 +1169,7 @@ void *thread_process_range(void *vargp)	{
         if(r) {
 					found++;
           hextemp = malloc(65);
-          mpz_get_str(hextemp,16,key_mpz);
+          gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
           public_key_compressed_hex = tohex(public_key_compressed,33);
   				pthread_mutex_lock(&write_keys);
   				keys = fopen("./keys.txt","a+");

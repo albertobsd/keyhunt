@@ -1,3 +1,7 @@
+Version 0.1.20201223
+- Added new tool hexcharstoraw to create a raw binary file for xpoint from a text-hexadecimal file
+- Added option -w to work with raw binary file, this file contains xpoint in binary format fixed to 32 bytes
+
 Version 0.1.20201222
 - Fixed some ugly bug in the searchbinary function thanks to Ujang
 - Added to stdout the vanitykeys found with -v option

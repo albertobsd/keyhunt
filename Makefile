@@ -7,6 +7,6 @@ default:
 	gcc -O3 -c keccak/keccak-tiny.c -o keccak.o -D"memset_s(W,WL,V,OL)=memset(W,V,OL)"
 	gcc -O3 -c keyhunt.c -o keyhunt.o
 	gcc -o keyhunt keyhunt.o base58.o rmd160.o sha256.o bloom.o murmurhash2.o keccak.o -lgmp -lm -lpthread
+	gcc -O3 hexcharstoraw.c -o hexcharstoraw
 clean:
 	rm -r *.o
-

@@ -41,7 +41,7 @@ struct tothread {
   char *rpt;  //rng per thread
 };
 
-const char *version = "0.1.20201222";
+const char *version = "0.1.20201223";
 const char *EC_constant_N = "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141";
 const char *EC_constant_P = "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f";
 const char *EC_constant_Gx = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
@@ -100,6 +100,7 @@ int FLAGVANITY = 0;
 int FLAGMODE = 1;
 int FLAGCRYPTO = 0;
 int FLAGALREADYSORTED = 0;
+int FLAGRAWDATA  = 0;
 
 int len_vanity;
 int bitrange;
@@ -128,7 +129,7 @@ int main(int argc, char **argv)	{
   mpz_init_set_str(EC.n, EC_constant_N, 16);
 	mpz_init_set_str(G.x , EC_constant_Gx, 16);
 	mpz_init_set_str(G.y , EC_constant_Gy, 16);
-  while ((c = getopt (argc, argv, "ehRb:c:f:g:m:n:r:s:t:v:")) != -1) {
+  while ((c = getopt (argc, argv, "ehRwb:c:f:g:m:n:r:s:t:v:")) != -1) {
     switch(c) {
 			case 'h':
         FLAGHELP = 1;
@@ -140,16 +141,17 @@ int main(int argc, char **argv)	{
 				printf("\t\teth option is under develop sorry :(\n");
 				printf("-e\t\tThe file is already Sorted descendent. This skip the sorting process.\n");
 				printf("\t\tYour file MUST be sordted if no you are going to lose collisions\n");
-        printf("-f filename\tSpecify filename with addresses or xpoint\n");
-				printf("-g debugcount\tJust for the stats, mark as counted every debugcount keys	\n");
+        printf("-f file\tSpecify filename with addresses or xpoint\n");
+				printf("-g count\tJust for the stats, mark as counted every debugcount keys	\n");
         printf("-m mode\t\tmode of search for cryptos. < xpoint , address >  default: address (more slow)\n");
 				printf("-n uptoN\tCheck for N secuential numbers before the random chossen this only work with -R option\n");
-				//printf("-o file\t\tSet the file to sav\n");
         printf("-r SR:EN\tStarRange:EndRange, the end range can be omited for search from start range to N-1 ECC value\n");
 				printf("-R\t\tRandom/Secuential this is the default behaivor, can't use this with range option -r\n");
         printf("-s ns\t\tNumber of seconds for the stats output, 0 to omit output.\n");
-        printf("-t tn\t\tThreads number, must be positive integer\n\n");
+        printf("-t tn\t\tThreads number, must be positive integer\n");
 				printf("-v va\t\tSearch for vanity Address, only with -m address\n");
+				printf("-w\t\tMark the input file as RAW data xpoint fixed 32 byte each point. Valid only with -m xpoint\n");
+				printf("\t\tUse the hexcharstoraw tool to create a raw file from your current hexadecimal file\n");
         printf("\nExample\n\n");
         printf("%s -t 16 -r 00000001:FFFFFFFF -s 0\n\n",argv[0]);
         printf("This line run the program with 16 threads from the range 00000001 to FFFFFFFF without stats output\n\n");
@@ -297,6 +299,9 @@ int main(int argc, char **argv)	{
         }
         printf((NTHREADS > 1) ? "Setting %u threads\n": "Setting %u thread\n",NTHREADS);
       break;
+			case 'w':
+				FLAGRAWDATA = 1;
+      break;
       default:
         printf("Unknow opcion %c\n",c);
         if(optarg == NULL){
@@ -354,24 +359,35 @@ int main(int argc, char **argv)	{
     exit(0);
   }
   N =0;
-  aux = malloc(1000);
-  while(!feof(fd))  {
-    hextemp = fgets(aux,1000,fd);
-		if(hextemp == aux)	{
-	    trim(aux," \t\n\r");
-			//printf("reading %s\n",aux);
-	    r = strlen(aux);
-	    if(r > 10)  { //Any length for invalid Address?
-	      if(r > MAXLENGTHADDRESS)  {
-	        MAXLENGTHADDRESS = r;
-	      }
-	      N++;
-	    }
+	if(FLAGRAWDATA) {
+		aux = malloc(32);
+		while(!feof(fd))  {
+			if(fread(aux,1,32,fd) == 32)	{
+				N++;
+			}
 		}
-  }
-  free(aux);
+		free(aux);
+	}
+	else	{
+	  aux = malloc(1000);
+	  while(!feof(fd))  {
+	    hextemp = fgets(aux,1000,fd);
+			if(hextemp == aux)	{
+		    trim(aux," \t\n\r");
+				//printf("reading %s\n",aux);
+		    r = strlen(aux);
+		    if(r > 10)  { //Any length for invalid Address?
+		      if(r > MAXLENGTHADDRESS)  {
+		        MAXLENGTHADDRESS = r;
+		      }
+		      N++;
+		    }
+			}
+	  }
+	  free(aux);
+	}
   fseek(fd,0,SEEK_SET);
-  if(FLAGMODE == 0)  {
+  if(FLAGMODE == 0 || FLAGRAWDATA)  {
     MAXLENGTHADDRESS = 32;
   }
   do {
@@ -412,49 +428,60 @@ int main(int argc, char **argv)	{
     }
   }
   else  {
-		aux = malloc(3*MAXLENGTHADDRESS);
-    while(i < N)  {
-			memset(aux,0,3*MAXLENGTHADDRESS);
-      hextemp = fgets(aux,3*MAXLENGTHADDRESS,fd);
-			if(hextemp == aux)	{
-	      trim(aux," \t\n\r");
-				lenaux = strlen(aux);
-				memset(DATABUFFER + (i*MAXLENGTHADDRESS),0,MAXLENGTHADDRESS);
-				if(isValidHex(aux)) {
-					if(lenaux <= 64)	{
-						if(lenaux < 64)	{
-							aux2 = calloc(3*MAXLENGTHADDRESS,1);
-							lendiff = 64 - lenaux;
-							memcpy(aux2+lendiff,aux,lenaux);
-							memset(aux2,'0',lendiff);
-							memcpy(aux,aux2,3*MAXLENGTHADDRESS);
-							free(aux2);
-						}
-						if(hexs2bin(aux,DATABUFFER + (i*MAXLENGTHADDRESS)))	{
-								bloom_add(&bloom, DATABUFFER + (i*MAXLENGTHADDRESS),MAXLENGTHADDRESS);
+		if(FLAGRAWDATA)	{
+			aux = malloc(MAXLENGTHADDRESS);
+			while(i < N)  {
+				if(fread(aux,1,MAXLENGTHADDRESS,fd) == 32)	{
+					memcpy(DATABUFFER + (i*MAXLENGTHADDRESS),aux,MAXLENGTHADDRESS);
+					bloom_add(&bloom, aux,MAXLENGTHADDRESS);
+				}
+				i++;
+			}
+		}
+		else	{
+			aux = malloc(3*MAXLENGTHADDRESS);
+	    while(i < N)  {
+				memset(aux,0,3*MAXLENGTHADDRESS);
+	      hextemp = fgets(aux,3*MAXLENGTHADDRESS,fd);
+				if(hextemp == aux)	{
+		      trim(aux," \t\n\r");
+					lenaux = strlen(aux);
+					memset(DATABUFFER + (i*MAXLENGTHADDRESS),0,MAXLENGTHADDRESS);
+					if(isValidHex(aux)) {
+						if(lenaux <= 64)	{
+							if(lenaux < 64)	{
+								aux2 = calloc(3*MAXLENGTHADDRESS,1);
+								lendiff = 64 - lenaux;
+								memcpy(aux2+lendiff,aux,lenaux);
+								memset(aux2,'0',lendiff);
+								memcpy(aux,aux2,3*MAXLENGTHADDRESS);
+								free(aux2);
+							}
+							if(hexs2bin(aux,DATABUFFER + (i*MAXLENGTHADDRESS)))	{
+									bloom_add(&bloom, DATABUFFER + (i*MAXLENGTHADDRESS),MAXLENGTHADDRESS);
+							}
+							else	{
+								printf("error hexs2bin\n");
+							}
 						}
 						else	{
-							printf("error hexs2bin\n");
+							printf("Omiting line : %s\n",aux);
 						}
-					}
-					else	{
-						printf("Omiting line : %s\n",aux);
-					}
-	      }
-	      else  {
-	        printf("Ignoring invalid hexvalue %s\nAre you sure that your file are X points?",aux);
-	      }
-	      i++;
-			}
-			else	{
-				printf("Omiting line : %s\n",aux);
-			}
-    }
+		      }
+		      else  {
+		        printf("Ignoring invalid hexvalue %s\nAre you sure that your file are X points?",aux);
+		      }
+		      i++;
+				}
+				else	{
+					printf("Omiting line : %s\n",aux);
+				}
+	    }
+		}
   }
 	free(aux);
   fclose(fd);
 	printf("bloomfilter completed\n");
-
 	if(FLAGALREADYSORTED)	{
 	  printf("File mark already sorted, skipping sort proccess\n");
 		printf("%i values were loaded\n",N);
@@ -464,7 +491,6 @@ int main(int argc, char **argv)	{
 		quicksort(DATABUFFER,0,N-1);
 		printf("%i values were loaded and sorted\n",N);
 	}
-
 
 	init_doublingG(&G);
 
@@ -1221,6 +1247,7 @@ int partition (char *arr, int low, int high)  {
 void quicksort(char *arr, int low, int high)  {
   int pi;
   if (low < high)  {
+			//printf("quicksort from %i to %i\n",low,high);
       pi = partition(arr, low, high);
       quicksort(arr, low, pi - 1);
       quicksort(arr, pi + 1, high);

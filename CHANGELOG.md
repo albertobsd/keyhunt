@@ -1,6 +1,7 @@
 Versionb 0.1.20201228
 - Change Quicksort to Introsort, this solve some edge cases of quicksort.
 - Introsort is avaible to keyhunt and hexcharstoraw. worst case. O(N log N).
+- Aling of some output text
 
 Version 0.1.20201223
 - Added new tool hexcharstoraw to create a raw binary file for xpoint from a text-hexadecimal file

@@ -42,7 +42,7 @@ struct tothread {
   char *rpt;  //rng per thread
 };
 
-const char *version = "0.1.20201223";
+const char *version = "0.1.20201228";
 const char *EC_constant_N = "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141";
 const char *EC_constant_P = "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f";
 const char *EC_constant_Gx = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
@@ -169,7 +169,7 @@ int main(int argc, char **argv)	{
 					bit_range_str_min = malloc(bitrange+1);
 					bit_range_str_max = malloc(bitrange+1);
 					if(bit_range_str_min == NULL||bit_range_str_max == NULL)	{
-						fprintf(stderr,"erorr malloc()\n");
+						fprintf(stderr,"[E] error malloc()\n");
 						exit(0);
 					}
 					memset(bit_range_str_min,'1',bitrange);
@@ -180,26 +180,26 @@ int main(int argc, char **argv)	{
 					FLAGBITRANGE = 1;
 				}
         else	{
-					printf("invalid bits param: %s\n",optarg);
+					fprintf(stderr,"[E] invalid bits param: %s.\n",optarg);
 				}
       break;
       case 'c':
         switch(indexOf(optarg,cryptos,3)) {
             case 0: //btc
               FLAGCRYPTO = CRYPTO_BTC;
-              printf("Setting search for btc adddress\n");
+              printf("[+] Setting search for btc adddress.\n");
             break;
             case 1: //eth
               FLAGCRYPTO = CRYPTO_ETH;
-              printf("Setting search for eth adddress\n");
+              printf("[+] Setting search for eth adddress.\n");
             break;
             case 2: //all
               FLAGCRYPTO = CRYPTO_ALL;
-              printf("Setting search for all cryptos\nFor each crypto there are many hash and base_algo operations  and the performance down slow\n");
+              printf("[+] Setting search for all cryptocurrencies avaible [btc].\n");
             break;
             default:
               FLAGCRYPTO = CRYPTO_NONE;
-              printf("Unknow crypto value %s\n",optarg);
+              fprintf(stderr,"[E] Unknow crypto value %s\n",optarg);
             break;
         }
         optarg;
@@ -215,22 +215,22 @@ int main(int argc, char **argv)	{
         DEBUGCOUNT = strtol(optarg,NULL,10);
 				if(DEBUGCOUNT == 0)	{
 					DEBUGCOUNT = 0x100000;
-					fprintf(stderr,"invalid -g option value: %s\n",optarg);
+					fprintf(stderr,"[E] invalid -g option value: %s.\n",optarg);
 				}
       break;
       case 'm':
         switch(indexOf(optarg,modes,2)) {
           case 0: //xpoint
             FLAGMODE = 0;
-            printf("Setting mode xpoint\n");
+            printf("[+] Setting mode xpoint\n");
           break;
           case 1: //address
             FLAGMODE = 1;
-            printf("Setting mode address\n");
+            printf("[+] Setting mode address\n");
           break;
           default:
             FLAGMODE = 1;
-            printf("Unknow mode value %s\n",optarg);
+            fprintf(stderr,"[+] Unknow mode value %s.\n",optarg);
           break;
         }
       break;
@@ -239,16 +239,17 @@ int main(int argc, char **argv)	{
 				if(N_SECUENTIAL_MAX <= 0)	{
 					N_SECUENTIAL_MAX = 0xFFFFFFFF;
 				}
-				printf("Setting N upto: %u\n",N_SECUENTIAL_MAX);
+				printf("[+] Setting N upto: %u.\n",N_SECUENTIAL_MAX);
 			break;
       case 'v':
         FLAGVANITY = 1;
         vanity = optarg;
         len_vanity = strlen(optarg);
+				printf("[+] Added Vanity search : %s\n",vanity);
       break;
 			case 'R':
 				FLAGRANGE = 0;
-				printf("Setting random mode\n");
+				printf("[+] Setting random mode.\n");
 			break;
       case 'r':
         if(optarg != NULL)  {
@@ -261,7 +262,7 @@ int main(int argc, char **argv)	{
                   range_end = (char*) EC_constant_N;
               }
               else  {
-                printf("Invalid hexstring : %s\n",range_start);
+                fprintf(stderr,"[E] Invalid hexstring : %s.\n",range_start);
               }
             break;
             case 2:
@@ -291,10 +292,10 @@ int main(int argc, char **argv)	{
           OUTPUTSECONDS = 30;
         }
         if(OUTPUTSECONDS == 0)  {
-          printf("Turn off stats output\n");
+          printf("[+] Turn off stats output\n");
         }
         else  {
-          printf("Stats output every %u seconds\n",OUTPUTSECONDS);
+          printf("[+] Stats output every %u seconds\n",OUTPUTSECONDS);
         }
       break;
 			case 't':
@@ -302,9 +303,10 @@ int main(int argc, char **argv)	{
         if(NTHREADS <= 0)  {
           NTHREADS = 1;
         }
-        printf((NTHREADS > 1) ? "Setting %u threads\n": "Setting %u thread\n",NTHREADS);
+        printf((NTHREADS > 1) ? "[+] Setting %u threads\n": "[+] Setting %u thread\n",NTHREADS);
       break;
 			case 'w':
+			printf("[+] Data marked as RAW\n");
 				FLAGRAWDATA = 1;
       break;
       default:
@@ -324,7 +326,7 @@ int main(int argc, char **argv)	{
 	}
   if(FLAGMODE == 1 && FLAGCRYPTO == CRYPTO_NONE) {  //When none crypto is defined the default search is for Bitcoin
     FLAGCRYPTO = CRYPTO_BTC;
-    printf("Setting search for btc adddress\n");
+    printf("[+] Setting search for btc adddress\n");
   }
   if(FLAGFILE == 0) {
     filename =(char*) default_filename;
@@ -335,7 +337,7 @@ int main(int argc, char **argv)	{
     if(mpz_cmp(n_range_start,n_range_end) != 0 ) {
       if(mpz_cmp(n_range_start,EC.n) < 0 && mpz_cmp(n_range_end,EC.n) <= 0)  {
         if(mpz_cmp(n_range_start,n_range_end) > 0) {
-          printf("Opps, start and range can't be great than End range. Swapping them\n");
+          fprintf(stderr,"[E] Opps, start and range can't be great than End range. Swapping them\n");
           mpz_init_set(n_range_aux,n_range_start);
           mpz_set(n_range_start,n_range_end);
           mpz_set(n_range_end,n_range_aux);
@@ -349,23 +351,26 @@ int main(int argc, char **argv)	{
         mpz_mod_ui(n_range_r,n_range_diff,NTHREADS);
       }
       else  {
-        printf("Start and End range can't be great than N\nFallback to random mode!\n");
+        fprintf(stderr,"[E] Start and End range can't be great than N\nFallback to random mode!\n");
         FLAGRANGE = 0;
       }
     }
     else  {
-      printf("Start and End range can't be the same\nFallback to random mode!\n");
+      fprintf(stderr,"[E] Start and End range can't be the same\nFallback to random mode!\n");
       FLAGRANGE = 0;
     }
   }
   fd = fopen(filename,"rb");
   if(fd == NULL)	{
-    fprintf(stderr,"cant open file %s\n",filename);
+    fprintf(stderr,"[E] Can't open file %s\n",filename);
     exit(0);
   }
   N =0;
 	if(FLAGRAWDATA) {
 		aux = malloc(32);
+		if(aux == NULL)	{
+			fprintf(stderr,"[E] error malloc()\n");
+		}
 		while(!feof(fd))  {
 			if(fread(aux,1,32,fd) == 32)	{
 				N++;
@@ -375,6 +380,9 @@ int main(int argc, char **argv)	{
 	}
 	else	{
 	  aux = malloc(1000);
+		if(aux == NULL)	{
+			fprintf(stderr,"[E] error malloc()\n");
+		}
 	  while(!feof(fd))  {
 	    hextemp = fgets(aux,1000,fd);
 			if(hextemp == aux)	{
@@ -395,10 +403,18 @@ int main(int argc, char **argv)	{
   if(FLAGMODE == 0 || FLAGRAWDATA)  {
     MAXLENGTHADDRESS = 32;
   }
+	printf("[+] Allocating memory for %u elements\n",N);
+	i = 0;
   do {
 		DATABUFFER = malloc(MAXLENGTHADDRESS*N);
-	} while(DATABUFFER == NULL);
-  printf("init bloom filter for %u elements\n",N);
+		i++;
+	} while(DATABUFFER == NULL && i < 10);
+	if(DATABUFFER == NULL)	{
+		fprintf(stderr,"[E] Can't alloc memory\n");
+		exit(0);
+	}
+
+  printf("[+] Initializing bloom filter for %u elements.\n",N);
 	if(2*N < 1000)	{
 		if(bloom_init(&bloom,1000,0.001)  == 1){
 			fprintf(stderr,"error bloom_init\n");
@@ -411,11 +427,14 @@ int main(int argc, char **argv)	{
 			exit(0);
 		}
 	}
-  printf("loading data and making bloomfilter\n");
+  printf("[+] Loading data to the bloomfilter\n");
 	i = 0;
-	aux = malloc(2*MAXLENGTHADDRESS);
   if(FLAGMODE)  { //Address
 		aux = malloc(2*MAXLENGTHADDRESS);
+		if(aux == NULL)	{
+			fprintf(stderr,"[E] error malloc()\n");
+			exit(0);
+		}
     while(i < N)  {
 			memset(aux,0,2*MAXLENGTHADDRESS);
   		memset(DATABUFFER + (i*MAXLENGTHADDRESS),0,MAXLENGTHADDRESS);
@@ -428,13 +447,17 @@ int main(int argc, char **argv)	{
 			}
 			else	{
 				trim(aux," \t\n\r");
-				printf("Omiting line : %s\n",aux);
+				fprintf(stderr,"[E] Omiting line : %s\n",aux);
 			}
     }
   }
   else  {
 		if(FLAGRAWDATA)	{
 			aux = malloc(MAXLENGTHADDRESS);
+			if(aux == NULL)	{
+				fprintf(stderr,"[E] error malloc()\n");
+				exit(0);
+			}
 			while(i < N)  {
 				if(fread(aux,1,MAXLENGTHADDRESS,fd) == 32)	{
 					memcpy(DATABUFFER + (i*MAXLENGTHADDRESS),aux,MAXLENGTHADDRESS);
@@ -445,6 +468,10 @@ int main(int argc, char **argv)	{
 		}
 		else	{
 			aux = malloc(3*MAXLENGTHADDRESS);
+			if(aux == NULL)	{
+				fprintf(stderr,"[E] error malloc()\n");
+				exit(0);
+			}
 	    while(i < N)  {
 				memset(aux,0,3*MAXLENGTHADDRESS);
 	      hextemp = fgets(aux,3*MAXLENGTHADDRESS,fd);
@@ -466,37 +493,37 @@ int main(int argc, char **argv)	{
 									bloom_add(&bloom, DATABUFFER + (i*MAXLENGTHADDRESS),MAXLENGTHADDRESS);
 							}
 							else	{
-								printf("error hexs2bin\n");
+								fprintf(stderr,"[E] error hexs2bin\n");
 							}
 						}
 						else	{
-							printf("Omiting line : %s\n",aux);
+							fprintf(stderr,"[E] Omiting line : %s\n",aux);
 						}
 		      }
 		      else  {
-		        printf("Ignoring invalid hexvalue %s\nAre you sure that your file are X points?",aux);
+		        fprintf(stderr,"[E] Ignoring invalid hexvalue %s\n",aux);
 		      }
 		      i++;
 				}
 				else	{
-					printf("Omiting line : %s\n",aux);
+					fprintf(stderr,"[E] Omiting line : %s\n",aux);
 				}
 	    }
 		}
   }
 	free(aux);
   fclose(fd);
-	printf("bloomfilter completed\n");
+	printf("[+] Bloomfilter completed\n");
 	if(FLAGALREADYSORTED)	{
-	  printf("File mark already sorted, skipping sort proccess\n");
-		printf("%i values were loaded\n",N);
+	  printf("[+] File mark already sorted, skipping sort proccess\n");
+		printf("[+] %i values were loaded\n",N);
 		_insertionsort(DATABUFFER,N);
 	}
 	else	{
-		printf("sorting data\n");
+		printf("[+] Sorting data\n");
 		_sort(DATABUFFER,N);
 		_insertionsort(DATABUFFER,N);
-		printf("%i values were loaded and sorted\n",N);
+		printf("[+] %i values were loaded and sorted\n",N);
 	}
 
 	init_doublingG(&G);
@@ -515,7 +542,8 @@ int main(int argc, char **argv)	{
       steps[i] = 0;
   		s = pthread_create(&tid[i],NULL,thread_process,(void *)tt);
   		if(s != 0)  {
-  			fprintf(stderr,"error: pthread_create thread_process\n");
+  			fprintf(stderr,"[E] pthread_create thread_process\n");
+				exit(0);
   		}
   	}
   }
@@ -535,7 +563,8 @@ int main(int argc, char **argv)	{
       steps[i] = 0;
   		s = pthread_create(&tid[i],NULL,thread_process_range,(void *)tt);
   		if(s != 0)  {
-  			fprintf(stderr,"error: pthread_create thread_process\n");
+  			fprintf(stderr,"[E] pthread_create thread_process\n");
+				exit(0);
   		}
       mpz_add(n_range_start,n_range_start,n_range_per_threads);
   	}
@@ -568,7 +597,7 @@ int main(int argc, char **argv)	{
           total +=(uint64_t)( (uint64_t)steps[i] * (uint64_t)DEBUGCOUNT);
           i++;
         }
-        printf("Total %llu keys in %lu secods: %lu keys/s\n",total,seconds,(uint64_t) ((uint64_t)total/(uint64_t)seconds));
+        printf("Total %llu keys in %llu secods: %llu keys/s\n",total,seconds,(uint64_t) ((uint64_t)total/(uint64_t)seconds));
       }
     }
   }while(continue_flag);

@@ -1,7 +1,11 @@
-
+*.bin
 keyhunt
 test_bloom.c
 xpoints.c
+heapsort.c
+insertionsorttest.c
+introsort.c
+
 *.txt
 # Prerequisites
 *.d

@@ -25,14 +25,16 @@
 
 #define MAKESTRING(n) STRING(n)
 #define STRING(n) #n
-
+#define BLOOM_MAGIC "libbloom2"
+#define BLOOM_VERSION_MAJOR 2
+#define BLOOM_VERSION_MINOR 1
 
 inline static int test_bit_set_bit(unsigned char * buf,
-                                   unsigned int x, int set_bit)
+                                   unsigned int bit, int set_bit)
 {
-  unsigned int byte = x >> 3;
+  unsigned int byte = bit >> 3;
   unsigned char c = buf[byte];        // expensive memory access
-  unsigned int mask = 1 << (x % 8);
+  unsigned char mask = 1 << (bit % 8);
 
   if (c & mask) {
     return 1;
@@ -53,14 +55,14 @@ static int bloom_check_add(struct bloom * bloom,
     return -1;
   }
 
-  int hits = 0;
-  register unsigned int a = murmurhash2(buffer, len, 0x9747b28c);
-  register unsigned int b = murmurhash2(buffer, len, a);
-  register unsigned int x;
-  register unsigned int i;
+  unsigned char hits = 0;
+  unsigned int a = murmurhash2(buffer, len, 0x9747b28c);
+  unsigned int b = murmurhash2(buffer, len, a);
+  unsigned int x;
+  unsigned char i;
 
   for (i = 0; i < bloom->hashes; i++) {
-    x = (a + i*b) % bloom->bits;
+    x = (a + b*i) % bloom->bits;
     if (test_bit_set_bit(bloom->bf, x, add)) {
       hits++;
     } else if (!add) {
@@ -77,30 +79,31 @@ static int bloom_check_add(struct bloom * bloom,
 }
 
 
-int bloom_init_size(struct bloom * bloom, int entries, double error,
-                    unsigned int cache_size)
+// DEPRECATED - Please migrate to bloom_init2.
+int bloom_init(struct bloom * bloom, int entries, double error)
 {
-  return bloom_init(bloom, entries, error);
+  return bloom_init2(bloom, (unsigned int)entries, error);
 }
 
 
-int bloom_init(struct bloom * bloom, int entries, double error)
+int bloom_init2(struct bloom * bloom, unsigned int entries, double error)
 {
-  bloom->ready = 0;
+  memset(bloom, 0, sizeof(struct bloom));
 
-  if (entries < 1000 || error == 0) {
+  if (entries < 1000 || error <= 0 || error >= 1) {
     return 1;
   }
 
   bloom->entries = entries;
   bloom->error = error;
 
-  double num = log(bloom->error);
+  double num = -log(bloom->error);
   double denom = 0.480453013918201; // ln(2)^2
-  bloom->bpe = -(num / denom);
+  bloom->bpe = (num / denom);
 
-  double dentries = (double)entries;
-  bloom->bits = (int)(dentries * bloom->bpe);
+  long double dentries = (long double)entries;
+  long double allbits = dentries * bloom->bpe;
+  bloom->bits = (unsigned int)allbits;
 
   if (bloom->bits % 8) {
     bloom->bytes = (bloom->bits / 8) + 1;
@@ -108,7 +111,7 @@ int bloom_init(struct bloom * bloom, int entries, double error)
     bloom->bytes = bloom->bits / 8;
   }
 
-  bloom->hashes = (int)ceil(0.693147180559945 * bloom->bpe);  // ln(2)
+  bloom->hashes = (unsigned char)ceil(0.693147180559945 * bloom->bpe);  // ln(2)
 
   bloom->bf = (unsigned char *)calloc(bloom->bytes, sizeof(unsigned char));
   if (bloom->bf == NULL) {                                   // LCOV_EXCL_START
@@ -116,6 +119,10 @@ int bloom_init(struct bloom * bloom, int entries, double error)
   }                                                          // LCOV_EXCL_STOP
 
   bloom->ready = 1;
+
+  bloom->major = BLOOM_VERSION_MAJOR;
+  bloom->minor = BLOOM_VERSION_MINOR;
+
   return 0;
 }
 
@@ -135,11 +142,16 @@ int bloom_add(struct bloom * bloom, const void * buffer, int len)
 void bloom_print(struct bloom * bloom)
 {
   printf("bloom at %p\n", (void *)bloom);
-  printf(" ->entries = %d\n", bloom->entries);
+  if (!bloom->ready) { printf(" *** NOT READY ***\n"); }
+  printf(" ->version = %d.%d\n", bloom->major, bloom->minor);
+  printf(" ->entries = %u\n", bloom->entries);
   printf(" ->error = %f\n", bloom->error);
-  printf(" ->bits = %d\n", bloom->bits);
+  printf(" ->bits = %u\n", bloom->bits);
   printf(" ->bits per elem = %f\n", bloom->bpe);
-  printf(" ->bytes = %d\n", bloom->bytes);
+  printf(" ->bytes = %u", bloom->bytes);
+  unsigned int KB = bloom->bytes / 1024;
+  unsigned int MB = KB / 1024;
+  printf(" (%u KB, %u MB)\n", KB, MB);
   printf(" ->hash functions = %d\n", bloom->hashes);
 }
 
@@ -158,6 +170,111 @@ int bloom_reset(struct bloom * bloom)
   if (!bloom->ready) return 1;
   memset(bloom->bf, 0, bloom->bytes);
   return 0;
+}
+
+
+int bloom_save(struct bloom * bloom, char * filename)
+{
+  if (filename == NULL || filename[0] == 0) {
+    return 1;
+  }
+
+  int fd = open(filename, O_WRONLY | O_CREAT, 0644);
+  if (fd < 0) {
+    return 1;
+  }
+
+  ssize_t out = write(fd, BLOOM_MAGIC, strlen(BLOOM_MAGIC));
+  if (out != strlen(BLOOM_MAGIC)) { goto save_error; }        // LCOV_EXCL_LINE
+
+  uint16_t size = sizeof(struct bloom);
+  out = write(fd, &size, sizeof(uint16_t));
+  if (out != sizeof(uint16_t)) { goto save_error; }           // LCOV_EXCL_LINE
+
+  out = write(fd, bloom, sizeof(struct bloom));
+  if (out != sizeof(struct bloom)) { goto save_error; }       // LCOV_EXCL_LINE
+
+  out = write(fd, bloom->bf, bloom->bytes);
+  if (out != bloom->bytes) { goto save_error; }               // LCOV_EXCL_LINE
+
+  close(fd);
+  return 0;
+                                                             // LCOV_EXCL_START
+ save_error:
+  close(fd);
+  return 1;
+                                                             // LCOV_EXCL_STOP
+}
+
+
+int bloom_load(struct bloom * bloom, char * filename)
+{
+  int rv = 0;
+
+  if (filename == NULL || filename[0] == 0) { return 1; }
+  if (bloom == NULL) { return 2; }
+
+  memset(bloom, 0, sizeof(struct bloom));
+
+  int fd = open(filename, O_RDONLY);
+  if (fd < 0) { return 3; }
+
+  char line[30];
+  memset(line, 0, 30);
+  ssize_t in = read(fd, line, strlen(BLOOM_MAGIC));
+
+  if (in != strlen(BLOOM_MAGIC)) {
+    rv = 4;
+    goto load_error;
+  }
+
+  if (strncmp(line, BLOOM_MAGIC, strlen(BLOOM_MAGIC))) {
+    rv = 5;
+    goto load_error;
+  }
+
+  uint16_t size;
+  in = read(fd, &size, sizeof(uint16_t));
+  if (in != sizeof(uint16_t)) {
+    rv = 6;
+    goto load_error;
+  }
+
+  if (size != sizeof(struct bloom)) {
+    rv = 7;
+    goto load_error;
+  }
+
+  in = read(fd, bloom, sizeof(struct bloom));
+  if (in != sizeof(struct bloom)) {
+    rv = 8;
+    goto load_error;
+  }
+
+  bloom->bf = NULL;
+  if (bloom->major != BLOOM_VERSION_MAJOR) {
+    rv = 9;
+    goto load_error;
+  }
+
+  bloom->bf = (unsigned char *)malloc(bloom->bytes);
+  if (bloom->bf == NULL) { rv = 10; goto load_error; }        // LCOV_EXCL_LINE
+
+  in = read(fd, bloom->bf, bloom->bytes);
+  if (in != bloom->bytes) {
+    rv = 11;
+    free(bloom->bf);
+    bloom->bf = NULL;
+    goto load_error;
+  }
+
+  close(fd);
+  return rv;
+
+ load_error:
+  close(fd);
+  bloom->ready = 0;
+  return rv;
 }
 
 

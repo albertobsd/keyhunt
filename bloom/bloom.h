@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2012-2017, Jyri J. Virkki
+ *  Copyright (c) 2012-2019, Jyri J. Virkki
  *  All rights reserved.
  *
  *  This file is under BSD license. See LICENSE file.
@@ -24,18 +24,20 @@ struct bloom
   // These fields are part of the public interface of this structure.
   // Client code may read these values if desired. Client code MUST NOT
   // modify any of these.
-  int entries;
+  unsigned int entries;
+  unsigned int bits;
+  unsigned int bytes;
+  unsigned char hashes;
   double error;
-  int bits;
-  int bytes;
-  int hashes;
 
   // Fields below are private to the implementation. These may go away or
   // change incompatibly at any moment. Client code MUST NOT access or rely
   // on these.
+  unsigned char ready;
+  unsigned char major;
+  unsigned char minor;
   double bpe;
   unsigned char * bf;
-  int ready;
 };
 
 
@@ -66,15 +68,15 @@ struct bloom
  *     1 - on failure
  *
  */
-int bloom_init(struct bloom * bloom, int entries, double error);
+int bloom_init2(struct bloom * bloom, unsigned int entries, double error);
 
 
-/** ***************************************************************************
- * Deprecated, use bloom_init()
+/**
+ * DEPRECATED.
+ * Kept for compatibility with libbloom v.1. To be removed in v3.0.
  *
  */
-int bloom_init_size(struct bloom * bloom, int entries, double error,
-                    unsigned int cache_size);
+int bloom_init(struct bloom * bloom, int entries, double error);
 
 
 /** ***************************************************************************
@@ -140,6 +142,7 @@ void bloom_print(struct bloom * bloom);
  */
 void bloom_free(struct bloom * bloom);
 
+
 /** ***************************************************************************
  * Erase internal storage.
  *
@@ -156,6 +159,40 @@ void bloom_free(struct bloom * bloom);
  *
  */
 int bloom_reset(struct bloom * bloom);
+
+
+/** ***************************************************************************
+ * Save a bloom filter to a file.
+ *
+ * Parameters:
+ * -----------
+ *     bloom    - Pointer to an allocated struct bloom (see above).
+ *     filename - Create (or overwrite) bloom data to this file.
+ *
+ * Return:
+ *     0 - on success
+ *     1 - on failure
+ *
+ */
+int bloom_save(struct bloom * bloom, char * filename);
+
+
+/** ***************************************************************************
+ * Load a bloom filter from a file.
+ *
+ * This functions loads a file previously saved with bloom_save().
+ *
+ * Parameters:
+ * -----------
+ *     bloom    - Pointer to an allocated struct bloom (see above).
+ *     filename - Load bloom filter data from this file.
+ *
+ * Return:
+ *     0   - on success
+ *     > 0 - on failure
+ *
+ */
+int bloom_load(struct bloom * bloom, char * filename);
 
 
 /** ***************************************************************************

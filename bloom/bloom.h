@@ -26,7 +26,7 @@ struct bloom
   // modify any of these.
   unsigned int entries;
   unsigned long long int bits;
-  unsigned int bytes;
+  unsigned long long int bytes;
   unsigned char hashes;
   double error;
 

@@ -106,14 +106,14 @@ int bloom_init2(struct bloom * bloom, unsigned int entries, double error)
   bloom->bits = (unsigned long long int)allbits;
 
   if (bloom->bits % 8) {
-    bloom->bytes = (unsigned int) (bloom->bits / 8) + 1;
+    bloom->bytes = (unsigned long long int) (bloom->bits / 8) + 1;
   } else {
-    bloom->bytes = (unsigned int) bloom->bits / 8;
+    bloom->bytes = (unsigned long long int) bloom->bits / 8;
   }
 
   bloom->hashes = (unsigned char)ceil(0.693147180559945 * bloom->bpe);  // ln(2)
 
-  bloom->bf = (unsigned char *)calloc(bloom->bytes, sizeof(unsigned char));
+  bloom->bf = (unsigned char *)calloc((unsigned long long int)bloom->bytes, sizeof(unsigned char));
   if (bloom->bf == NULL) {                                   // LCOV_EXCL_START
     return 1;
   }                                                          // LCOV_EXCL_STOP
@@ -148,7 +148,7 @@ void bloom_print(struct bloom * bloom)
   printf(" ->error = %f\n", bloom->error);
   printf(" ->bits = %llu\n", bloom->bits);
   printf(" ->bits per elem = %f\n", bloom->bpe);
-  printf(" ->bytes = %u", bloom->bytes);
+  printf(" ->bytes = %llu", bloom->bytes);
   unsigned int KB = bloom->bytes / 1024;
   unsigned int MB = KB / 1024;
   printf(" (%u KB, %u MB)\n", KB, MB);

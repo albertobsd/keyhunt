@@ -1,3 +1,4 @@
+
 /*
 Develop by Luis Alberto
 email: alberto.bsd@gmail.com
@@ -19,12 +20,14 @@ email: alberto.bsd@gmail.com
 #include "bloom/bloom.h"
 #include "util.h"
 
-
 #define CRYPTO_NONE 0
 #define CRYPTO_BTC 1
 #define CRYPTO_ETH 2
 #define CRYPTO_ALL 3
 
+#define MODE_XPOINT 0
+#define MODE_ADDRESS 1
+#define MODE_BSGS 2
 
 struct Point {
 	mpz_t x;
@@ -37,12 +40,12 @@ struct Elliptic_Curve {
 };
 
 struct tothread {
-  int nt; //Number thread
-  char *rs; //range start
+  int nt; 		//Number thread
+  char *rs; 	//range start
   char *rpt;  //rng per thread
 };
 
-const char *version = "0.1.20201228";
+const char *version = "0.1.20210112 BSGS";
 const char *EC_constant_N = "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141";
 const char *EC_constant_P = "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f";
 const char *EC_constant_Gx = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
@@ -52,7 +55,7 @@ struct Point DoublingG[256];
 void Point_Doubling(struct Point *P, struct Point *R);
 void Point_Addition(struct Point *P, struct Point *Q, struct Point *R);
 void Scalar_Multiplication(struct Point P, struct Point *R, mpz_t m);
-void Point_Negation(struct Point A, struct Point *S);
+void Point_Negation(struct Point *A, struct Point *S);
 int searchbinary(char *BUFFER,char *data,int length,int _N);
 
 void _sort(char *arr,int N);
@@ -63,18 +66,30 @@ int partition(char *arr, int n);
 void heapsort(char  *arr, int n);
 void heapify(char *arr, int n, int i);
 
+void bsgs_heapsort(char  *arr, int n);
+void bsgs_sort(char *arr,int N);
+void bsgs_insertionsort(char *arr, int n);
+void bsgs_introsort(char *arr,int depthLimit, int n);
+void bsgs_swap(char *a,char *b);
+void bsgs_heapify(char *arr, int n, int i);
+int bsgs_partition(char *arr, int n);
+
+int bsgs_searchbinary(char *buffer,char *data,int _N,unsigned int *r_value);
+
 void *thread_process(void *vargp);
 void *thread_process_range(void *vargp);
+void *thread_process_bsgs(void *vargp);
+void *thread_process_bsgs_random(void *vargp);
 
 void init_doublingG(struct Point *P);
 char *pubkeytopubaddress(char *pkey,int length);
 char *pubkeytopubaddress_eth(char *pkey,int length);
+
+
 char *bit_range_str_min;
 char *bit_range_str_max;
 
-
-
-const char *modes[2] = {"xpoint","address"};
+const char *modes[3] = {"xpoint","address","bsgs"};
 const char *cryptos[3] = {"btc","eth","all"};
 const char *default_filename = "addresses.txt";
 
@@ -82,30 +97,39 @@ pthread_t *tid = NULL;
 pthread_mutex_t write_keys;
 pthread_mutex_t write_range;
 pthread_mutex_t write_random;
+pthread_mutex_t threads_end;
+pthread_mutex_t bsgs_thread;
 
 struct Elliptic_Curve EC;
 struct bloom bloom;
 struct Point G;
+
+int FLAGDEBUG  =  1;
+
 unsigned int *steps = NULL;
 unsigned int *ends = NULL;
 char *DATABUFFER;
-int N = 0;
+uint32_t N = 0;
 gmp_randstate_t state;
 
 uint64_t N_SECUENTIAL_MAX = 0xffffffff;
+uint64_t DEBUGCOUNT = 0x100000;
+
 int MAXLENGTHADDRESS = -1;
 int NTHREADS = 1;
-int DEBUGCOUNT = 0x100000;
 int OUTPUTSECONDS = 30;
 int FLAGBITRANGE = 0;
 int FLAGRANGE = 0;
-int FLAGHELP = 0;
 int FLAGFILE = 0;
 int FLAGVANITY = 0;
-int FLAGMODE = 1;
+int FLAGMODE = MODE_ADDRESS;
 int FLAGCRYPTO = 0;
 int FLAGALREADYSORTED = 0;
 int FLAGRAWDATA  = 0;
+int FLAGRANDOM = 0;
+int FLAG_N = 0;
+int FLAGPRECALCUTED_P_FILE = 0;
+int FLAGPRECALCUTED_MP_FILE = 0;
 
 int len_vanity;
 int bitrange;
@@ -113,43 +137,75 @@ char *vanity;
 char *range_start;
 char *range_end;
 
-int main(int argc, char **argv)	{
-  struct tothread *tt;  //tothread
-  Tokenizer t;  //tokenizar
-  char *filename;
-	FILE *fd;
-  char *hextemp,*aux,*aux2;
-	int readed,i,s,continue_flag,check_flag,r,lenaux,lendiff;
-  uint64_t total = 0;
-	uint32_t seconds = 0;
-  mpz_t n_range_start;
-  mpz_t n_range_end;
-  mpz_t n_range_diff;
-  mpz_t n_range_per_threads;
-  mpz_t n_range_aux;
-  mpz_t n_range_r;
-  int c;
+uint64_t BSGS_BUFFERXPOINTLENGTH = 32;
+uint64_t BSGS_BUFFERREGISTERLENGTH = 36;
 
+/*
+	BSGS Variables
+*/
+int *bsgs_found;
+struct Point *OriginalPointsBSGS;
+char *PBUFFER;
+struct bloom bloom_bPx;
+uint64_t bsgs_m;
+uint32_t bsgs_point_number;
+mpz_t BSGS_CURRENT;
+mpz_t BSGS_N;
+mpz_t BSGS_M;							//M is squareroot(N)
+struct Point BSGS_P;			//Original P is actually G, but this P value change over time for calculations
+struct Point BSGS_MP;			//MP values this is m * P
+struct Point *BSGS_AMP;
+
+struct Point point_temp,point_temp2;	//Temp value for some process
+
+mpz_t n_range_start;
+mpz_t n_range_end;
+mpz_t n_range_diff;
+mpz_t n_range_per_threads;
+mpz_t n_range_aux;
+mpz_t n_range_r;
+
+int main(int argc, char **argv)	{
+	char temporal[65];
+  struct tothread *tt;  //tothread
+  Tokenizer t,tokenizerbsgs;  //tokenizer
+  char *filename,*precalculated_p_filename,*precalculated_mp_filename;
+	FILE *fd;
+  char *hextemp,*aux,*aux2,*pointx_str,*pointy_str;
+	uint64_t i;
+	uint32_t j;
+	int readed,s,continue_flag,check_flag,r,lenaux,lendiff;
+	mpz_t total;
+	mpz_t pretotal;
+	mpz_t debugcount_mpz;
+	uint32_t seconds = 0;
+
+  int c;
+	gmp_randinit_mt(state);
+	gmp_randseed_ui(state, ((int)clock()) * ((int)time(NULL)) );
+	printf("[+] Version %s\n",version);
   mpz_init_set_str(EC.p, EC_constant_P, 16);
   mpz_init_set_str(EC.n, EC_constant_N, 16);
 	mpz_init_set_str(G.x , EC_constant_Gx, 16);
 	mpz_init_set_str(G.y , EC_constant_Gy, 16);
-  while ((c = getopt (argc, argv, "ehRwb:c:f:g:m:n:r:s:t:v:")) != -1) {
+	init_doublingG(&G);
+  while ((c = getopt (argc, argv, "ehRwb:c:f:g:m:n:p:r:s:t:v:")) != -1) {
     switch(c) {
 			case 'h':
-        FLAGHELP = 1;
-        printf("keyhunt version %s\n\n",version);
         printf("\nUsage:\n-h\t\tshow this help\n");
+				printf("-a file\t\tfile is a binary raw file with the aMP points precalculated. Just work with -m bsgs\n");
 				printf("-b bits\t\tFor some puzzles you only need some numbers of bits in the test keys.\n");
 				printf("\t\tThis option only is valid with the Random option -R\n");
 				printf("-c crypto\tSearch for specific crypo. < btc, eth, all > valid only w/ -m address \n");
 				printf("\t\teth option is under develop sorry :(\n");
 				printf("-e\t\tThe file is already Sorted descendent. This skip the sorting process.\n");
 				printf("\t\tYour file MUST be sordted if no you are going to lose collisions\n");
-        printf("-f file\tSpecify filename with addresses or xpoint\n");
+        printf("-f file\t\tSpecify filename with addresses or xpoints or uncompressed public keys\n");
 				printf("-g count\tJust for the stats, mark as counted every debugcount keys	\n");
-        printf("-m mode\t\tmode of search for cryptos. < xpoint , address >  default: address (more slow)\n");
+        printf("-m mode\t\tmode of search for cryptos. < address, xpoint, bsgs >  default: address (more slow)\n");
 				printf("-n uptoN\tCheck for N secuential numbers before the random chossen this only work with -R option\n");
+				printf("\t\tUse -n to set the N for the BSGS process. Bigger N more RAM needed\n");
+				printf("-p file\t\tfile is a binary raw file with the bP points precalculated. Just work with -m bsgs\n");
         printf("-r SR:EN\tStarRange:EndRange, the end range can be omited for search from start range to N-1 ECC value\n");
 				printf("-R\t\tRandom/Secuential this is the default behaivor, can't use this with range option -r\n");
         printf("-s ns\t\tNumber of seconds for the stats output, 0 to omit output.\n");
@@ -160,14 +216,19 @@ int main(int argc, char **argv)	{
         printf("\nExample\n\n");
         printf("%s -t 16 -r 00000001:FFFFFFFF -s 0\n\n",argv[0]);
         printf("This line run the program with 16 threads from the range 00000001 to FFFFFFFF without stats output\n\n");
-        printf("Developed by AlbertoBSD\tTips BTC: 1H3TAVNZFZfiLUp9o9E93oTVY9WgYZ5knX\n\n");
+        printf("Developed by AlbertoBSD\tTips BTC: 1H3TAVNZFZfiLUp9o9E93oTVY9WgYZ5knX\n");
+				printf("Thanks to Iceland always helping and sharing his ideas\n\n");
         exit(0);
       break;
+			case 'a':
+				FLAGPRECALCUTED_MP_FILE = 1;
+				precalculated_mp_filename = optarg;
+			break;
 			case 'b':
 				bitrange = strtol(optarg,NULL,10);
 				if(bitrange > 0 && bitrange <=256 )	{
-					bit_range_str_min = malloc(bitrange+1);
-					bit_range_str_max = malloc(bitrange+1);
+					bit_range_str_min = calloc(1,bitrange+1);
+					bit_range_str_max = calloc(1,bitrange+1);
 					if(bit_range_str_min == NULL||bit_range_str_max == NULL)	{
 						fprintf(stderr,"[E] error malloc()\n");
 						exit(0);
@@ -202,7 +263,6 @@ int main(int argc, char **argv)	{
               fprintf(stderr,"[E] Unknow crypto value %s\n",optarg);
             break;
         }
-        optarg;
       break;
 			case 'e':
 				FLAGALREADYSORTED = 1;
@@ -219,27 +279,36 @@ int main(int argc, char **argv)	{
 				}
       break;
       case 'm':
-        switch(indexOf(optarg,modes,2)) {
-          case 0: //xpoint
-            FLAGMODE = 0;
+        switch(indexOf(optarg,modes,3)) {
+          case MODE_XPOINT: //xpoint
+            FLAGMODE = MODE_XPOINT;
             printf("[+] Setting mode xpoint\n");
           break;
-          case 1: //address
-            FLAGMODE = 1;
+          case MODE_ADDRESS: //address
+            FLAGMODE = MODE_ADDRESS;
             printf("[+] Setting mode address\n");
           break;
+					case MODE_BSGS:
+						FLAGMODE = MODE_BSGS;
+						printf("[+] Setting mode BSGS\n");
+					break;
           default:
-            FLAGMODE = 1;
+            FLAGMODE = MODE_ADDRESS;
             fprintf(stderr,"[+] Unknow mode value %s.\n",optarg);
           break;
         }
       break;
 			case 'n':
+				FLAG_N = 1;
 				N_SECUENTIAL_MAX = strtol(optarg,NULL,10);
 				if(N_SECUENTIAL_MAX <= 0)	{
+					FLAG_N = 0;
 					N_SECUENTIAL_MAX = 0xFFFFFFFF;
 				}
-				printf("[+] Setting N upto: %u.\n",N_SECUENTIAL_MAX);
+			break;
+			case 'p':
+				FLAGPRECALCUTED_P_FILE = 1;
+				precalculated_p_filename = optarg;
 			break;
       case 'v':
         FLAGVANITY = 1;
@@ -248,7 +317,7 @@ int main(int argc, char **argv)	{
 				printf("[+] Added Vanity search : %s\n",vanity);
       break;
 			case 'R':
-				FLAGRANGE = 0;
+				FLAGRANDOM = 1;
 				printf("[+] Setting random mode.\n");
 			break;
       case 'r':
@@ -273,15 +342,15 @@ int main(int argc, char **argv)	{
               }
               else  {
                 if(isValidHex(range_start)) {
-                  printf("Invalid hexstring : %s\n",range_start);
+                  printf("[E] Invalid hexstring : %s\n",range_start);
                 }
                 else  {
-                  printf("Invalid hexstring : %s\n",range_end);
+                  printf("[E] Invalid hexstring : %s\n",range_end);
                 }
               }
             break;
             default:
-              printf("Unknow number of Range Params: %i\n",t.n);
+              printf("[E] Unknow number of Range Params: %i\n",t.n);
             break;
           }
         }
@@ -310,26 +379,29 @@ int main(int argc, char **argv)	{
 				FLAGRAWDATA = 1;
       break;
       default:
-        printf("Unknow opcion %c\n",c);
-        if(optarg == NULL){
-          printf("optarg es NULL\n");
-        }
-        else  {
-          printf("optarg No es NULL: %s\n",optarg);
-        }
+        printf("[E] Unknow opcion %c\n",c);
       break;
     }
   }
+	if(FLAGMODE != MODE_BSGS  && FLAGRANDOM == 1)	{
+		FLAGRANGE = 0;
+	}
 	if(DEBUGCOUNT  > N_SECUENTIAL_MAX)	{
 		DEBUGCOUNT = N_SECUENTIAL_MAX - 1;
 		//printf("Setting debug count to %u",N_SECUENTIAL_MAX);
 	}
-  if(FLAGMODE == 1 && FLAGCRYPTO == CRYPTO_NONE) {  //When none crypto is defined the default search is for Bitcoin
+	if(FLAGFILE == 0) {
+		filename =(char*) default_filename;
+	}
+	printf("[+] Opening file %s\n",filename);
+	fd = fopen(filename,"rb");
+  if(fd == NULL)	{
+    fprintf(stderr,"[E] Can't open file %s\n",filename);
+    exit(0);
+  }
+  if(FLAGMODE == MODE_ADDRESS && FLAGCRYPTO == CRYPTO_NONE) {  //When none crypto is defined the default search is for Bitcoin
     FLAGCRYPTO = CRYPTO_BTC;
     printf("[+] Setting search for btc adddress\n");
-  }
-  if(FLAGFILE == 0) {
-    filename =(char*) default_filename;
   }
   if(FLAGRANGE) {
     mpz_init_set_str(n_range_start,range_start,16);
@@ -337,7 +409,7 @@ int main(int argc, char **argv)	{
     if(mpz_cmp(n_range_start,n_range_end) != 0 ) {
       if(mpz_cmp(n_range_start,EC.n) < 0 && mpz_cmp(n_range_end,EC.n) <= 0)  {
         if(mpz_cmp(n_range_start,n_range_end) > 0) {
-          fprintf(stderr,"[E] Opps, start and range can't be great than End range. Swapping them\n");
+          fprintf(stderr,"[W] Opps, start and range can't be great than End range. Swapping them\n");
           mpz_init_set(n_range_aux,n_range_start);
           mpz_set(n_range_start,n_range_end);
           mpz_set(n_range_end,n_range_aux);
@@ -360,244 +432,581 @@ int main(int argc, char **argv)	{
       FLAGRANGE = 0;
     }
   }
-  fd = fopen(filename,"rb");
-  if(fd == NULL)	{
-    fprintf(stderr,"[E] Can't open file %s\n",filename);
-    exit(0);
-  }
-  N =0;
-	if(FLAGRAWDATA) {
-		aux = malloc(32);
-		if(aux == NULL)	{
-			fprintf(stderr,"[E] error malloc()\n");
-		}
-		while(!feof(fd))  {
-			if(fread(aux,1,32,fd) == 32)	{
-				N++;
-			}
-		}
-		free(aux);
-	}
-	else	{
-	  aux = malloc(1000);
-		if(aux == NULL)	{
-			fprintf(stderr,"[E] error malloc()\n");
-		}
-	  while(!feof(fd))  {
-	    hextemp = fgets(aux,1000,fd);
-			if(hextemp == aux)	{
-		    trim(aux," \t\n\r");
-				//printf("reading %s\n",aux);
-		    r = strlen(aux);
-		    if(r > 10)  { //Any length for invalid Address?
-		      if(r > MAXLENGTHADDRESS)  {
-		        MAXLENGTHADDRESS = r;
-		      }
-		      N++;
-		    }
-			}
-	  }
-	  free(aux);
-	}
-  fseek(fd,0,SEEK_SET);
-  if(FLAGMODE == 0 || FLAGRAWDATA)  {
-    MAXLENGTHADDRESS = 32;
-  }
-	printf("[+] Allocating memory for %u elements\n",N);
-	i = 0;
-  do {
-		DATABUFFER = malloc(MAXLENGTHADDRESS*N);
-		i++;
-	} while(DATABUFFER == NULL && i < 10);
-	if(DATABUFFER == NULL)	{
-		fprintf(stderr,"[E] Can't alloc memory\n");
-		exit(0);
-	}
 
-  printf("[+] Initializing bloom filter for %u elements.\n",N);
-	if(2*N < 1000)	{
-		if(bloom_init(&bloom,1000,0.001)  == 1){
-			fprintf(stderr,"error bloom_init\n");
-			exit(0);
-		}
-	}
-	else	{
-		if(bloom_init(&bloom,2*N,0.001)  == 1){
-			fprintf(stderr,"error bloom_init\n");
-			exit(0);
-		}
-	}
-  printf("[+] Loading data to the bloomfilter\n");
-	i = 0;
-  if(FLAGMODE)  { //Address
-		aux = malloc(2*MAXLENGTHADDRESS);
-		if(aux == NULL)	{
-			fprintf(stderr,"[E] error malloc()\n");
-			exit(0);
-		}
-    while(i < N)  {
-			memset(aux,0,2*MAXLENGTHADDRESS);
-  		memset(DATABUFFER + (i*MAXLENGTHADDRESS),0,MAXLENGTHADDRESS);
-      hextemp = fgets(aux,2*MAXLENGTHADDRESS,fd);
-			if(hextemp == aux)	{
-	      trim(aux," \t\n\r");
-	      bloom_add(&bloom, aux,MAXLENGTHADDRESS);
-				memcpy(DATABUFFER + (i*MAXLENGTHADDRESS),aux,MAXLENGTHADDRESS);
-	      i++;
-			}
-			else	{
-				trim(aux," \t\n\r");
-				fprintf(stderr,"[E] Omiting line : %s\n",aux);
-			}
-    }
-  }
-  else  {
-		if(FLAGRAWDATA)	{
-			aux = malloc(MAXLENGTHADDRESS);
+  N =0;
+	if(FLAGMODE != MODE_BSGS)	{
+		if(FLAGRAWDATA) {
+			aux = malloc(32);
 			if(aux == NULL)	{
 				fprintf(stderr,"[E] error malloc()\n");
-				exit(0);
 			}
-			while(i < N)  {
-				if(fread(aux,1,MAXLENGTHADDRESS,fd) == 32)	{
-					memcpy(DATABUFFER + (i*MAXLENGTHADDRESS),aux,MAXLENGTHADDRESS);
-					bloom_add(&bloom, aux,MAXLENGTHADDRESS);
+			while(!feof(fd))  {
+				if(fread(aux,1,32,fd) == 32)	{
+					N++;
 				}
-				i++;
+			}
+			free(aux);
+		}
+		else	{
+		  aux = malloc(1000);
+			if(aux == NULL)	{
+				fprintf(stderr,"[E] error malloc()\n");
+			}
+		  while(!feof(fd))  {
+		    hextemp = fgets(aux,1000,fd);
+				if(hextemp == aux)	{
+			    trim(aux," \t\n\r");
+					//printf("reading %s\n",aux);
+			    r = strlen(aux);
+			    if(r > 10)  { //Any length for invalid Address?
+			      if(r > MAXLENGTHADDRESS)  {
+			        MAXLENGTHADDRESS = r;
+			      }
+			      N++;
+			    }
+				}
+		  }
+		  free(aux);
+		}
+	  fseek(fd,0,SEEK_SET);
+	  if(FLAGMODE == 0 || FLAGRAWDATA)  {
+	    MAXLENGTHADDRESS = 32;
+	  }
+
+		printf("[+] Allocating memory for %u elements\n",N);
+		i = 0;
+	  do {
+			DATABUFFER = malloc(MAXLENGTHADDRESS*N);
+			i++;
+		} while(DATABUFFER == NULL && i < 10);
+		if(DATABUFFER == NULL)	{
+			fprintf(stderr,"[E] Can't alloc memory for %u elements\n",N);
+			exit(0);
+		}
+	  printf("[+] Initializing bloom filter for %u elements.\n",N);
+		if(N <= 10000)	{
+			if(bloom_init2(&bloom,10000,0.0001)  == 1){
+				fprintf(stderr,"[E] error bloom_init for 10000 elements.\n");
+				exit(0);
 			}
 		}
 		else	{
-			aux = malloc(3*MAXLENGTHADDRESS);
+			if(bloom_init2(&bloom,N,0.0001)  == 1){
+				fprintf(stderr,"[E] error bloom_init for %u elements.\n",N);
+				exit(0);
+			}
+		}
+	  printf("[+] Loading data to the bloomfilter\n");
+		i = 0;
+	  if(FLAGMODE == MODE_ADDRESS)  { //Address
+			aux = malloc(2*MAXLENGTHADDRESS);
 			if(aux == NULL)	{
 				fprintf(stderr,"[E] error malloc()\n");
 				exit(0);
 			}
 	    while(i < N)  {
-				memset(aux,0,3*MAXLENGTHADDRESS);
-	      hextemp = fgets(aux,3*MAXLENGTHADDRESS,fd);
+				memset(aux,0,2*MAXLENGTHADDRESS);
+	  		memset(DATABUFFER + (i*MAXLENGTHADDRESS),0,MAXLENGTHADDRESS);
+	      hextemp = fgets(aux,2*MAXLENGTHADDRESS,fd);
 				if(hextemp == aux)	{
 		      trim(aux," \t\n\r");
-					lenaux = strlen(aux);
-					memset(DATABUFFER + (i*MAXLENGTHADDRESS),0,MAXLENGTHADDRESS);
-					if(isValidHex(aux)) {
-						if(lenaux <= 64)	{
-							if(lenaux < 64)	{
-								aux2 = calloc(3*MAXLENGTHADDRESS,1);
-								lendiff = 64 - lenaux;
-								memcpy(aux2+lendiff,aux,lenaux);
-								memset(aux2,'0',lendiff);
-								memcpy(aux,aux2,3*MAXLENGTHADDRESS);
-								free(aux2);
-							}
-							if(hexs2bin(aux,DATABUFFER + (i*MAXLENGTHADDRESS)))	{
-									bloom_add(&bloom, DATABUFFER + (i*MAXLENGTHADDRESS),MAXLENGTHADDRESS);
-							}
-							else	{
-								fprintf(stderr,"[E] error hexs2bin\n");
-							}
-						}
-						else	{
-							fprintf(stderr,"[E] Omiting line : %s\n",aux);
-						}
-		      }
-		      else  {
-		        fprintf(stderr,"[E] Ignoring invalid hexvalue %s\n",aux);
-		      }
+		      bloom_add(&bloom, aux,MAXLENGTHADDRESS);
+					memcpy(DATABUFFER + (i*MAXLENGTHADDRESS),aux,MAXLENGTHADDRESS);
 		      i++;
 				}
 				else	{
+					trim(aux," \t\n\r");
 					fprintf(stderr,"[E] Omiting line : %s\n",aux);
 				}
 	    }
+	  }
+	  if(FLAGMODE == MODE_XPOINT)  {
+			if(FLAGRAWDATA)	{
+				aux = malloc(MAXLENGTHADDRESS);
+				if(aux == NULL)	{
+					fprintf(stderr,"[E] error malloc()\n");
+					exit(0);
+				}
+				while(i < N)  {
+					if(fread(aux,1,MAXLENGTHADDRESS,fd) == 32)	{
+						memcpy(DATABUFFER + (i*MAXLENGTHADDRESS),aux,MAXLENGTHADDRESS);
+						bloom_add(&bloom, aux,MAXLENGTHADDRESS);
+					}
+					i++;
+				}
+			}
+			else	{
+				aux = malloc(3*MAXLENGTHADDRESS);
+				if(aux == NULL)	{
+					fprintf(stderr,"[E] error malloc()\n");
+					exit(0);
+				}
+		    while(i < N)  {
+					memset(aux,0,3*MAXLENGTHADDRESS);
+		      hextemp = fgets(aux,3*MAXLENGTHADDRESS,fd);
+					if(hextemp == aux)	{
+			      trim(aux," \t\n\r");
+						lenaux = strlen(aux);
+						memset(DATABUFFER + (i*MAXLENGTHADDRESS),0,MAXLENGTHADDRESS);
+						if(isValidHex(aux)) {
+							if(lenaux <= 64)	{
+								if(lenaux < 64)	{
+									aux2 = calloc(3*MAXLENGTHADDRESS,1);
+									lendiff = 64 - lenaux;
+									memcpy(aux2+lendiff,aux,lenaux);
+									memset(aux2,'0',lendiff);
+									memcpy(aux,aux2,3*MAXLENGTHADDRESS);
+									free(aux2);
+								}
+								if(hexs2bin(aux,(unsigned char*)(DATABUFFER + (uint64_t)(i*MAXLENGTHADDRESS))))	{
+										bloom_add(&bloom,(char*)( DATABUFFER + (uint64_t)(i*MAXLENGTHADDRESS)),MAXLENGTHADDRESS);
+								}
+								else	{
+									fprintf(stderr,"[E] error hexs2bin\n");
+								}
+							}
+							else	{
+								fprintf(stderr,"[E] Omiting line : %s\n",aux);
+							}
+			      }
+			      else  {
+			        fprintf(stderr,"[E] Ignoring invalid hexvalue %s\n",aux);
+			      }
+			      i++;
+					}
+					else	{
+						fprintf(stderr,"[E] Omiting line : %s\n",aux);
+					}
+		    }
+			}
+	  }
+		free(aux);
+	  fclose(fd);
+		printf("[+] Bloomfilter completed\n");
+		if(FLAGALREADYSORTED)	{
+		  printf("[+] File mark already sorted, skipping sort proccess\n");
+			printf("[+] %i values were loaded\n",N);
+			_sort(DATABUFFER,N);
+			_insertionsort(DATABUFFER,N);
 		}
-  }
-	free(aux);
-  fclose(fd);
-	printf("[+] Bloomfilter completed\n");
-	if(FLAGALREADYSORTED)	{
-	  printf("[+] File mark already sorted, skipping sort proccess\n");
-		printf("[+] %i values were loaded\n",N);
-		_insertionsort(DATABUFFER,N);
+		else	{
+			printf("[+] Sorting data\n");
+			_sort(DATABUFFER,N);
+			_insertionsort(DATABUFFER,N);
+			printf("[+] %i values were loaded and sorted\n",N);
+		}
 	}
-	else	{
-		printf("[+] Sorting data\n");
-		_sort(DATABUFFER,N);
-		_insertionsort(DATABUFFER,N);
-		printf("[+] %i values were loaded and sorted\n",N);
+	if(FLAGMODE == MODE_BSGS)	{
+		DEBUGCOUNT = N_SECUENTIAL_MAX ;
+		aux = malloc(1024);
+		if(aux == NULL)	{
+			fprintf(stderr,"[E] error malloc()\n");
+			exit(0);
+		}
+		while(!feof(fd))  {
+			if(fgets(aux,1022,fd) == aux)	{
+				trim(aux," \t\n\r");
+				if(strlen(aux) >= 128)	{	//Length of a full address in hexadecimal without 04
+						N++;
+				}
+			}
+		}
+		if(N == 0)	{
+			fprintf(stderr,"[E] There is no valid data in the file\n");
+			exit(0);
+		}
+		bsgs_found = calloc(N,sizeof(int));
+		OriginalPointsBSGS = malloc(N*sizeof(struct Point));
+		pointx_str = malloc(65);
+		pointy_str = malloc(65);
+		if(OriginalPointsBSGS == NULL || pointy_str == NULL || pointx_str == NULL || bsgs_found == NULL)	{
+			fprintf(stderr,"[E] error malloc()\n");
+			exit(0);
+		}
+		fseek(fd,0,SEEK_SET);
+		i = 0;
+		while(!feof(fd))  {
+			if(fgets(aux,1022,fd) == aux)	{
+				trim(aux," \t\n\r");
+				if(strlen(aux) >= 128)	{
+					stringtokenizer(aux,&tokenizerbsgs);
+					aux2 = nextToken(&tokenizerbsgs);
+					memset(pointx_str,0,65);
+					memset(pointy_str,0,65);
+					switch(strlen(aux2))	{
+						case 128:	//Without the 04
+							memcpy(pointx_str,aux2,64);
+							memcpy(pointy_str,aux2+64,64);
+							if(isValidHex(pointx_str) && isValidHex(pointy_str))	{
+								mpz_init_set_str(OriginalPointsBSGS[i].x,pointx_str,16);
+								mpz_init_set_str(OriginalPointsBSGS[i].y,pointy_str,16);
+								//printf("Adding point ( %s , %s )\n",pointx_str,pointy_str);
+								i++;
+							}
+							else	{
+								fprintf(stderr,"[E] Some invalid hexdata in the file: %s\n",aux2);
+								N--;
+							}
+						break;
+						case 130:	//With the 04
+							memcpy(pointx_str,aux2+2,64);
+							memcpy(pointy_str,aux2+2+64,64);
+							if(isValidHex(pointx_str) && isValidHex(pointy_str))	{
+								mpz_init_set_str(OriginalPointsBSGS[i].x,pointx_str,16);
+								mpz_init_set_str(OriginalPointsBSGS[i].y,pointy_str,16);
+								//printf("Adding point ( %s , %s )\n",pointx_str,pointy_str);
+								i++;
+							}
+							else	{
+								fprintf(stderr,"[E] Some invalid hexdata in the file: %s\n",aux2);
+								N--;
+							}
+
+						break;
+						default:
+							printf("Invalid length: %s\n",aux2);
+							N--;
+						break;
+					}
+					freetokenizer(&tokenizerbsgs);
+				}
+			}
+		}
+		fclose(fd);
+		bsgs_point_number = N;
+		printf("[+] Added %u points from file\n",bsgs_point_number);
+
+		mpz_init(BSGS_N);
+		mpz_init(BSGS_M);
+		mpz_init(point_temp.x);
+		mpz_init(point_temp.y);
+		mpz_init(point_temp2.x);
+		mpz_init(point_temp2.y);
+		mpz_init_set_ui(BSGS_MP.x,0);
+		mpz_init_set_ui(BSGS_MP.y,0);
+		mpz_init_set(BSGS_P.x,G.x);
+		mpz_init_set(BSGS_P.y,G.y);
+
+		mpz_set_ui(BSGS_M,bsgs_m);
+
+		if(FLAG_N)	{	//Custom N by the -n param
+			memset(aux,0,100);
+			sprintf(aux,"%llu",N_SECUENTIAL_MAX);
+			mpz_set_str(BSGS_N,aux,10);
+		}
+		else	{	//Default N
+			mpz_set_str(BSGS_N,"100000000000",16);
+		}
+		if(!mpz_root(BSGS_M,BSGS_N,2))	{	//If the root wasn't exact
+			mpz_add_ui(BSGS_M,BSGS_M,1);	//Add an extra integer, This is like a CEIL Funtion
+		}
+		bsgs_m = mpz_get_ui(BSGS_M);
+		mpz_mul(BSGS_N,BSGS_M,BSGS_M);
+
+		DEBUGCOUNT = (uint64_t)((uint64_t)bsgs_m * (uint64_t)bsgs_m);
+
+		if(FLAGRANGE || FLAGBITRANGE)	{
+			if(FLAGBITRANGE)	{	// Bit Range
+				mpz_init_set_str(n_range_start,bit_range_str_min,2);
+				mpz_init_set_str(n_range_end,bit_range_str_max,2);
+				mpz_init(n_range_diff);
+				mpz_sub(n_range_diff,n_range_end,n_range_start);
+
+				printf("Bit Range\n");
+			}
+		}
+		else	{
+
+			mpz_init_set_ui(n_range_start,1);
+			mpz_init_set(n_range_end,EC.n);
+
+			mpz_urandomm(n_range_start,state,n_range_end);
+			mpz_init(n_range_diff);
+			mpz_sub(n_range_diff,n_range_end,n_range_start);
+		}
+		mpz_init_set(BSGS_CURRENT,n_range_start);
+
+		if(mpz_cmp(n_range_diff,BSGS_N) < 0 )	{
+			mpz_set(BSGS_N,n_range_diff);
+			if(!mpz_root(BSGS_M,BSGS_N,2))	{	//If the root wasn't exact
+				mpz_add_ui(BSGS_M,BSGS_M,1);	//Add an extra integer, This is CEIL Funtion
+			}
+			bsgs_m = mpz_get_ui(BSGS_M);
+			mpz_mul(BSGS_N,BSGS_M,BSGS_M);
+			DEBUGCOUNT = (uint64_t)((uint64_t)bsgs_m * (uint64_t)bsgs_m);
+		}
+
+		printf("[+] Setting N up to %llu.\n",DEBUGCOUNT);
+
+		if(bsgs_m > 1000)	{
+			if(bsgs_m > 1000)	{
+				if(bloom_init2(&bloom_bPx,bsgs_m,0.001)  == 1){
+					fprintf(stderr,"[E] error bloom_init for %u elements\n",bsgs_m);
+					exit(0);
+				}
+			}
+			else	{
+				/*
+				if(bloom_init(&bloom_bPx,bsgs_m,0.001)  == 1){
+					fprintf(stderr,"[E] error bloom_init for %u elements\n",bsgs_m);
+					exit(0);
+				}
+				*/
+			}
+		}
+		else	{
+			if(bloom_init2(&bloom_bPx,1000,0.001)  == 1){
+				fprintf(stderr,"[E] error bloom_init for 1000 elements\n");
+				exit(0);
+			}
+		}
+		printf("[+] Init bloom filter for %u elements : %.2f MB\n",bsgs_m,(float)((uint32_t)bloom_bPx.bytes/(uint32_t)1048576));
+
+		//gmp_printf("BSGS_M: %0.64Zx\n",BSGS_M);
+
+
+		Scalar_Multiplication(G,&BSGS_MP,BSGS_M);
+
+		printf("[+] Allocating %.2f MB for aMP Points\n",(float)(((uint32_t)(bsgs_m*sizeof(struct Point)))/(uint32_t)1048576));
+		i = 0;
+		do {
+			BSGS_AMP = malloc((uint64_t)((uint64_t)bsgs_m*(uint64_t)sizeof(struct Point)));
+			i++;
+			if(BSGS_AMP == NULL)	{
+				sleep(1);
+			}
+		} while( i <= 10 && BSGS_AMP == NULL);
+
+		if(BSGS_AMP == NULL)	{
+			printf("[E] error malloc()\n");
+			exit(0);
+		}
+		i= 0;
+		if(FLAGPRECALCUTED_MP_FILE)	{
+			printf("[+] Reading aMP points from file %s\n",precalculated_mp_filename);
+			fd = fopen(precalculated_mp_filename,"rb");
+			if(fd != NULL)	{
+				while(!feof(fd) && i < bsgs_m )	{
+					if(fread(temporal,1,64,fd) == 64)	{
+						hextemp = tohex(temporal,32);
+						mpz_init_set_str(BSGS_AMP[i].x,hextemp,16);
+						free(hextemp);
+						hextemp = tohex(temporal+32,32);
+						mpz_init_set_str(BSGS_AMP[i].y,hextemp,16);
+						free(hextemp);
+						i++;
+					}
+				}
+				if(i < bsgs_m)	{	//If the input file have less item than bsgs_m
+					printf("[+] Fixme file contains less items than the amount of items needed\n");
+					exit(0);
+				}
+			}
+			else	{
+				fprintf(stderr,"[E] Can't open file %s falling back to the calculation mode\n",filename);
+				printf("[+] Precalculating %u aMP points\n",bsgs_m);
+				mpz_set(point_temp.x,BSGS_MP.x);
+				mpz_set(point_temp.y,BSGS_MP.y);
+				for(i = 0; i < bsgs_m; i++)	{
+					mpz_init(BSGS_AMP[i].x);
+					mpz_init(BSGS_AMP[i].y);
+					Point_Negation(&point_temp,&BSGS_AMP[i]);
+					Point_Addition(&point_temp,&BSGS_MP,&point_temp2);
+					mpz_set(point_temp.x,point_temp2.x);
+					mpz_set(point_temp.y,point_temp2.y);
+				}
+			}
+		}
+		else	{
+			printf("[+] Precalculating %u aMP points\n",bsgs_m);
+			mpz_set(point_temp.x,BSGS_MP.x);
+			mpz_set(point_temp.y,BSGS_MP.y);
+			for(i = 0; i < bsgs_m; i++)	{
+				mpz_init(BSGS_AMP[i].x);
+				mpz_init(BSGS_AMP[i].y);
+				Point_Negation(&point_temp,&BSGS_AMP[i]);
+				Point_Addition(&point_temp,&BSGS_MP,&point_temp2);
+				mpz_set(point_temp.x,point_temp2.x);
+				mpz_set(point_temp.y,point_temp2.y);
+			}
+		}
+		printf("[+] Allocating %.2f MB for bP Points\n",(float)(((uint32_t)(bsgs_m*BSGS_BUFFERREGISTERLENGTH))/(uint32_t)1048576));
+		PBUFFER = malloc((uint32_t) (bsgs_m*BSGS_BUFFERREGISTERLENGTH));
+		if(PBUFFER == NULL)	{
+			printf("[E] error malloc()\n");
+			exit(0);
+		}
+		i = 0;
+		j = 0;
+		if(FLAGPRECALCUTED_P_FILE)	{
+			printf("[+] Reading bP points from file %s\n",precalculated_p_filename);
+			fd = fopen(precalculated_p_filename,"rb");
+			if(fd != NULL)	{
+				while(!feof(fd) && i < bsgs_m )	{
+					if(fread(temporal,1,32,fd) == 32)	{
+						memcpy((PBUFFER + (i*BSGS_BUFFERREGISTERLENGTH)),temporal,BSGS_BUFFERXPOINTLENGTH);
+						memcpy((PBUFFER + (i*BSGS_BUFFERREGISTERLENGTH))+BSGS_BUFFERXPOINTLENGTH,&j,sizeof(uint32_t));
+						bloom_add(&bloom_bPx, (char*)(PBUFFER + (i*BSGS_BUFFERREGISTERLENGTH)),BSGS_BUFFERXPOINTLENGTH);
+						i++;
+						j++;
+					}
+				}
+				if(i < bsgs_m)	{	//If the input file have less item than bsgs_m
+					printf("[+] Fixme file contains less items than the amount of items needed\n");
+					exit(0);
+				}
+			}
+			else	{
+				fprintf(stderr,"[E] Can't open file %s falling back to the calculation mode\n",filename);
+				printf("[+] Precalculating %u bP points\n",bsgs_m);
+				do {
+					mpz_set(point_temp.x,BSGS_P.x);
+					mpz_set(point_temp.y,BSGS_P.y);
+					gmp_sprintf(temporal,"%0.64Zx",BSGS_P.x);
+					//printf("[+] %i: %s\n",i,temporal);
+					hexs2bin(temporal,(unsigned char*)(PBUFFER + (i*BSGS_BUFFERREGISTERLENGTH)) );
+					memcpy((PBUFFER + (i*BSGS_BUFFERREGISTERLENGTH))+BSGS_BUFFERXPOINTLENGTH,&j,sizeof(uint32_t));
+					bloom_add(&bloom_bPx, (char*)(PBUFFER + (i*BSGS_BUFFERREGISTERLENGTH)),BSGS_BUFFERXPOINTLENGTH);
+					Point_Addition(&G,&point_temp,&BSGS_P);
+					i++;
+					j++;
+				} while( i < bsgs_m );
+			}
+		}
+		else	{
+			printf("[+] precalculating %u bP points\n",bsgs_m);
+			do {
+				mpz_set(point_temp.x,BSGS_P.x);
+				mpz_set(point_temp.y,BSGS_P.y);
+				gmp_sprintf(temporal,"%0.64Zx",BSGS_P.x);
+				//printf("[+] %i: %s\n",i,temporal);
+				hexs2bin(temporal,(unsigned char*)(PBUFFER + (i*BSGS_BUFFERREGISTERLENGTH)) );
+				memcpy((PBUFFER + (i*BSGS_BUFFERREGISTERLENGTH))+BSGS_BUFFERXPOINTLENGTH,&j,sizeof(uint32_t));
+				bloom_add(&bloom_bPx, (char*)(PBUFFER + (i*BSGS_BUFFERREGISTERLENGTH)),BSGS_BUFFERXPOINTLENGTH);
+				Point_Addition(&G,&point_temp,&BSGS_P);
+				i++;
+				j++;
+			} while( i < bsgs_m );
+		}
+
+
+		printf("[+] Sorting %u elements\n",bsgs_m);
+		bsgs_sort(PBUFFER,bsgs_m);
+		bsgs_insertionsort(PBUFFER,bsgs_m);
+		i = 0;
+		/*
+		do {
+			hextemp = tohex((char*)(PBUFFER + (i*BSGS_BUFFERREGISTERLENGTH)),32);
+			printf("[+] %i: %s\n",i,hextemp);
+			free(hextemp);
+			i++;
+		} while( i < bsgs_m );
+		*/
+
+		steps = (unsigned int *) calloc(NTHREADS,sizeof(int));
+	  ends = (unsigned int *) calloc(NTHREADS,sizeof(int));
+		tid = (pthread_t *) calloc(NTHREADS,sizeof(pthread_t));
+		DEBUGCOUNT = (uint64_t)((uint64_t)bsgs_m * (uint64_t)bsgs_m);
+		for(i= 0;i < NTHREADS; i++)  {
+			tt = malloc(sizeof(struct tothread));
+			tt->nt = i;
+			if(FLAGRANDOM)	{
+				s = pthread_create(&tid[i],NULL,thread_process_bsgs_random,(void *)tt);
+			}
+			else	{
+				s = pthread_create(&tid[i],NULL,thread_process_bsgs,(void *)tt);
+			}
+
+			if(s != 0)  {
+				fprintf(stderr,"[E] pthread_create thread_process\n");
+				exit(0);
+			}
+		}
+		free(aux);
 	}
 
-	init_doublingG(&G);
 
-  if(FLAGRANGE == 0)  {
-    gmp_randinit_mt(state);
-    gmp_randseed_ui(state, time(NULL));
-  }
-	steps = (unsigned int *) calloc(NTHREADS,sizeof(int));
-  ends = (unsigned int *) calloc(NTHREADS,sizeof(int));
-	tid = (pthread_t *) calloc(NTHREADS,sizeof(pthread_t));
-  if(FLAGRANGE == 0)  {
-  	for(i= 0;i < NTHREADS; i++)  {
-      tt = malloc(sizeof(struct tothread));
-      tt->nt = i;
-      steps[i] = 0;
-  		s = pthread_create(&tid[i],NULL,thread_process,(void *)tt);
-  		if(s != 0)  {
-  			fprintf(stderr,"[E] pthread_create thread_process\n");
-				exit(0);
-  		}
-  	}
-  }
-  else  {
-    for(i= 0;i < NTHREADS; i++)  {
-      if(i == (NTHREADS)-1) {
-        mpz_add(n_range_per_threads,n_range_per_threads,n_range_r);
-      }
-      tt = malloc(sizeof(struct tothread));
-      tt->nt = i;
-      tt->rs = malloc(65);
-      mpz_get_str(tt->rs,16,n_range_start);
 
-      tt->rpt = malloc(65);
-      mpz_get_str(tt->rpt,16,n_range_per_threads);
+	if(FLAGMODE != MODE_BSGS)	{
+		steps = (unsigned int *) calloc(NTHREADS,sizeof(int));
+	  ends = (unsigned int *) calloc(NTHREADS,sizeof(int));
+		tid = (pthread_t *) calloc(NTHREADS,sizeof(pthread_t));
 
-      steps[i] = 0;
-  		s = pthread_create(&tid[i],NULL,thread_process_range,(void *)tt);
-  		if(s != 0)  {
-  			fprintf(stderr,"[E] pthread_create thread_process\n");
-				exit(0);
-  		}
-      mpz_add(n_range_start,n_range_start,n_range_per_threads);
-  	}
-  }
-  if(FLAGRANGE) {
-    mpz_clear(n_range_per_threads);
-    mpz_clear(n_range_start);
-    mpz_clear(n_range_end);
-    mpz_clear(n_range_diff);
-    mpz_clear(n_range_r);
-  }
+	  if(FLAGRANGE == 0)  {
+	  	for(i= 0;i < NTHREADS; i++)  {
+	      tt = malloc(sizeof(struct tothread));
+	      tt->nt = i;
+	      steps[i] = 0;
+	  		s = pthread_create(&tid[i],NULL,thread_process,(void *)tt);
+	  		if(s != 0)  {
+	  			fprintf(stderr,"[E] pthread_create thread_process\n");
+					exit(0);
+	  		}
+	  	}
+	  }
+	  else  {
+	    for(i= 0;i < NTHREADS; i++)  {
+	      if(i == (NTHREADS)-1) {
+	        mpz_add(n_range_per_threads,n_range_per_threads,n_range_r);
+	      }
+	      tt = malloc(sizeof(struct tothread));
+	      tt->nt = i;
+	      tt->rs = malloc(65);
+	      mpz_get_str(tt->rs,16,n_range_start);
+
+	      tt->rpt = malloc(65);
+	      mpz_get_str(tt->rpt,16,n_range_per_threads);
+
+	      steps[i] = 0;
+				s = pthread_create(&tid[i],NULL,thread_process_range,(void *)tt);
+	  		if(s != 0)  {
+	  			fprintf(stderr,"[E] pthread_create thread_process\n");
+					exit(0);
+	  		}
+	      mpz_add(n_range_start,n_range_start,n_range_per_threads);
+	  	}
+	  }
+	  if(FLAGRANGE) {
+	    mpz_clear(n_range_per_threads);
+	    mpz_clear(n_range_start);
+	    mpz_clear(n_range_end);
+	    mpz_clear(n_range_diff);
+	    mpz_clear(n_range_r);
+	  }
+	}
   continue_flag = 1;
+	mpz_init(total);
+	mpz_init(pretotal);
+	mpz_init(debugcount_mpz);
+	sprintf(temporal,"%llu",DEBUGCOUNT);
+	mpz_set_str(debugcount_mpz,temporal,10);
   do  {
     sleep(1);
     seconds+=1;
     if(FLAGRANGE) {
       check_flag = 1;
+			pthread_mutex_lock(&threads_end);
       for(i = 0; i <NTHREADS && check_flag; i++) {
         check_flag &= ends[i];
       }
+			pthread_mutex_unlock(&threads_end);
       if(check_flag)  {
         continue_flag = 0;
       }
     }
     if(OUTPUTSECONDS > 0){
         if(seconds % OUTPUTSECONDS == 0) {
-        total = 0;
+				mpz_set_ui(total,0);
         i = 0;
         while(i < NTHREADS) {
-          total +=(uint64_t)( (uint64_t)steps[i] * (uint64_t)DEBUGCOUNT);
+					mpz_mul_ui(pretotal,debugcount_mpz,steps[i]);
+					mpz_add(total,total,pretotal);
           i++;
         }
-        printf("Total %llu keys in %llu secods: %llu keys/s\n",total,seconds,(uint64_t) ((uint64_t)total/(uint64_t)seconds));
+				if(mpz_cmp_ui(total,0) > 0)	{
+					mpz_fdiv_q_ui (pretotal,total,seconds);
+					gmp_printf("Total %Zu keys in %llu seconds: %Zu keys/s\n",total,seconds,pretotal);
+				}
       }
     }
   }while(continue_flag);
@@ -643,14 +1052,11 @@ void Point_Addition(struct Point *P, struct Point *Q, struct Point *R)	{
 		mpz_set(R->y, Q->y);
 	}
 	else	{
-    /*  This is commented because Q never 0,0, always is kG point*/
-    /*
 		if(mpz_cmp_ui(Q->x, 0) == 0 && mpz_cmp_ui(Q->y, 0) == 0) {
 			mpz_set(R->x, P->x);
 			mpz_set(R->y, P->y);
 		}
 		else	{
-    */
 			if(mpz_cmp_ui(Q->y, 0) != 0) {
 				mpz_sub(PA_temp, EC.p, Q->y);
 				mpz_mod(PA_temp, PA_temp, EC.p);
@@ -684,17 +1090,23 @@ void Point_Addition(struct Point *P, struct Point *Q, struct Point *R)	{
 					mpz_mod(R->y, R->y, EC.p);
 				}
 			}
-		//}
+		}
 	}
 	mpz_clear(PA_temp);
 	mpz_clear(PA_slope);
 }
 
 void Scalar_Multiplication(struct Point P, struct Point *R, mpz_t m)	{
-	char strtemp[65];
 	struct Point SM_T,SM_Q;
-	long no_of_bits, i;
+	int no_of_bits, i;
+	/*
+	int debug = 0;
+	if(mpz_cmp_ui(m,5) == 0)	{
+		debug = 1;
+	}
+	*/
 	no_of_bits = mpz_sizeinbase(m, 2);
+	//if(debug == 1) printf("Numero de bits %i\n",no_of_bits);
 	mpz_init_set_ui(SM_Q.x,0);
 	mpz_init_set_ui(SM_Q.y,0);
 	mpz_init_set_ui(SM_T.x,0);
@@ -702,10 +1114,12 @@ void Scalar_Multiplication(struct Point P, struct Point *R, mpz_t m)	{
 	mpz_set_ui(R->x, 0);
 	mpz_set_ui(R->y, 0);
 	if(mpz_cmp_ui(m, 0) != 0)	{
+		//if(debug == 1) printf("m no es 0\n");
 		mpz_set(SM_Q.x, P.x);
 		mpz_set(SM_Q.y, P.y);
 		for(i = 0; i < no_of_bits; i++) {
 			if(mpz_tstbit(m, i))	{
+				//if(debug == 1) printf("Bit %i es 1\n",i+1);
 				mpz_set(SM_T.x, R->x);
 				mpz_set(SM_T.y, R->y);
 				mpz_set(SM_Q.x,DoublingG[i].x);
@@ -713,6 +1127,11 @@ void Scalar_Multiplication(struct Point P, struct Point *R, mpz_t m)	{
 				Point_Addition(&SM_T, &SM_Q, R);
 			}
 		}
+		/*
+		if(debug == 1) {
+			gmp_printf("R :( %0.64Zx , %0.64Zx)\n",R->x,R->y);
+		}
+		*/
 	}
 	mpz_clear(SM_T.x);
 	mpz_clear(SM_T.y);
@@ -720,21 +1139,11 @@ void Scalar_Multiplication(struct Point P, struct Point *R, mpz_t m)	{
 	mpz_clear(SM_Q.y);
 }
 
-void Point_Negation(struct Point A, struct Point *S)	{
-	struct Point PN_Q;
-	mpz_t PN_temp;
-	mpz_init(PN_temp);
-	mpz_init(PN_Q.x);
-	mpz_init(PN_Q.y);
-	mpz_set(PN_Q.x, A.x);
-	mpz_set(PN_Q.y, A.y);
-	mpz_sub(PN_temp, EC.p, PN_Q.y);
-	mpz_set(S->x, PN_Q.x);
-	mpz_set(S->y, PN_temp);
-	mpz_clear(PN_temp);
-	mpz_clear(PN_Q.x);
-	mpz_clear(PN_Q.y);
+void Point_Negation(struct Point *A, struct Point *S)	{
+	mpz_sub(S->y, EC.p, A->y);
+	mpz_set(S->x, A->x);
 }
+
 
 /*
 	Precalculate G Doublings for Scalar_Multiplication
@@ -765,7 +1174,7 @@ char *pubkeytopubaddress_eth(char *pkey,int length)	{
 		}
 		pubaddress[0] = '0';
 		pubaddress[1] = 'x';
-		shake256(digest, 256, pkey, length);
+		shake256(digest, 256,(const uint8_t* ) pkey, length);
 		temp = tohex(digest+12,20);
 		strcpy(pubaddress+2,temp);
 		free(temp);
@@ -785,7 +1194,7 @@ char *pubkeytopubaddress(char *pkey,int length)	{
 	//digest [000...0]
  	sha256(pkey, length, digest);
 	//digest [SHA256 32 bytes+000....0]
-	RMD160Data(digest,32, digest+1);
+	RMD160Data((const unsigned char*)digest,32, digest+1);
 	//digest [? +RMD160 20 bytes+????000....0]
 	digest[0] = 0;
 	//digest [0 +RMD160 20 bytes+????000....0]
@@ -894,7 +1303,7 @@ void *thread_process(void *vargp)	{
 			mpz_set(temporal.y,R.y);
 
 			gmp_sprintf(hexstrpoint,"%0.64Zx",R.x);
-			hexs2bin(hexstrpoint,public_key_compressed+1);
+			hexs2bin(hexstrpoint,(unsigned char*)(public_key_compressed+1));
 
       if(mpz_tstbit(R.y, 0) == 0)	{	// Even
         public_key_compressed[0] = 0x02;
@@ -906,7 +1315,7 @@ void *thread_process(void *vargp)	{
         if( (FLAGCRYPTO & CRYPTO_BTC) != 0) {
 					memcpy(public_key_uncompressed+1,public_key_compressed+1,32);
 					gmp_sprintf(hexstrpoint,"%0.64Zx",R.y);
-					hexs2bin(hexstrpoint,public_key_uncompressed+33);
+					hexs2bin(hexstrpoint,(unsigned char*)(public_key_uncompressed+33));
 
           public_address_compressed = pubkeytopubaddress(public_key_compressed,33);
           public_address_uncompressed = pubkeytopubaddress(public_key_uncompressed,65);
@@ -931,7 +1340,7 @@ void *thread_process(void *vargp)	{
               gmp_sprintf(hextemp,"%0.64Zx",random_key_mpz);
       				vanityKeys = fopen("vanitykeys.txt","a+");
       				if(vanityKeys != NULL)	{
-      					fprintf(vanityKeys,"Vanity privKey: %s\nAddress compressed:  %s\n",hextemp,public_address_compressed);
+      					fprintf(vanityKeys,"PrivKey: %s\nAddress compressed:  %s\n",hextemp,public_address_compressed);
       					fclose(vanityKeys);
       				}
 							printf("Vanity privKey: %s\nAddress compressed: %s\n",hextemp,public_address_compressed);
@@ -1100,19 +1509,19 @@ void *thread_process_range(void *vargp)	{
 		mpz_set(temporal.y,R.y);
 		//hexstrpoint
 		gmp_sprintf(hexstrpoint,"%0.64Zx",R.x);
-		hexs2bin(hexstrpoint,public_key_compressed+1);
+		hexs2bin(hexstrpoint,(unsigned char*)(public_key_compressed+1));
 
-		if(mpz_tstbit(R.y, 0) == 0)	{	// Even
+		if(mpz_tstbit(R.y, 0) == 0)	{	// EVEN
 			public_key_compressed[0] = 0x02;
 		}
-		else	{
+		else	{ //ODD
 			public_key_compressed[0] = 0x03;
 		}
     if(FLAGMODE)  { // FLAGMODE == 1
       if( (FLAGCRYPTO & CRYPTO_BTC) != 0) {
 				memcpy(public_key_uncompressed+1,public_key_compressed+1,32);
 				gmp_sprintf(hexstrpoint,"%0.64Zx",R.y);
-				hexs2bin(hexstrpoint,public_key_uncompressed+33);
+				hexs2bin(hexstrpoint,(unsigned char*)(public_key_uncompressed+33));
 
         public_address_compressed = pubkeytopubaddress(public_key_compressed,33);
         public_address_uncompressed = pubkeytopubaddress(public_key_uncompressed,65);
@@ -1126,7 +1535,7 @@ void *thread_process_range(void *vargp)	{
 						gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
             vanityKeys = fopen("vanitykeys.txt","a+");
             if(vanityKeys != NULL)	{
-              fprintf(vanityKeys,"Vanity PrivKey: %s\nAddress uncompressed: %s\n",hextemp,public_address_uncompressed);
+              fprintf(vanityKeys,"PrivKey: %s\nAddress uncompressed: %s\n",hextemp,public_address_uncompressed);
               fclose(vanityKeys);
             }
 						printf("Vanity privKey: %s\nAddress uncompressed: %s\n",hextemp,public_address_uncompressed);
@@ -1259,6 +1668,7 @@ void *thread_process_range(void *vargp)	{
   ends[thread_number] = 1;
 }
 
+
 void swap(char *a,char *b)  {
   char t[MAXLENGTHADDRESS];
   memcpy(t,a,MAXLENGTHADDRESS);
@@ -1305,7 +1715,9 @@ void _insertionsort(char *arr, int n) {
     while(j >= 0 && memcmp(arrj,key,MAXLENGTHADDRESS) > 0) {
       memcpy(arr + ((j+1)*MAXLENGTHADDRESS),arrj,MAXLENGTHADDRESS);
       j--;
-      arrj = arr + (j*MAXLENGTHADDRESS);
+			if(j >= 0)	{
+      	arrj = arr + (j*MAXLENGTHADDRESS);
+			}
     }
     memcpy(arr + ((j+1)*MAXLENGTHADDRESS),key,MAXLENGTHADDRESS);
   }
@@ -1409,4 +1821,563 @@ void heapsort(char  *arr, int n)  {
     swap(arr , arr +(i*MAXLENGTHADDRESS));
     heapify(arr, i, 0);
   }
+}
+
+
+void bsgs_swap(char *a,char *b)  {
+  char t[BSGS_BUFFERREGISTERLENGTH];
+  memcpy(t,a,BSGS_BUFFERREGISTERLENGTH);
+  memcpy(a,b,BSGS_BUFFERREGISTERLENGTH);
+  memcpy(b,t,BSGS_BUFFERREGISTERLENGTH);
+}
+
+void bsgs_sort(char *arr,int n)  {
+	//if(FLAGDEBUG) printf("bsgs_sort\n");
+  int depthLimit = ((int) ceil(log(n))) * 2;
+  bsgs_introsort(arr,depthLimit,n);
+}
+
+void bsgs_introsort(char *arr,int depthLimit, int n) {
+	//if(FLAGDEBUG) printf("bsgs_introsort\n");
+  int p;
+  if(n > 1)  {
+    if(n <= 16) {
+      bsgs_insertionsort(arr,n);
+    }
+    else  {
+      if(depthLimit == 0) {
+        bsgs_heapsort(arr,n);
+      }
+      else  {
+        p = bsgs_partition(arr,n);
+        if(p >= 2) {
+          bsgs_introsort(arr , depthLimit-1 , p);
+        }
+        if((n - (p + 1)) >= 2 ) {
+          bsgs_introsort(arr + ((p+1) *BSGS_BUFFERREGISTERLENGTH) , depthLimit-1 , n - (p + 1));
+        }
+      }
+    }
+  }
+}
+
+void bsgs_insertionsort(char *arr, int n) {
+	int j,i;
+  char *arrj,*temp;
+  char key[BSGS_BUFFERREGISTERLENGTH];
+  for(i = 1; i < n ; i++ ) {
+    j= i-1;
+    memcpy(key,arr + (i*BSGS_BUFFERREGISTERLENGTH),BSGS_BUFFERREGISTERLENGTH);
+    arrj = arr + (j*BSGS_BUFFERREGISTERLENGTH);
+    while(j >= 0 && memcmp(arrj,key,BSGS_BUFFERXPOINTLENGTH) > 0) {
+      memcpy(arr + ((j+1)*BSGS_BUFFERREGISTERLENGTH),arrj,BSGS_BUFFERREGISTERLENGTH);
+      j--;
+			if(j >= 0)	{
+      	arrj = arr + (j*BSGS_BUFFERREGISTERLENGTH);
+			}
+    }
+    memcpy(arr + ((j+1)*BSGS_BUFFERREGISTERLENGTH),key,BSGS_BUFFERREGISTERLENGTH);
+  }
+}
+
+int bsgs_partition(char *arr, int n)  {
+  char pivot[BSGS_BUFFERREGISTERLENGTH];
+  int j,i,t, r = (int) n/2,jaux = -1,iaux = -1, iflag, jflag;
+  char *a,*b,*hextemp,*hextemp_pivot;
+  i = - 1;
+  memcpy(pivot,arr + (r*BSGS_BUFFERREGISTERLENGTH),BSGS_BUFFERREGISTERLENGTH);
+  i = 0;
+  j = n-1;
+  do {
+    iflag = 1;
+    jflag = 1;
+    t = memcmp(arr + (i*BSGS_BUFFERREGISTERLENGTH),pivot,BSGS_BUFFERXPOINTLENGTH);
+    iflag = (t <= 0);
+    while(i < j && iflag) {
+      i++;
+      t = memcmp(arr + (i*BSGS_BUFFERREGISTERLENGTH),pivot,BSGS_BUFFERXPOINTLENGTH);
+      iflag = (t <= 0);
+    }
+    t = memcmp(arr + (j*BSGS_BUFFERREGISTERLENGTH),pivot,BSGS_BUFFERXPOINTLENGTH);
+    jflag = (t > 0);
+    while(i < j && jflag) {
+      j--;
+      t = memcmp(arr + (j*BSGS_BUFFERREGISTERLENGTH),pivot,BSGS_BUFFERXPOINTLENGTH);
+      jflag = (t > 0);
+    }
+    if(i < j) {
+      if(i == r )  {
+        r = j;
+      }
+      else  {
+        if(j == r )  {
+          r = i;
+        }
+      }
+
+      bsgs_swap(arr + (i*BSGS_BUFFERREGISTERLENGTH),arr + (j*BSGS_BUFFERREGISTERLENGTH) );
+      jaux = j;
+      iaux = i;
+      j--;
+      i++;
+    }
+
+  } while(j > i );
+  if(jaux != -1 && iaux != -1)  {
+    if(iflag || jflag)  {
+      if(iflag) {
+        if(r != j)
+          bsgs_swap(arr + (uint64_t)(r* BSGS_BUFFERREGISTERLENGTH),arr + (uint64_t)((j )*BSGS_BUFFERREGISTERLENGTH) );
+        jaux = j;
+      }
+      if(jflag) {
+        if(r != j-1)
+          bsgs_swap(arr + (uint64_t)(r*BSGS_BUFFERREGISTERLENGTH),arr + (uint64_t)((j-1 )*BSGS_BUFFERREGISTERLENGTH) );
+        jaux = j-1;
+      }
+    }
+    else{
+      if(r != j)
+        bsgs_swap(arr + (uint64_t)(r*BSGS_BUFFERREGISTERLENGTH),arr + (uint64_t)((j )*BSGS_BUFFERREGISTERLENGTH) );
+      jaux = j;
+    }
+  }
+  else  {
+    if(iflag && jflag)  {
+      jaux = r;
+    }
+    else  {
+      if(iflag ) {
+        bsgs_swap(arr + (uint64_t)(r*BSGS_BUFFERREGISTERLENGTH),arr + (uint64_t)((j)*BSGS_BUFFERREGISTERLENGTH) );
+        jaux = j;
+      }
+    }
+  }
+  return jaux;
+}
+
+void bsgs_heapify(char *arr, int n, int i) {
+    unsigned int largest = i;
+    int l = 2 * i + 1;
+    int r = 2 * i + 2;
+    if (l < n && memcmp(arr + (uint64_t)(l*BSGS_BUFFERREGISTERLENGTH),arr +(uint64_t)(largest * BSGS_BUFFERREGISTERLENGTH),BSGS_BUFFERXPOINTLENGTH) > 0)
+        largest = l;
+    if (r < n && memcmp(arr +(uint64_t)(r*BSGS_BUFFERREGISTERLENGTH),arr +(uint64_t)(largest *BSGS_BUFFERREGISTERLENGTH),BSGS_BUFFERXPOINTLENGTH) > 0)
+        largest = r;
+    if (largest != i) {
+        bsgs_swap(arr +(uint64_t)(i*BSGS_BUFFERREGISTERLENGTH), arr +(uint64_t)(largest*BSGS_BUFFERREGISTERLENGTH));
+        bsgs_heapify(arr, n, largest);
+    }
+}
+
+void bsgs_heapsort(char  *arr, int n)  {
+  int i;
+  for ( i = n / 2 - 1; i >= 0; i--)
+    bsgs_heapify(arr, n, i);
+  for ( i = n - 1; i > 0; i--) {
+    bsgs_swap(arr , arr +(uint64_t)(i*BSGS_BUFFERREGISTERLENGTH));
+    bsgs_heapify(arr, i, 0);
+  }
+}
+
+int bsgs_searchbinary(char *buffer,char *data,int _N,unsigned int *r_value) {
+	char *temp_read;
+  int r = 0,rcmp,current_offset,half,min,max,current;
+  min = 0;
+  current = 0;
+  max = _N;
+  half = _N;
+  while(!r && half >= 1) {
+    half = (max - min)/2;
+		temp_read = buffer + ((current+half) * BSGS_BUFFERREGISTERLENGTH);
+    rcmp = memcmp(data,temp_read,BSGS_BUFFERXPOINTLENGTH);
+    if(rcmp == 0)  {
+			memcpy(r_value,temp_read+BSGS_BUFFERXPOINTLENGTH,sizeof(uint32_t));
+			r = 1;
+    }
+    else  {
+      if(rcmp < 0) {
+        max = (max-half);
+      }
+      else  {
+        min = (min+half);
+      }
+			current = min;
+    }
+  }
+  return r;
+}
+
+void *thread_process_bsgs(void *vargp)	{
+	struct tothread *tt;
+	char pubkey[131],xpoint_str[65],xpoint_raw[32];
+	char *aux_c;
+	mpz_t base_key,keyfound;
+	FILE *filekey;
+	struct Point base_point,point_aux,point_aux2;
+	struct Point *BSGS_Q, *BSGS_S,BSGS_Q_AMP /* ,*BSGS_AMP*/;
+
+	uint32_t i,j,k,r,salir,thread_number;
+	tt = (struct tothread *)vargp;
+	thread_number = tt->nt;
+	free(tt);
+	mpz_init(base_key);
+	mpz_init(keyfound);
+	mpz_init(base_point.x);
+	mpz_init(base_point.y);
+	mpz_init(point_aux.x);
+	mpz_init(point_aux.y);
+	mpz_init(point_aux2.x);
+	mpz_init(point_aux2.y);
+
+	mpz_init(BSGS_Q_AMP.x);
+	mpz_init(BSGS_Q_AMP.y);
+
+	BSGS_S = malloc(bsgs_point_number*sizeof(struct Point));
+	BSGS_Q = malloc(bsgs_point_number*sizeof(struct Point));
+	//BSGS_AMP = malloc(bsgs_point_number*sizeof(struct Point));
+	if(BSGS_Q == NULL || BSGS_S == NULL /*|| BSGS_AMP == NULL*/)	{
+		fprintf(stderr,"[E] error malloc(): thread_process_bsgs\n");
+		exit(0);
+	}
+	/* We initializing all BSGS_Q values this is GMP related stuff*/
+	for(k = 0; k < bsgs_point_number; k++)	{
+		mpz_init(BSGS_Q[k].x);
+		mpz_init(BSGS_Q[k].y);
+		mpz_init(BSGS_S[k].x);
+		mpz_init(BSGS_S[k].x);
+		/*
+		mpz_init(BSGS_AMP[k].x);
+		mpz_init(BSGS_AMP[k].y);
+		*/
+	}
+	pthread_mutex_lock(&bsgs_thread);
+	/* we need to set our base_key to the current BSGS_CURRENT value*/
+	mpz_set(base_key,BSGS_CURRENT);
+	/*Then add BSGS_N to BSGS_CURRENT*/
+	mpz_add(BSGS_CURRENT,BSGS_CURRENT,BSGS_N);
+	/*
+		We do this in an atomic pthread_mutex operation to not affect others threads
+		so BSGS_CURRENT is never the same between threads
+	*/
+	pthread_mutex_unlock(&bsgs_thread);
+	/*
+		while base_key is less than n_range_end then:
+	*/
+	while(mpz_cmp(base_key,n_range_end) < 0)	{
+		//gmp_printf("While cycle: base_key : %Zd < n_range_end: %Zd\n",base_key,n_range_end);
+		gmp_sprintf(xpoint_str,"%0.64Zx",base_key);
+		printf("[+] Thread %i: %s\n",thread_number,xpoint_str);
+		/*
+			Set base_point in to base_key * G
+			base_point = base_key * G
+		*/
+		Scalar_Multiplication(G,&base_point,base_key);	//Scalar_Multiplication(G, &R, K1);
+		/*
+			We are going to need -( base_point * G)
+			point_aux = -( base_point * G)
+		*/
+		Point_Negation(&base_point,&point_aux);		//Point_Negation(&R,&S);
+		/*
+			We make a copy of the points OriginalPointsBSGS,
+			to work with them in the thread
+		*/
+		for(k = 0; k < bsgs_point_number; k++)	{
+			/*
+				We coppy OriginalPointsBSGS[k] into BSGS_Q[k]
+				BSGS_Q[k] is our Q point
+			*/
+			mpz_set(BSGS_Q[k].x,OriginalPointsBSGS[k].x);
+			mpz_set(BSGS_Q[k].y,OriginalPointsBSGS[k].y);
+			/*
+				We need to translate our Actually Q point into our Test Key Space
+				Test Key Space : 1 to M
+				S = Q - base_key*G
+				point_aux is "- base_key*G"
+			*/
+			Point_Addition(&OriginalPointsBSGS[k],&point_aux,&BSGS_S[k]);
+			/*
+				We save our BSGS_S again in BSGS_Q
+				This BSGS_Q value es now our "Normalize" Q point
+				or S in the next formula:  S    = Q - base_key*G
+			*/
+			mpz_set(BSGS_Q[k].x,BSGS_S[k].x);
+			mpz_set(BSGS_Q[k].y,BSGS_S[k].y);
+			/*
+			mpz_set_ui(BSGS_AMP[k].x,0);
+			mpz_set_ui(BSGS_AMP[k].y,0);
+			*/
+		}
+		for(k = 0; k < bsgs_point_number ; k++)	{
+			if(bsgs_found[k] == 0)	{
+				/*reset main variabler before the do-while cicle*/
+				/* Main cycle
+					for every a in 0 to bsgs_m
+				*/
+				salir = 0;
+				i = 0;
+				do {
+					/* We need to test individually every point in BSGS_Q */
+					/*Extract BSGS_S.x into hexchars*/
+					gmp_sprintf(xpoint_str,"%0.64Zx",BSGS_S[k].x);
+					/*hex -> binary*/
+					hexs2bin(xpoint_str,(unsigned char*)xpoint_raw);
+					//printf("Looking X : %s\n",xpoint_str);
+					/* Lookup for the xpoint_raw into the bloom filter*/
+					r = bloom_check(&bloom_bPx,xpoint_raw,32);
+					if(r) {
+						/* Lookup for the xpoint_raw into the full sorted list*/
+						r = bsgs_searchbinary(PBUFFER,xpoint_raw,bsgs_m,&j);
+						if(r)	{
+							/* is the xpoint is in the sorted list we HIT one privkey*/
+							/* privkey = base_key + aM + b		*/
+							//printf("[+] a = %i, b = %i\n",i,j+1);
+							mpz_set(keyfound,BSGS_M);
+							mpz_mul_ui(keyfound,keyfound,i /* this is a*/);
+							mpz_add_ui(keyfound,keyfound,j+1 /* this is b*/);
+							mpz_add(keyfound,keyfound,base_key);
+
+							gmp_sprintf(xpoint_str,"%0.64Zx",keyfound);
+							printf("[+] Thread %i Key found privkey %s\n",thread_number,xpoint_str);
+
+							Scalar_Multiplication(G,&point_aux2,keyfound);
+							gmp_sprintf(pubkey,"04%0.64Zx%0.64Zx",point_aux2.x,point_aux2.y);
+							printf("[+] Publickey %s\n",pubkey);
+							pthread_mutex_lock(&write_keys);
+							filekey = fopen("KEYFOUNDKEYFOUND.txt","a");
+							if(filekey != NULL)	{
+								fprintf(filekey,"Key found privkey %s\nPublickey %s\n",xpoint_str,pubkey);
+								fclose(filekey);
+							}
+							pthread_mutex_unlock(&write_keys);
+							bsgs_found[k] = 1;
+							salir = 1;
+							for(j = 0; j < bsgs_point_number && salir; j++)	{
+								salir &= bsgs_found[j];
+							}
+							if(salir)	{
+								printf("All points were found\n");
+								exit(0);
+							}
+						}
+					}
+					Point_Addition(&BSGS_Q[k],&BSGS_AMP[i],&BSGS_Q_AMP);
+					mpz_set(BSGS_S[k].x,BSGS_Q_AMP.x);
+					mpz_set(BSGS_S[k].y,BSGS_Q_AMP.y);
+					i++;
+				}while( i < bsgs_m);
+			} //end if
+		}// End for
+		steps[thread_number]++;
+		pthread_mutex_lock(&bsgs_thread);
+		mpz_set(base_key,BSGS_CURRENT);
+		mpz_add(BSGS_CURRENT,BSGS_CURRENT,BSGS_N);
+		pthread_mutex_unlock(&bsgs_thread);
+	}
+	for(i = 0; i < bsgs_point_number ; i++)	{
+		mpz_clear(BSGS_Q[i].x);
+		mpz_clear(BSGS_Q[i].y);
+		mpz_clear(BSGS_S[i].x);
+		mpz_clear(BSGS_S[i].y);
+	}
+	free(BSGS_Q);
+	free(BSGS_S);
+	mpz_clear(base_key);
+	mpz_clear(keyfound);
+	mpz_clear(base_point.x);
+	mpz_clear(base_point.y);
+	mpz_clear(point_aux.x);
+	mpz_clear(point_aux.y);
+	mpz_clear(point_aux2.x);
+	mpz_clear(point_aux2.y);
+	ends[thread_number] = 1;
+}
+
+void *thread_process_bsgs_random(void *vargp)	{
+	struct tothread *tt;
+	char pubkey[131],xpoint_str[65],xpoint_raw[32];
+	char *aux_c;
+	mpz_t base_key,keyfound;
+	FILE *filekey;
+	struct Point base_point,point_aux,point_aux2;
+	struct Point *BSGS_Q, *BSGS_S,BSGS_Q_AMP /* ,*BSGS_AMP*/;
+	mpz_t n_range_random;
+	uint32_t i,j,k,r,salir,thread_number;
+	tt = (struct tothread *)vargp;
+	thread_number = tt->nt;
+	free(tt);
+	mpz_init(n_range_random);
+	mpz_init(base_key);
+	mpz_init(keyfound);
+	mpz_init(base_point.x);
+	mpz_init(base_point.y);
+	mpz_init(point_aux.x);
+	mpz_init(point_aux.y);
+	mpz_init(point_aux2.x);
+	mpz_init(point_aux2.y);
+
+	mpz_init(BSGS_Q_AMP.x);
+	mpz_init(BSGS_Q_AMP.y);
+
+	BSGS_S = malloc(bsgs_point_number*sizeof(struct Point));
+	BSGS_Q = malloc(bsgs_point_number*sizeof(struct Point));
+	/*
+	BSGS_S_1 = malloc(bsgs_point_number*sizeof(struct Point));
+	BSGS_Q_2 = malloc(bsgs_point_number*sizeof(struct Point));
+	*/
+	//BSGS_AMP = malloc(bsgs_point_number*sizeof(struct Point));
+	if(BSGS_Q == NULL || BSGS_S == NULL /*|| BSGS_AMP == NULL*/)	{
+		fprintf(stderr,"[E] error malloc(): thread_process_bsgs\n");
+		exit(0);
+	}
+	/* We initializing all BSGS_Q values this is GMP related stuff*/
+	for(k = 0; k < bsgs_point_number; k++)	{
+		mpz_init(BSGS_Q[k].x);
+		mpz_init(BSGS_Q[k].y);
+		mpz_init(BSGS_S[k].x);
+		mpz_init(BSGS_S[k].x);
+		/*
+		mpz_init(BSGS_AMP[k].x);
+		mpz_init(BSGS_AMP[k].y);
+		*/
+	}
+	pthread_mutex_lock(&bsgs_thread);
+	/*      | Start Range   | End Range    |
+		None  | 1					  	|	EC.N			   |
+-b  bit		| Min bit value |Max bit value |
+-r  A:B   | A             | B 					 |
+	*/
+	// set n_range_random = random(end_range - start range)
+	mpz_urandomm (n_range_random,state,n_range_diff);
+
+	// base key =  start + random value
+	mpz_add(base_key,n_range_start,n_range_random);
+	pthread_mutex_unlock(&bsgs_thread);
+	/*
+		while base_key is less than n_range_end then:
+	*/
+	while(mpz_cmp(base_key,n_range_end) < 0)	{
+		//gmp_printf("While cycle: base_key : %Zd < n_range_end: %Zd\n",base_key,n_range_end);
+		gmp_sprintf(xpoint_str,"%0.64Zx",base_key);
+		printf("[+] Thread %i: %s\n",thread_number,xpoint_str);
+		/*
+			Set base_point in to base_key * G
+			base_point = base_key * G
+		*/
+		Scalar_Multiplication(G,&base_point,base_key);	//Scalar_Multiplication(G, &R, K1);
+		/*
+			We are going to need -( base_point * G)
+			point_aux = -( base_point * G)
+		*/
+		Point_Negation(&base_point,&point_aux);		//Point_Negation(&R,&S);
+		/*
+			We make a copy of the points OriginalPointsBSGS,
+			to work with them in the thread
+		*/
+		for(k = 0; k < bsgs_point_number; k++)	{
+			/*
+				We coppy OriginalPointsBSGS[k] into BSGS_Q[k]
+				BSGS_Q[k] is our Q point
+			*/
+			mpz_set(BSGS_Q[k].x,OriginalPointsBSGS[k].x);
+			mpz_set(BSGS_Q[k].y,OriginalPointsBSGS[k].y);
+			/*
+				We need to translate our Actually Q point into our Test Key Space
+				Test Key Space : 1 to M
+				S = Q - base_key*G
+				point_aux is "- base_key*G"
+			*/
+			Point_Addition(&OriginalPointsBSGS[k],&point_aux,&BSGS_S[k]);
+			/*
+				We save our BSGS_S again in BSGS_Q
+				This BSGS_Q value es now our "Normalize" Q point
+				or S in the next formula:  S    = Q - base_key*G
+			*/
+			mpz_set(BSGS_Q[k].x,BSGS_S[k].x);
+			mpz_set(BSGS_Q[k].y,BSGS_S[k].y);
+			/*
+			mpz_set_ui(BSGS_AMP[k].x,0);
+			mpz_set_ui(BSGS_AMP[k].y,0);
+			*/
+		}
+		/* We need to test individually every point in BSGS_Q */
+		for(k = 0; k < bsgs_point_number ; k++)	{
+			if(bsgs_found[k] == 0)	{
+
+			/*reset main variabler before the do-while cicle*/
+			salir = 0;
+			i = 0;
+			/* Main cycle
+				for every a in 0 to bsgs_m
+			*/
+			do {
+					gmp_sprintf(xpoint_str,"%0.64Zx",BSGS_S[k].x);
+					hexs2bin(xpoint_str,(unsigned char*)xpoint_raw);
+					r = bloom_check(&bloom_bPx,xpoint_raw,32);
+					if(r) {
+						/* Lookup for the xpoint_raw into the full sorted list*/
+						r = bsgs_searchbinary(PBUFFER,xpoint_raw,bsgs_m,&j);
+						if(r)	{
+							/* is the xpoint is in the sorted list we HIT one privkey*/
+							/* privkey = base_key + aM + b		*/
+							//printf("[+] a = %i, b = %i\n",i,j+1);
+							mpz_set(keyfound,BSGS_M);
+							mpz_mul_ui(keyfound,keyfound,i /* this is a*/);
+							mpz_add_ui(keyfound,keyfound,j+1 /* this is b*/);
+							mpz_add(keyfound,keyfound,base_key);
+
+							gmp_sprintf(xpoint_str,"%0.64Zx",keyfound);
+							printf("[+] Thread %i Key found privkey %s\n",thread_number,xpoint_str);
+
+							Scalar_Multiplication(G,&point_aux2,keyfound);
+							gmp_sprintf(pubkey,"04%0.64Zx%0.64Zx",point_aux2.x,point_aux2.y);
+							printf("[+] Publickey %s\n",pubkey);
+							pthread_mutex_lock(&write_keys);
+							filekey = fopen("KEYFOUNDKEYFOUND.txt","a");
+							if(filekey != NULL)	{
+								fprintf(filekey,"Key found privkey %s\nPublickey %s\n",xpoint_str,pubkey);
+								fclose(filekey);
+							}
+							pthread_mutex_unlock(&write_keys);
+							bsgs_found[k] = 1;
+							salir = 1;
+							for(j = 0; j < bsgs_point_number && salir; j++)	{
+								salir &= bsgs_found[j];
+							}
+							if(salir)	{
+								printf("All points were found\n");
+								exit(0);
+							}
+						}
+					}
+					Point_Addition(&BSGS_Q[k],&BSGS_AMP[i],&BSGS_Q_AMP);
+					mpz_set(BSGS_S[k].x,BSGS_Q_AMP.x);
+					mpz_set(BSGS_S[k].y,BSGS_Q_AMP.y);
+					i++;
+				} while( i < bsgs_m && !bsgs_found[k]);
+			}	//End if
+		} // End for with k bsgs_point_number
+		steps[thread_number]++;
+		pthread_mutex_lock(&bsgs_thread);
+		mpz_urandomm (n_range_random,state,n_range_diff);
+		mpz_add(base_key,n_range_start,n_range_random);
+		pthread_mutex_unlock(&bsgs_thread);
+	}
+	for(i = 0; i < bsgs_point_number ; i++)	{
+		mpz_clear(BSGS_Q[i].x);
+		mpz_clear(BSGS_Q[i].y);
+		mpz_clear(BSGS_S[i].x);
+		mpz_clear(BSGS_S[i].y);
+	}
+	free(BSGS_Q);
+	free(BSGS_S);
+	mpz_clear(base_key);
+	mpz_clear(keyfound);
+	mpz_clear(base_point.x);
+	mpz_clear(base_point.y);
+	mpz_clear(point_aux.x);
+	mpz_clear(point_aux.y);
+	mpz_clear(point_aux2.x);
+	mpz_clear(point_aux2.y);
+	ends[thread_number] = 1;
 }

@@ -97,18 +97,18 @@ int bloom_init2(struct bloom * bloom, unsigned int entries, double error)
   bloom->entries = entries;
   bloom->error = error;
 
-  double num = -log(bloom->error);
-  double denom = 0.480453013918201; // ln(2)^2
+  long double num = -log(bloom->error);
+  long double denom = 0.480453013918201; // ln(2)^2
   bloom->bpe = (num / denom);
 
   long double dentries = (long double)entries;
   long double allbits = dentries * bloom->bpe;
-  bloom->bits = (unsigned int)allbits;
+  bloom->bits = (unsigned long long int)allbits;
 
   if (bloom->bits % 8) {
-    bloom->bytes = (bloom->bits / 8) + 1;
+    bloom->bytes = (unsigned int) (bloom->bits / 8) + 1;
   } else {
-    bloom->bytes = bloom->bits / 8;
+    bloom->bytes = (unsigned int) bloom->bits / 8;
   }
 
   bloom->hashes = (unsigned char)ceil(0.693147180559945 * bloom->bpe);  // ln(2)
@@ -146,7 +146,7 @@ void bloom_print(struct bloom * bloom)
   printf(" ->version = %d.%d\n", bloom->major, bloom->minor);
   printf(" ->entries = %u\n", bloom->entries);
   printf(" ->error = %f\n", bloom->error);
-  printf(" ->bits = %u\n", bloom->bits);
+  printf(" ->bits = %llu\n", bloom->bits);
   printf(" ->bits per elem = %f\n", bloom->bpe);
   printf(" ->bytes = %u", bloom->bytes);
   unsigned int KB = bloom->bytes / 1024;

@@ -39,6 +39,11 @@ struct Elliptic_Curve {
   mpz_t n;
 };
 
+struct bsgs_xvalue	{
+	uint8_t value[32];
+	int64_t index;
+};
+
 struct tothread {
   int nt; 		//Number thread
   char *rs; 	//range start
@@ -63,18 +68,17 @@ void _insertionsort(char *arr, int n);
 void _introsort(char *arr,int depthLimit, int n);
 void swap(char *a,char *b);
 int partition(char *arr, int n);
-void heapsort(char  *arr, int n);
+void heapsort(char  *arr, int int64_t);
 void heapify(char *arr, int n, int i);
 
-void bsgs_heapsort(char  *arr, int n);
-void bsgs_sort(char *arr,int N);
-void bsgs_insertionsort(char *arr, int n);
-void bsgs_introsort(char *arr,int depthLimit, int n);
-void bsgs_swap(char *a,char *b);
-void bsgs_heapify(char *arr, int n, int i);
-int bsgs_partition(char *arr, int n);
-
-int bsgs_searchbinary(char *buffer,char *data,int _N,unsigned int *r_value);
+void bsgs_sort(struct bsgs_xvalue *arr,int64_t n);
+void bsgs_heapsort(struct bsgs_xvalue *arr, int64_t n);
+void bsgs_insertionsort(struct bsgs_xvalue *arr, int64_t n);
+void bsgs_introsort(struct bsgs_xvalue *arr,uint32_t depthLimit, int64_t n);
+void bsgs_swap(struct bsgs_xvalue *a,struct bsgs_xvalue *b);
+void bsgs_heapify(struct bsgs_xvalue *arr, int64_t n, int64_t i);
+int64_t bsgs_partition(struct bsgs_xvalue *arr, int64_t n);
+int bsgs_searchbinary(struct bsgs_xvalue *buffer,char *data,int64_t _N,int64_t *r_value);
 
 void *thread_process(void *vargp);
 void *thread_process_range(void *vargp);
@@ -145,7 +149,7 @@ uint64_t BSGS_BUFFERREGISTERLENGTH = 36;
 */
 int *bsgs_found;
 struct Point *OriginalPointsBSGS;
-char *PBUFFER;
+struct bsgs_xvalue *bPtable;
 struct bloom bloom_bPx;
 uint64_t bsgs_m;
 uint32_t bsgs_point_number;
@@ -830,9 +834,9 @@ int main(int argc, char **argv)	{
 				mpz_set(point_temp.y,point_temp2.y);
 			}
 		}
-		printf("[+] Allocating %.2f MB for bP Points\n",(float)(((uint32_t)(bsgs_m*BSGS_BUFFERREGISTERLENGTH))/(uint32_t)1048576));
-		PBUFFER = malloc((uint32_t) (bsgs_m*BSGS_BUFFERREGISTERLENGTH));
-		if(PBUFFER == NULL)	{
+		printf("[+] Allocating %.2f MB for bP Points\n",(float)((uint64_t)((uint64_t)bsgs_m*(uint64_t)sizeof(struct bsgs_xvalue))/(uint64_t)1048576));
+		bPtable = calloc(bsgs_m,sizeof(struct bsgs_xvalue));
+		if(bPtable == NULL)	{
 			printf("[E] error malloc()\n");
 			exit(0);
 		}
@@ -844,9 +848,9 @@ int main(int argc, char **argv)	{
 			if(fd != NULL)	{
 				while(!feof(fd) && i < bsgs_m )	{
 					if(fread(temporal,1,32,fd) == 32)	{
-						memcpy((PBUFFER + (i*BSGS_BUFFERREGISTERLENGTH)),temporal,BSGS_BUFFERXPOINTLENGTH);
-						memcpy((PBUFFER + (i*BSGS_BUFFERREGISTERLENGTH))+BSGS_BUFFERXPOINTLENGTH,&j,sizeof(uint32_t));
-						bloom_add(&bloom_bPx, (char*)(PBUFFER + (i*BSGS_BUFFERREGISTERLENGTH)),BSGS_BUFFERXPOINTLENGTH);
+						memcpy(bPtable[i].value,temporal,BSGS_BUFFERXPOINTLENGTH);
+						bPtable[i].index = j;
+						bloom_add(&bloom_bPx, bPtable[i].value,BSGS_BUFFERXPOINTLENGTH);
 						i++;
 						j++;
 					}
@@ -863,10 +867,11 @@ int main(int argc, char **argv)	{
 					mpz_set(point_temp.x,BSGS_P.x);
 					mpz_set(point_temp.y,BSGS_P.y);
 					gmp_sprintf(temporal,"%0.64Zx",BSGS_P.x);
-					//printf("[+] %i: %s\n",i,temporal);
-					hexs2bin(temporal,(unsigned char*)(PBUFFER + (i*BSGS_BUFFERREGISTERLENGTH)) );
-					memcpy((PBUFFER + (i*BSGS_BUFFERREGISTERLENGTH))+BSGS_BUFFERXPOINTLENGTH,&j,sizeof(uint32_t));
-					bloom_add(&bloom_bPx, (char*)(PBUFFER + (i*BSGS_BUFFERREGISTERLENGTH)),BSGS_BUFFERXPOINTLENGTH);
+
+					hexs2bin(temporal,bPtable[i].value );
+					bPtable[i].index = j;
+
+					bloom_add(&bloom_bPx, bPtable[i].value,BSGS_BUFFERXPOINTLENGTH);
 					Point_Addition(&G,&point_temp,&BSGS_P);
 					i++;
 					j++;
@@ -880,9 +885,9 @@ int main(int argc, char **argv)	{
 				mpz_set(point_temp.y,BSGS_P.y);
 				gmp_sprintf(temporal,"%0.64Zx",BSGS_P.x);
 				//printf("[+] %i: %s\n",i,temporal);
-				hexs2bin(temporal,(unsigned char*)(PBUFFER + (i*BSGS_BUFFERREGISTERLENGTH)) );
-				memcpy((PBUFFER + (i*BSGS_BUFFERREGISTERLENGTH))+BSGS_BUFFERXPOINTLENGTH,&j,sizeof(uint32_t));
-				bloom_add(&bloom_bPx, (char*)(PBUFFER + (i*BSGS_BUFFERREGISTERLENGTH)),BSGS_BUFFERXPOINTLENGTH);
+				hexs2bin(temporal,bPtable[i].value );
+				bPtable[i].index = j;
+				bloom_add(&bloom_bPx, bPtable[i].value,BSGS_BUFFERXPOINTLENGTH);
 				Point_Addition(&G,&point_temp,&BSGS_P);
 				i++;
 				j++;
@@ -891,17 +896,9 @@ int main(int argc, char **argv)	{
 
 
 		printf("[+] Sorting %u elements\n",bsgs_m);
-		bsgs_sort(PBUFFER,bsgs_m);
-		bsgs_insertionsort(PBUFFER,bsgs_m);
+		bsgs_sort(bPtable,bsgs_m);
+
 		i = 0;
-		/*
-		do {
-			hextemp = tohex((char*)(PBUFFER + (i*BSGS_BUFFERREGISTERLENGTH)),32);
-			printf("[+] %i: %s\n",i,hextemp);
-			free(hextemp);
-			i++;
-		} while( i < bsgs_m );
-		*/
 
 		steps = (unsigned int *) calloc(NTHREADS,sizeof(int));
 	  ends = (unsigned int *) calloc(NTHREADS,sizeof(int));
@@ -1823,23 +1820,23 @@ void heapsort(char  *arr, int n)  {
   }
 }
 
-
-void bsgs_swap(char *a,char *b)  {
-  char t[BSGS_BUFFERREGISTERLENGTH];
-  memcpy(t,a,BSGS_BUFFERREGISTERLENGTH);
-  memcpy(a,b,BSGS_BUFFERREGISTERLENGTH);
-  memcpy(b,t,BSGS_BUFFERREGISTERLENGTH);
+/*	OK	*/
+void bsgs_swap(struct bsgs_xvalue *a,struct bsgs_xvalue *b)  {
+	struct bsgs_xvalue t;
+	t  = *a;
+	*a = *b;
+	*b =  t;
 }
 
-void bsgs_sort(char *arr,int n)  {
-	//if(FLAGDEBUG) printf("bsgs_sort\n");
-  int depthLimit = ((int) ceil(log(n))) * 2;
+/*	OK	*/
+void bsgs_sort(struct bsgs_xvalue *arr,int64_t n)  {
+  uint32_t depthLimit = ((uint32_t) ceil(log(n))) * 2;
   bsgs_introsort(arr,depthLimit,n);
 }
 
-void bsgs_introsort(char *arr,int depthLimit, int n) {
-	//if(FLAGDEBUG) printf("bsgs_introsort\n");
-  int p;
+/*	OK	*/
+void bsgs_introsort(struct bsgs_xvalue *arr,uint32_t depthLimit, int64_t n) {
+  int64_t p;
   if(n > 1)  {
     if(n <= 16) {
       bsgs_insertionsort(arr,n);
@@ -1850,149 +1847,101 @@ void bsgs_introsort(char *arr,int depthLimit, int n) {
       }
       else  {
         p = bsgs_partition(arr,n);
-        if(p >= 2) {
-          bsgs_introsort(arr , depthLimit-1 , p);
-        }
-        if((n - (p + 1)) >= 2 ) {
-          bsgs_introsort(arr + ((p+1) *BSGS_BUFFERREGISTERLENGTH) , depthLimit-1 , n - (p + 1));
-        }
+				if(p > 0) bsgs_introsort(arr , depthLimit-1 , p);
+				if(p < n) bsgs_introsort(&arr[p+1],depthLimit-1,n-(p+1));
       }
-    }
+  	}
   }
 }
 
-void bsgs_insertionsort(char *arr, int n) {
-	int j,i;
-  char *arrj,*temp;
-  char key[BSGS_BUFFERREGISTERLENGTH];
+/*	OK	*/
+void bsgs_insertionsort(struct bsgs_xvalue *arr, int64_t n) {
+	int64_t j;
+	int64_t i;
+	struct bsgs_xvalue key;
   for(i = 1; i < n ; i++ ) {
+		key = arr[i];
     j= i-1;
-    memcpy(key,arr + (i*BSGS_BUFFERREGISTERLENGTH),BSGS_BUFFERREGISTERLENGTH);
-    arrj = arr + (j*BSGS_BUFFERREGISTERLENGTH);
-    while(j >= 0 && memcmp(arrj,key,BSGS_BUFFERXPOINTLENGTH) > 0) {
-      memcpy(arr + ((j+1)*BSGS_BUFFERREGISTERLENGTH),arrj,BSGS_BUFFERREGISTERLENGTH);
+    while(j >= 0 && memcmp(arr[j].value,key.value,BSGS_BUFFERXPOINTLENGTH) > 0) {
+			arr[j+1] = arr[j];
       j--;
-			if(j >= 0)	{
-      	arrj = arr + (j*BSGS_BUFFERREGISTERLENGTH);
+    }
+		arr[j+1] = key;
+  }
+}
+
+int64_t bsgs_partition(struct bsgs_xvalue *arr, int64_t n)  {
+	struct bsgs_xvalue pivot;
+	int64_t r,left,right;
+	char *hextemp;
+	r = n/2;
+	pivot = arr[r];
+	left = 0;
+	right = n-1;
+	do {
+		while(left  < right && memcmp(arr[left].value,pivot.value,BSGS_BUFFERXPOINTLENGTH) <= 0 )	{
+			left++;
+		}
+		while(right >= left && memcmp(arr[right].value,pivot.value,BSGS_BUFFERXPOINTLENGTH) > 0)	{
+			right--;
+		}
+		if(left < right)	{
+			if(left == r || right == r)	{
+				if(left == r)	{
+					r = right;
+				}
+				if(right == r)	{
+					r = left;
+				}
 			}
-    }
-    memcpy(arr + ((j+1)*BSGS_BUFFERREGISTERLENGTH),key,BSGS_BUFFERREGISTERLENGTH);
+			bsgs_swap(&arr[right],&arr[left]);
+		}
+	}while(left < right);
+	if(right != r)	{
+		bsgs_swap(&arr[right],&arr[r]);
+	}
+	return right;
+}
+
+void bsgs_heapify(struct bsgs_xvalue *arr, int64_t n, int64_t i) {
+  int64_t largest = i;
+  int64_t l = 2 * i + 1;
+  int64_t r = 2 * i + 2;
+  if (l < n && memcmp(arr[l].value,arr[largest].value,BSGS_BUFFERXPOINTLENGTH) > 0)
+    largest = l;
+  if (r < n && memcmp(arr[r].value,arr[largest].value,BSGS_BUFFERXPOINTLENGTH) > 0)
+    largest = r;
+  if (largest != i) {
+    bsgs_swap(&arr[i],&arr[largest]);
+    bsgs_heapify(arr, n, largest);
   }
 }
 
-int bsgs_partition(char *arr, int n)  {
-  char pivot[BSGS_BUFFERREGISTERLENGTH];
-  int j,i,t, r = (int) n/2,jaux = -1,iaux = -1, iflag, jflag;
-  char *a,*b,*hextemp,*hextemp_pivot;
-  i = - 1;
-  memcpy(pivot,arr + (r*BSGS_BUFFERREGISTERLENGTH),BSGS_BUFFERREGISTERLENGTH);
-  i = 0;
-  j = n-1;
-  do {
-    iflag = 1;
-    jflag = 1;
-    t = memcmp(arr + (i*BSGS_BUFFERREGISTERLENGTH),pivot,BSGS_BUFFERXPOINTLENGTH);
-    iflag = (t <= 0);
-    while(i < j && iflag) {
-      i++;
-      t = memcmp(arr + (i*BSGS_BUFFERREGISTERLENGTH),pivot,BSGS_BUFFERXPOINTLENGTH);
-      iflag = (t <= 0);
-    }
-    t = memcmp(arr + (j*BSGS_BUFFERREGISTERLENGTH),pivot,BSGS_BUFFERXPOINTLENGTH);
-    jflag = (t > 0);
-    while(i < j && jflag) {
-      j--;
-      t = memcmp(arr + (j*BSGS_BUFFERREGISTERLENGTH),pivot,BSGS_BUFFERXPOINTLENGTH);
-      jflag = (t > 0);
-    }
-    if(i < j) {
-      if(i == r )  {
-        r = j;
-      }
-      else  {
-        if(j == r )  {
-          r = i;
-        }
-      }
-
-      bsgs_swap(arr + (i*BSGS_BUFFERREGISTERLENGTH),arr + (j*BSGS_BUFFERREGISTERLENGTH) );
-      jaux = j;
-      iaux = i;
-      j--;
-      i++;
-    }
-
-  } while(j > i );
-  if(jaux != -1 && iaux != -1)  {
-    if(iflag || jflag)  {
-      if(iflag) {
-        if(r != j)
-          bsgs_swap(arr + (uint64_t)(r* BSGS_BUFFERREGISTERLENGTH),arr + (uint64_t)((j )*BSGS_BUFFERREGISTERLENGTH) );
-        jaux = j;
-      }
-      if(jflag) {
-        if(r != j-1)
-          bsgs_swap(arr + (uint64_t)(r*BSGS_BUFFERREGISTERLENGTH),arr + (uint64_t)((j-1 )*BSGS_BUFFERREGISTERLENGTH) );
-        jaux = j-1;
-      }
-    }
-    else{
-      if(r != j)
-        bsgs_swap(arr + (uint64_t)(r*BSGS_BUFFERREGISTERLENGTH),arr + (uint64_t)((j )*BSGS_BUFFERREGISTERLENGTH) );
-      jaux = j;
-    }
-  }
-  else  {
-    if(iflag && jflag)  {
-      jaux = r;
-    }
-    else  {
-      if(iflag ) {
-        bsgs_swap(arr + (uint64_t)(r*BSGS_BUFFERREGISTERLENGTH),arr + (uint64_t)((j)*BSGS_BUFFERREGISTERLENGTH) );
-        jaux = j;
-      }
-    }
-  }
-  return jaux;
-}
-
-void bsgs_heapify(char *arr, int n, int i) {
-    unsigned int largest = i;
-    int l = 2 * i + 1;
-    int r = 2 * i + 2;
-    if (l < n && memcmp(arr + (uint64_t)(l*BSGS_BUFFERREGISTERLENGTH),arr +(uint64_t)(largest * BSGS_BUFFERREGISTERLENGTH),BSGS_BUFFERXPOINTLENGTH) > 0)
-        largest = l;
-    if (r < n && memcmp(arr +(uint64_t)(r*BSGS_BUFFERREGISTERLENGTH),arr +(uint64_t)(largest *BSGS_BUFFERREGISTERLENGTH),BSGS_BUFFERXPOINTLENGTH) > 0)
-        largest = r;
-    if (largest != i) {
-        bsgs_swap(arr +(uint64_t)(i*BSGS_BUFFERREGISTERLENGTH), arr +(uint64_t)(largest*BSGS_BUFFERREGISTERLENGTH));
-        bsgs_heapify(arr, n, largest);
-    }
-}
-
-void bsgs_heapsort(char  *arr, int n)  {
-  int i;
-  for ( i = n / 2 - 1; i >= 0; i--)
+void bsgs_heapsort(struct bsgs_xvalue  *arr, int64_t n)  {
+  int64_t i;
+  for ( i = (n / 2) - 1; i >=  0; i--)	{
     bsgs_heapify(arr, n, i);
+	}
   for ( i = n - 1; i > 0; i--) {
-    bsgs_swap(arr , arr +(uint64_t)(i*BSGS_BUFFERREGISTERLENGTH));
+    bsgs_swap(&arr[0] , &arr[i]);
     bsgs_heapify(arr, i, 0);
   }
 }
 
-int bsgs_searchbinary(char *buffer,char *data,int _N,unsigned int *r_value) {
+
+int bsgs_searchbinary(struct bsgs_xvalue *buffer,char *data,int64_t _N,int64_t *r_value)  {
 	char *temp_read;
-  int r = 0,rcmp,current_offset,half,min,max,current;
+	int64_t min,max,half,current;
+  int r = 0,rcmp;
   min = 0;
   current = 0;
   max = _N;
   half = _N;
   while(!r && half >= 1) {
     half = (max - min)/2;
-		temp_read = buffer + ((current+half) * BSGS_BUFFERREGISTERLENGTH);
-    rcmp = memcmp(data,temp_read,BSGS_BUFFERXPOINTLENGTH);
+    rcmp = memcmp(data,buffer[current+half].value,BSGS_BUFFERXPOINTLENGTH);
     if(rcmp == 0)  {
-			memcpy(r_value,temp_read+BSGS_BUFFERXPOINTLENGTH,sizeof(uint32_t));
+			*r_value = buffer[current+half].index;
 			r = 1;
     }
     else  {
@@ -2008,6 +1957,7 @@ int bsgs_searchbinary(char *buffer,char *data,int _N,unsigned int *r_value) {
   return r;
 }
 
+
 void *thread_process_bsgs(void *vargp)	{
 	struct tothread *tt;
 	char pubkey[131],xpoint_str[65],xpoint_raw[32];
@@ -2016,8 +1966,8 @@ void *thread_process_bsgs(void *vargp)	{
 	FILE *filekey;
 	struct Point base_point,point_aux,point_aux2;
 	struct Point *BSGS_Q, *BSGS_S,BSGS_Q_AMP /* ,*BSGS_AMP*/;
-
-	uint32_t i,j,k,r,salir,thread_number;
+	int64_t j;
+	uint32_t i,k,r,salir,thread_number;
 	tt = (struct tothread *)vargp;
 	thread_number = tt->nt;
 	free(tt);
@@ -2127,7 +2077,7 @@ void *thread_process_bsgs(void *vargp)	{
 					r = bloom_check(&bloom_bPx,xpoint_raw,32);
 					if(r) {
 						/* Lookup for the xpoint_raw into the full sorted list*/
-						r = bsgs_searchbinary(PBUFFER,xpoint_raw,bsgs_m,&j);
+						r = bsgs_searchbinary(bPtable,xpoint_raw,bsgs_m,&j);
 						if(r)	{
 							/* is the xpoint is in the sorted list we HIT one privkey*/
 							/* privkey = base_key + aM + b		*/
@@ -2202,7 +2152,8 @@ void *thread_process_bsgs_random(void *vargp)	{
 	struct Point base_point,point_aux,point_aux2;
 	struct Point *BSGS_Q, *BSGS_S,BSGS_Q_AMP /* ,*BSGS_AMP*/;
 	mpz_t n_range_random;
-	uint32_t i,j,k,r,salir,thread_number;
+	uint64_t j;
+	uint32_t i,k,r,salir,thread_number;
 	tt = (struct tothread *)vargp;
 	thread_number = tt->nt;
 	free(tt);
@@ -2316,7 +2267,7 @@ void *thread_process_bsgs_random(void *vargp)	{
 					r = bloom_check(&bloom_bPx,xpoint_raw,32);
 					if(r) {
 						/* Lookup for the xpoint_raw into the full sorted list*/
-						r = bsgs_searchbinary(PBUFFER,xpoint_raw,bsgs_m,&j);
+						r = bsgs_searchbinary(bPtable,xpoint_raw,bsgs_m,&j);
 						if(r)	{
 							/* is the xpoint is in the sorted list we HIT one privkey*/
 							/* privkey = base_key + aM + b		*/

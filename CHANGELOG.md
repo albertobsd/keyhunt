@@ -1,3 +1,8 @@
+#Version 0.1.20210306 K*BSGS
+- Added K factor for BSGS
+- Added bPfile.c to generate a precalculated file
+- Remove unused files about keccak and sha3
+
 #Version 0.1.20210112 BSGS
 - Added mode BSGS this work with a file with uncompressed keys
 - Updated  bloom filter to allow More items

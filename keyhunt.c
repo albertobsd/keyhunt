@@ -13,7 +13,6 @@ email: alberto.bsd@gmail.com
 #include <pthread.h>
 #include <math.h>
 #include <time.h>
-#include "keccak/keccak-tiny.h"
 #include "base58/libbase58.h"
 #include "rmd160/rmd160.h"
 #include "sha256/sha256.h"
@@ -40,7 +39,7 @@ struct Elliptic_Curve {
 };
 
 struct bsgs_xvalue	{
-	uint8_t value[32];
+	uint8_t value[8];
 	int64_t index;
 };
 
@@ -50,7 +49,7 @@ struct tothread {
   char *rpt;  //rng per thread
 };
 
-const char *version = "0.1.20210112 BSGS";
+const char *version = "0.1.20210306 K*BSGS";
 const char *EC_constant_N = "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141";
 const char *EC_constant_P = "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f";
 const char *EC_constant_Gx = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
@@ -68,17 +67,19 @@ void _insertionsort(char *arr, int n);
 void _introsort(char *arr,int depthLimit, int n);
 void swap(char *a,char *b);
 int partition(char *arr, int n);
-void heapsort(char  *arr, int int64_t);
+void myheapsort(char  *arr, int64_t n);
 void heapify(char *arr, int n, int i);
 
 void bsgs_sort(struct bsgs_xvalue *arr,int64_t n);
-void bsgs_heapsort(struct bsgs_xvalue *arr, int64_t n);
+void bsgs_myheapsort(struct bsgs_xvalue *arr, int64_t n);
 void bsgs_insertionsort(struct bsgs_xvalue *arr, int64_t n);
 void bsgs_introsort(struct bsgs_xvalue *arr,uint32_t depthLimit, int64_t n);
 void bsgs_swap(struct bsgs_xvalue *a,struct bsgs_xvalue *b);
 void bsgs_heapify(struct bsgs_xvalue *arr, int64_t n, int64_t i);
 int64_t bsgs_partition(struct bsgs_xvalue *arr, int64_t n);
-int bsgs_searchbinary(struct bsgs_xvalue *buffer,char *data,int64_t _N,int64_t *r_value);
+
+
+int bsgs_searchbinary(struct bsgs_xvalue *arr,char *data,int64_t _N,int64_t *r_value);
 
 void *thread_process(void *vargp);
 void *thread_process_range(void *vargp);
@@ -87,7 +88,7 @@ void *thread_process_bsgs_random(void *vargp);
 
 void init_doublingG(struct Point *P);
 char *pubkeytopubaddress(char *pkey,int length);
-char *pubkeytopubaddress_eth(char *pkey,int length);
+//char *pubkeytopubaddress_eth(char *pkey,int length);
 
 
 char *bit_range_str_min;
@@ -96,6 +97,7 @@ char *bit_range_str_max;
 const char *modes[3] = {"xpoint","address","bsgs"};
 const char *cryptos[3] = {"btc","eth","all"};
 const char *default_filename = "addresses.txt";
+const char *minus_params[2] = {"quiet","help"};
 
 pthread_t *tid = NULL;
 pthread_mutex_t write_keys;
@@ -108,8 +110,6 @@ struct Elliptic_Curve EC;
 struct bloom bloom;
 struct Point G;
 
-int FLAGDEBUG  =  1;
-
 unsigned int *steps = NULL;
 unsigned int *ends = NULL;
 char *DATABUFFER;
@@ -119,6 +119,8 @@ gmp_randstate_t state;
 uint64_t N_SECUENTIAL_MAX = 0xffffffff;
 uint64_t DEBUGCOUNT = 0x100000;
 
+int FLAGQUIET = 0;
+int KFACTOR = 1;
 int MAXLENGTHADDRESS = -1;
 int NTHREADS = 1;
 int OUTPUTSECONDS = 30;
@@ -141,6 +143,7 @@ char *vanity;
 char *range_start;
 char *range_end;
 
+uint64_t BSGS_XVALUE_RAM = 8;
 uint64_t BSGS_BUFFERXPOINTLENGTH = 32;
 uint64_t BSGS_BUFFERREGISTERLENGTH = 36;
 
@@ -152,10 +155,15 @@ struct Point *OriginalPointsBSGS;
 struct bsgs_xvalue *bPtable;
 struct bloom bloom_bPx;
 uint64_t bsgs_m;
+unsigned long int bsgs_aux;
 uint32_t bsgs_point_number;
 mpz_t BSGS_CURRENT;
+mpz_t BSGS_R;
+mpz_t BSGS_AUX;
 mpz_t BSGS_N;
 mpz_t BSGS_M;							//M is squareroot(N)
+mpz_t TWO;
+mpz_t MPZAUX;
 struct Point BSGS_P;			//Original P is actually G, but this P value change over time for calculations
 struct Point BSGS_MP;			//MP values this is m * P
 struct Point *BSGS_AMP;
@@ -171,13 +179,14 @@ mpz_t n_range_r;
 
 int main(int argc, char **argv)	{
 	char temporal[65];
+	char rawvalue[32];
   struct tothread *tt;  //tothread
   Tokenizer t,tokenizerbsgs;  //tokenizer
   char *filename,*precalculated_p_filename,*precalculated_mp_filename;
 	FILE *fd;
   char *hextemp,*aux,*aux2,*pointx_str,*pointy_str;
 	uint64_t i;
-	uint32_t j;
+	int64_t j;
 	int readed,s,continue_flag,check_flag,r,lenaux,lendiff;
 	mpz_t total;
 	mpz_t pretotal;
@@ -186,14 +195,17 @@ int main(int argc, char **argv)	{
 
   int c;
 	gmp_randinit_mt(state);
-	gmp_randseed_ui(state, ((int)clock()) * ((int)time(NULL)) );
+	gmp_randseed_ui(state, ((int)clock()) + ((int)time(NULL)) );
 	printf("[+] Version %s\n",version);
   mpz_init_set_str(EC.p, EC_constant_P, 16);
   mpz_init_set_str(EC.n, EC_constant_N, 16);
 	mpz_init_set_str(G.x , EC_constant_Gx, 16);
 	mpz_init_set_str(G.y , EC_constant_Gy, 16);
 	init_doublingG(&G);
-  while ((c = getopt (argc, argv, "ehRwb:c:f:g:m:n:p:r:s:t:v:")) != -1) {
+	mpz_init_set_ui(TWO,2);
+	mpz_init(MPZAUX);
+
+  while ((c = getopt(argc, argv, "ehqRwb:c:f:g:k:m:n:p:r:s:t:v:-:")) != -1) {
     switch(c) {
 			case 'h':
         printf("\nUsage:\n-h\t\tshow this help\n");
@@ -206,10 +218,12 @@ int main(int argc, char **argv)	{
 				printf("\t\tYour file MUST be sordted if no you are going to lose collisions\n");
         printf("-f file\t\tSpecify filename with addresses or xpoints or uncompressed public keys\n");
 				printf("-g count\tJust for the stats, mark as counted every debugcount keys	\n");
+				printf("-k value\tUse this with bsgs mode, k value is factor for M, more speed but more RAM use wisely\n");
         printf("-m mode\t\tmode of search for cryptos. < address, xpoint, bsgs >  default: address (more slow)\n");
 				printf("-n uptoN\tCheck for N secuential numbers before the random chossen this only work with -R option\n");
 				printf("\t\tUse -n to set the N for the BSGS process. Bigger N more RAM needed\n");
 				printf("-p file\t\tfile is a binary raw file with the bP points precalculated. Just work with -m bsgs\n");
+				printf("-q\t\tset quiet the thread output\n");
         printf("-r SR:EN\tStarRange:EndRange, the end range can be omited for search from start range to N-1 ECC value\n");
 				printf("-R\t\tRandom/Secuential this is the default behaivor, can't use this with range option -r\n");
         printf("-s ns\t\tNumber of seconds for the stats output, 0 to omit output.\n");
@@ -220,8 +234,8 @@ int main(int argc, char **argv)	{
         printf("\nExample\n\n");
         printf("%s -t 16 -r 00000001:FFFFFFFF -s 0\n\n",argv[0]);
         printf("This line run the program with 16 threads from the range 00000001 to FFFFFFFF without stats output\n\n");
-        printf("Developed by AlbertoBSD\tTips BTC: 1H3TAVNZFZfiLUp9o9E93oTVY9WgYZ5knX\n");
-				printf("Thanks to Iceland always helping and sharing his ideas\n\n");
+        printf("Developed by AlbertoBSD\tTips BTC: 1ABSD1rMTmNZHJrJP8AJhDNG1XbQjWcRz7\n");
+				printf("Thanks to Iceland always helping and sharing his ideas, Tips to Iceland: bc1q39meky2mn5qjq704zz0nnkl0v7kj4uz6r529at\n\n");
         exit(0);
       break;
 			case 'a':
@@ -231,17 +245,18 @@ int main(int argc, char **argv)	{
 			case 'b':
 				bitrange = strtol(optarg,NULL,10);
 				if(bitrange > 0 && bitrange <=256 )	{
-					bit_range_str_min = calloc(1,bitrange+1);
-					bit_range_str_max = calloc(1,bitrange+1);
+					/*Buscar bit_range_str_min and bit_range_str_max*/
+
+					mpz_pow_ui(MPZAUX,TWO,bitrange);
+					bit_range_str_min = mpz_get_str(NULL,16,MPZAUX);
+					mpz_pow_ui(MPZAUX,TWO,bitrange+1);
+					bit_range_str_max = mpz_get_str(NULL,16,MPZAUX);
 					if(bit_range_str_min == NULL||bit_range_str_max == NULL)	{
 						fprintf(stderr,"[E] error malloc()\n");
 						exit(0);
 					}
-					memset(bit_range_str_min,'1',bitrange);
-					memset(bit_range_str_max,'1',bitrange);
-					bit_range_str_min[0] = '0';
-					printf("bit min range: %s\n",bit_range_str_min);
-					printf("bit max range: %s\n",bit_range_str_max);
+					printf("[+] Min range: %s\n",bit_range_str_min);
+					printf("[+] Max range: %s\n",bit_range_str_max);
 					FLAGBITRANGE = 1;
 				}
         else	{
@@ -282,6 +297,13 @@ int main(int argc, char **argv)	{
 					fprintf(stderr,"[E] invalid -g option value: %s.\n",optarg);
 				}
       break;
+			case 'k':
+				KFACTOR = (int)strtol(optarg,NULL,10);
+				if(KFACTOR <= 0)	{
+					KFACTOR = 1;
+				}
+				printf("[+] Setting k factor to %i\n",KFACTOR);
+			break;
       case 'm':
         switch(indexOf(optarg,modes,3)) {
           case MODE_XPOINT: //xpoint
@@ -310,16 +332,14 @@ int main(int argc, char **argv)	{
 					N_SECUENTIAL_MAX = 0xFFFFFFFF;
 				}
 			break;
+			case 'q':
+				FLAGQUIET  = 1;
+				printf("[+] Set quiet thread output\n");
+			break;
 			case 'p':
 				FLAGPRECALCUTED_P_FILE = 1;
 				precalculated_p_filename = optarg;
 			break;
-      case 'v':
-        FLAGVANITY = 1;
-        vanity = optarg;
-        len_vanity = strlen(optarg);
-				printf("[+] Added Vanity search : %s\n",vanity);
-      break;
 			case 'R':
 				FLAGRANDOM = 1;
 				printf("[+] Setting random mode.\n");
@@ -378,15 +398,38 @@ int main(int argc, char **argv)	{
         }
         printf((NTHREADS > 1) ? "[+] Setting %u threads\n": "[+] Setting %u thread\n",NTHREADS);
       break;
+			case 'v':
+        FLAGVANITY = 1;
+        vanity = optarg;
+        len_vanity = strlen(optarg);
+				printf("[+] Added Vanity search : %s\n",vanity);
+      break;
 			case 'w':
 			printf("[+] Data marked as RAW\n");
 				FLAGRAWDATA = 1;
       break;
+			case '-':
+				switch(indexOf(optarg,minus_params,2))	{
+					case 0:	//--quiet
+						FLAGQUIET  = 1;
+						printf("[+] Set quiet thread output\n");
+					break;
+					case 1:	// --help
+					break;
+					default:
+						printf("[E] unknow param %s\n",optarg);
+					break;
+				}
+			break;
       default:
         printf("[E] Unknow opcion %c\n",c);
       break;
     }
   }
+	/*
+	gmp_printf("[+] %Zu\n",EC.p);
+	gmp_printf("[+] %Zu\n",EC.n);
+	*/
 	if(FLAGMODE != MODE_BSGS  && FLAGRANDOM == 1)	{
 		FLAGRANGE = 0;
 	}
@@ -436,7 +479,6 @@ int main(int argc, char **argv)	{
       FLAGRANGE = 0;
     }
   }
-
   N =0;
 	if(FLAGMODE != MODE_BSGS)	{
 		if(FLAGRAWDATA) {
@@ -497,6 +539,7 @@ int main(int argc, char **argv)	{
 		else	{
 			if(bloom_init2(&bloom,N,0.0001)  == 1){
 				fprintf(stderr,"[E] error bloom_init for %u elements.\n",N);
+				fprintf(stderr,"[+] man enough is enough stop it\n");
 				exit(0);
 			}
 		}
@@ -679,7 +722,6 @@ int main(int argc, char **argv)	{
 		fclose(fd);
 		bsgs_point_number = N;
 		printf("[+] Added %u points from file\n",bsgs_point_number);
-
 		mpz_init(BSGS_N);
 		mpz_init(BSGS_M);
 		mpz_init(point_temp.x);
@@ -695,7 +737,7 @@ int main(int argc, char **argv)	{
 
 		if(FLAG_N)	{	//Custom N by the -n param
 			memset(aux,0,100);
-			sprintf(aux,"%llu",N_SECUENTIAL_MAX);
+			sprintf(aux,"%llu",(long long unsigned int)N_SECUENTIAL_MAX);
 			mpz_set_str(BSGS_N,aux,10);
 		}
 		else	{	//Default N
@@ -711,12 +753,12 @@ int main(int argc, char **argv)	{
 
 		if(FLAGRANGE || FLAGBITRANGE)	{
 			if(FLAGBITRANGE)	{	// Bit Range
-				mpz_init_set_str(n_range_start,bit_range_str_min,2);
-				mpz_init_set_str(n_range_end,bit_range_str_max,2);
+				mpz_init_set_str(n_range_start,bit_range_str_min,16);
+				mpz_init_set_str(n_range_end,bit_range_str_max,16);
 				mpz_init(n_range_diff);
 				mpz_sub(n_range_diff,n_range_end,n_range_start);
 
-				printf("Bit Range\n");
+				printf("[+] Bit Range %i\n",bitrange);
 			}
 		}
 		else	{
@@ -739,23 +781,23 @@ int main(int argc, char **argv)	{
 			mpz_mul(BSGS_N,BSGS_M,BSGS_M);
 			DEBUGCOUNT = (uint64_t)((uint64_t)bsgs_m * (uint64_t)bsgs_m);
 		}
+		mpz_init(BSGS_R);
+		mpz_init(BSGS_AUX);
+		mpz_mul_ui(BSGS_M,BSGS_M,KFACTOR);
+		mpz_cdiv_q(BSGS_AUX,BSGS_N,BSGS_M);
+		mpz_cdiv_r(BSGS_R,BSGS_N,BSGS_M);
+		if(mpz_cmp_ui(BSGS_R,0) != 0 ) {
+			mpz_mul(BSGS_N,BSGS_M,BSGS_AUX);
+		}
+		bsgs_m = (uint64_t)((uint64_t) bsgs_m * (uint64_t)KFACTOR);
+		bsgs_aux = mpz_get_ui(BSGS_AUX);
+		DEBUGCOUNT = (uint64_t)((uint64_t)bsgs_m * (uint64_t)bsgs_aux);
 
-		printf("[+] Setting N up to %llu.\n",DEBUGCOUNT);
-
+		printf("[+] Setting N up to %llu.\n",(long long unsigned int)DEBUGCOUNT);
 		if(bsgs_m > 1000)	{
-			if(bsgs_m > 1000)	{
-				if(bloom_init2(&bloom_bPx,bsgs_m,0.001)  == 1){
-					fprintf(stderr,"[E] error bloom_init for %u elements\n",bsgs_m);
-					exit(0);
-				}
-			}
-			else	{
-				/*
-				if(bloom_init(&bloom_bPx,bsgs_m,0.001)  == 1){
-					fprintf(stderr,"[E] error bloom_init for %u elements\n",bsgs_m);
-					exit(0);
-				}
-				*/
+			if(bloom_init2(&bloom_bPx,bsgs_m,0.001)  == 1){
+				fprintf(stderr,"[E] error bloom_init for %lu elements\n",bsgs_m);
+				exit(0);
 			}
 		}
 		else	{
@@ -764,17 +806,17 @@ int main(int argc, char **argv)	{
 				exit(0);
 			}
 		}
-		printf("[+] Init bloom filter for %u elements : %.2f MB\n",bsgs_m,(float)((uint32_t)bloom_bPx.bytes/(uint32_t)1048576));
+		printf("[+] Init bloom filter for %lu elements : %.2f MB\n",bsgs_m,(float)((uint64_t)bloom_bPx.bytes/(uint64_t)1048576));
 
 		//gmp_printf("BSGS_M: %0.64Zx\n",BSGS_M);
 
 
 		Scalar_Multiplication(G,&BSGS_MP,BSGS_M);
 
-		printf("[+] Allocating %.2f MB for aMP Points\n",(float)(((uint32_t)(bsgs_m*sizeof(struct Point)))/(uint32_t)1048576));
+		printf("[+] Allocating %.2f MB for aMP Points\n",(float)(((uint64_t)(bsgs_aux*sizeof(struct Point)))/(uint64_t)1048576));
 		i = 0;
 		do {
-			BSGS_AMP = malloc((uint64_t)((uint64_t)bsgs_m*(uint64_t)sizeof(struct Point)));
+			BSGS_AMP = malloc((uint64_t)((uint64_t)bsgs_aux*(uint64_t)sizeof(struct Point)));
 			i++;
 			if(BSGS_AMP == NULL)	{
 				sleep(1);
@@ -790,7 +832,7 @@ int main(int argc, char **argv)	{
 			printf("[+] Reading aMP points from file %s\n",precalculated_mp_filename);
 			fd = fopen(precalculated_mp_filename,"rb");
 			if(fd != NULL)	{
-				while(!feof(fd) && i < bsgs_m )	{
+				while(!feof(fd) && i < bsgs_aux )	{
 					if(fread(temporal,1,64,fd) == 64)	{
 						hextemp = tohex(temporal,32);
 						mpz_init_set_str(BSGS_AMP[i].x,hextemp,16);
@@ -801,17 +843,17 @@ int main(int argc, char **argv)	{
 						i++;
 					}
 				}
-				if(i < bsgs_m)	{	//If the input file have less item than bsgs_m
+				if(i < bsgs_aux)	{	//If the input file have less item than bsgs_m
 					printf("[+] Fixme file contains less items than the amount of items needed\n");
 					exit(0);
 				}
 			}
 			else	{
 				fprintf(stderr,"[E] Can't open file %s falling back to the calculation mode\n",filename);
-				printf("[+] Precalculating %u aMP points\n",bsgs_m);
+				printf("[+] Precalculating %lu aMP points\n",bsgs_aux);
 				mpz_set(point_temp.x,BSGS_MP.x);
 				mpz_set(point_temp.y,BSGS_MP.y);
-				for(i = 0; i < bsgs_m; i++)	{
+				for(i = 0; i < bsgs_aux; i++)	{
 					mpz_init(BSGS_AMP[i].x);
 					mpz_init(BSGS_AMP[i].y);
 					Point_Negation(&point_temp,&BSGS_AMP[i]);
@@ -822,10 +864,10 @@ int main(int argc, char **argv)	{
 			}
 		}
 		else	{
-			printf("[+] Precalculating %u aMP points\n",bsgs_m);
+			printf("[+] Precalculating %lu aMP points\n",bsgs_aux);
 			mpz_set(point_temp.x,BSGS_MP.x);
 			mpz_set(point_temp.y,BSGS_MP.y);
-			for(i = 0; i < bsgs_m; i++)	{
+			for(i = 0; i < bsgs_aux; i++)	{
 				mpz_init(BSGS_AMP[i].x);
 				mpz_init(BSGS_AMP[i].y);
 				Point_Negation(&point_temp,&BSGS_AMP[i]);
@@ -843,35 +885,52 @@ int main(int argc, char **argv)	{
 		i = 0;
 		j = 0;
 		if(FLAGPRECALCUTED_P_FILE)	{
-			printf("[+] Reading bP points from file %s\n",precalculated_p_filename);
+			printf("[+] Reading %lu bP points from file %s\n",bsgs_m,precalculated_p_filename);
 			fd = fopen(precalculated_p_filename,"rb");
 			if(fd != NULL)	{
 				while(!feof(fd) && i < bsgs_m )	{
-					if(fread(temporal,1,32,fd) == 32)	{
-						memcpy(bPtable[i].value,temporal,BSGS_BUFFERXPOINTLENGTH);
+					if(fread(rawvalue,1,32,fd) == 32)	{
+						//memcpy(bPtable[i].value,rawvalue,BSGS_XVALUE_RAM);
+						bPtable[i].value[0] = rawvalue[6];
+						bPtable[i].value[1] = rawvalue[7];
+						bPtable[i].value[2] = rawvalue[14];
+						bPtable[i].value[3] = rawvalue[15];
+						bPtable[i].value[4] = rawvalue[22];
+						bPtable[i].value[5] = rawvalue[23];
+						bPtable[i].value[6] = rawvalue[30];
+						bPtable[i].value[7] = rawvalue[31];
+
 						bPtable[i].index = j;
-						bloom_add(&bloom_bPx, bPtable[i].value,BSGS_BUFFERXPOINTLENGTH);
+						bloom_add(&bloom_bPx, rawvalue, BSGS_BUFFERXPOINTLENGTH);
 						i++;
 						j++;
 					}
 				}
 				if(i < bsgs_m)	{	//If the input file have less item than bsgs_m
-					printf("[+] Fixme file contains less items than the amount of items needed\n");
+					printf("[+] Fixme, file contains less items than the amount of items needed\n");
 					exit(0);
 				}
 			}
 			else	{
-				fprintf(stderr,"[E] Can't open file %s falling back to the calculation mode\n",filename);
-				printf("[+] Precalculating %u bP points\n",bsgs_m);
+				fprintf(stderr,"[E] Can't open file %s falling back to the calculation mode\n",precalculated_p_filename);
+				printf("[+] Precalculating %lu bP points\n",bsgs_m);
 				do {
 					mpz_set(point_temp.x,BSGS_P.x);
 					mpz_set(point_temp.y,BSGS_P.y);
 					gmp_sprintf(temporal,"%0.64Zx",BSGS_P.x);
+					hexs2bin(temporal,rawvalue);
+					//memcpy(bPtable[i].value,rawvalue,4);
+					bPtable[i].value[0] = rawvalue[6];
+					bPtable[i].value[1] = rawvalue[7];
+					bPtable[i].value[2] = rawvalue[14];
+					bPtable[i].value[3] = rawvalue[15];
+					bPtable[i].value[4] = rawvalue[22];
+					bPtable[i].value[5] = rawvalue[23];
+					bPtable[i].value[6] = rawvalue[30];
+					bPtable[i].value[7] = rawvalue[31];
 
-					hexs2bin(temporal,bPtable[i].value );
 					bPtable[i].index = j;
-
-					bloom_add(&bloom_bPx, bPtable[i].value,BSGS_BUFFERXPOINTLENGTH);
+					bloom_add(&bloom_bPx, rawvalue,BSGS_BUFFERXPOINTLENGTH);
 					Point_Addition(&G,&point_temp,&BSGS_P);
 					i++;
 					j++;
@@ -879,31 +938,37 @@ int main(int argc, char **argv)	{
 			}
 		}
 		else	{
-			printf("[+] precalculating %u bP points\n",bsgs_m);
+			printf("[+] precalculating %lu bP points\n",bsgs_m);
 			do {
 				mpz_set(point_temp.x,BSGS_P.x);
 				mpz_set(point_temp.y,BSGS_P.y);
 				gmp_sprintf(temporal,"%0.64Zx",BSGS_P.x);
-				//printf("[+] %i: %s\n",i,temporal);
-				hexs2bin(temporal,bPtable[i].value );
+				hexs2bin(temporal, rawvalue );
+				//memcpy(bPtable[i].value,rawvalue,BSGS_XVALUE_RAM);
+				bPtable[i].value[0] = rawvalue[6];
+				bPtable[i].value[1] = rawvalue[7];
+				bPtable[i].value[2] = rawvalue[14];
+				bPtable[i].value[3] = rawvalue[15];
+				bPtable[i].value[4] = rawvalue[22];
+				bPtable[i].value[5] = rawvalue[23];
+				bPtable[i].value[6] = rawvalue[30];
+				bPtable[i].value[7] = rawvalue[31];
 				bPtable[i].index = j;
-				bloom_add(&bloom_bPx, bPtable[i].value,BSGS_BUFFERXPOINTLENGTH);
+				bloom_add(&bloom_bPx, rawvalue ,BSGS_BUFFERXPOINTLENGTH);
 				Point_Addition(&G,&point_temp,&BSGS_P);
 				i++;
 				j++;
 			} while( i < bsgs_m );
 		}
-
-
-		printf("[+] Sorting %u elements\n",bsgs_m);
+		printf("[+] Sorting %lu elements\n",bsgs_m);
 		bsgs_sort(bPtable,bsgs_m);
-
 		i = 0;
 
 		steps = (unsigned int *) calloc(NTHREADS,sizeof(int));
 	  ends = (unsigned int *) calloc(NTHREADS,sizeof(int));
 		tid = (pthread_t *) calloc(NTHREADS,sizeof(pthread_t));
-		DEBUGCOUNT = (uint64_t)((uint64_t)bsgs_m * (uint64_t)bsgs_m);
+		DEBUGCOUNT = (uint64_t)((uint64_t)bsgs_m * (uint64_t)bsgs_aux);
+		//DEBUGCOUNT = (uint64_t)((uint64_t)bsgs_m * (uint64_t)bsgs_m);
 		for(i= 0;i < NTHREADS; i++)  {
 			tt = malloc(sizeof(struct tothread));
 			tt->nt = i;
@@ -921,9 +986,6 @@ int main(int argc, char **argv)	{
 		}
 		free(aux);
 	}
-
-
-
 	if(FLAGMODE != MODE_BSGS)	{
 		steps = (unsigned int *) calloc(NTHREADS,sizeof(int));
 	  ends = (unsigned int *) calloc(NTHREADS,sizeof(int));
@@ -975,12 +1037,15 @@ int main(int argc, char **argv)	{
 	mpz_init(total);
 	mpz_init(pretotal);
 	mpz_init(debugcount_mpz);
-	sprintf(temporal,"%llu",DEBUGCOUNT);
+	sprintf(temporal,"%llu",(long long unsigned int)DEBUGCOUNT);
 	mpz_set_str(debugcount_mpz,temporal,10);
+	printf("DEBUGCOUNT: %llu\n",DEBUGCOUNT);
+	gmp_printf("debugcount_mpz: %Zu\n",debugcount_mpz);
+	printf("NTHREADS: %i\n",NTHREADS);
   do  {
     sleep(1);
     seconds+=1;
-    if(FLAGRANGE) {
+    if(FLAGMODE != MODE_BSGS  && FLAGRANGE) {
       check_flag = 1;
 			pthread_mutex_lock(&threads_end);
       for(i = 0; i <NTHREADS && check_flag; i++) {
@@ -992,17 +1057,21 @@ int main(int argc, char **argv)	{
       }
     }
     if(OUTPUTSECONDS > 0){
-        if(seconds % OUTPUTSECONDS == 0) {
+      if(seconds % OUTPUTSECONDS == 0) {
 				mpz_set_ui(total,0);
+				mpz_set_ui(pretotal,0);
         i = 0;
         while(i < NTHREADS) {
 					mpz_mul_ui(pretotal,debugcount_mpz,steps[i]);
+					/*printf("steps: %i\n",steps[i]);*/
 					mpz_add(total,total,pretotal);
           i++;
         }
 				if(mpz_cmp_ui(total,0) > 0)	{
-					mpz_fdiv_q_ui (pretotal,total,seconds);
+					mpz_fdiv_q_ui(pretotal,total,seconds);
+					pthread_mutex_lock(&bsgs_thread);
 					gmp_printf("Total %Zu keys in %llu seconds: %Zu keys/s\n",total,seconds,pretotal);
+					pthread_mutex_unlock(&bsgs_thread);
 				}
       }
     }
@@ -1036,6 +1105,37 @@ void Point_Doubling(struct Point *P, struct Point *R)	{
 	mpz_clear(slope);
 }
 
+
+/*
+void Point_Doubling(struct Point *P, struct Point *R)	{
+	mpz_t slope, temp;
+	mpz_init(temp);
+	mpz_init(slope);
+	if(mpz_cmp_ui(P->y, 0) != 0) {
+		mpz_mul_ui(temp, P->y, 2);
+		mpz_invert(temp, temp, EC.p);
+		mpz_mul(slope, P->x, P->x);
+		mpz_mul_ui(slope, slope, 3);
+		mpz_mul(slope, slope, temp);
+		mpz_mod(slope, slope, EC.p);
+		mpz_mul(R->x, slope, slope);
+		mpz_sub(R->x, R->x, P->x);
+		mpz_sub(R->x, R->x, P->x);
+		mpz_mod(R->x, R->x, EC.p);
+		mpz_sub(temp, P->x, R->x);
+		mpz_mul(R->y, slope, temp);
+		mpz_sub(R->y, R->y, P->y);
+		mpz_mod(R->y, R->y, EC.p);
+	} else {
+		mpz_set_ui(R->x, 0);
+		mpz_set_ui(R->y, 0);
+	}
+	mpz_clear(temp);
+	mpz_clear(slope);
+}
+*/
+
+/*
 void Point_Addition(struct Point *P, struct Point *Q, struct Point *R)	{
 	mpz_t PA_temp,PA_slope;
 	mpz_init(PA_temp);
@@ -1092,18 +1192,71 @@ void Point_Addition(struct Point *P, struct Point *Q, struct Point *R)	{
 	mpz_clear(PA_temp);
 	mpz_clear(PA_slope);
 }
+*/
+
+void Point_Addition(struct Point *P, struct Point *Q, struct Point *R)	{
+	mpz_t PA_temp,PA_slope;
+	mpz_init(PA_temp);
+	mpz_init(PA_slope);
+	/*
+	mpz_mod(Q->x, Q->x, EC.p);
+	mpz_mod(Q->y, Q->y, EC.p);
+	mpz_mod(P->x, P->x, EC.p);
+	mpz_mod(P->y, P->y, EC.p);
+	*/
+	if(mpz_cmp_ui(P->x, 0) == 0 && mpz_cmp_ui(P->y, 0) == 0) {
+		mpz_set(R->x, Q->x);
+		mpz_set(R->y, Q->y);
+	}
+	else	{
+		if(mpz_cmp_ui(Q->x, 0) == 0 && mpz_cmp_ui(Q->y, 0) == 0) {
+			mpz_set(R->x, P->x);
+			mpz_set(R->y, P->y);
+		}
+		else	{
+			if(mpz_cmp_ui(Q->y, 0) != 0) {
+				mpz_sub(PA_temp, EC.p, Q->y);
+				mpz_mod(PA_temp, PA_temp, EC.p);
+			}
+			else	{
+				mpz_set_ui(PA_temp, 0);
+			}
+			if(mpz_cmp(P->y, PA_temp) == 0 && mpz_cmp(P->x, Q->x) == 0) {
+				mpz_set_ui(R->x, 0);
+				mpz_set_ui(R->y, 0);
+			}
+			else	{
+				if(mpz_cmp(P->x, Q->x) == 0 && mpz_cmp(P->y, Q->y) == 0)	{
+					Point_Doubling(P, R);
+				}
+				else {
+					mpz_set_ui(PA_slope, 0);
+					mpz_sub(PA_temp, P->x, Q->x);	//dx = B.x - A.x
+					mpz_mod(PA_temp, PA_temp, EC.p);		///dx = dx % p
+					mpz_invert(PA_temp, PA_temp, EC.p);	//gmpy2.invert(dx, p) % p
+					mpz_sub(PA_slope, P->y, Q->y);
+					mpz_mul(PA_slope, PA_slope, PA_temp);
+					mpz_mod(PA_slope, PA_slope, EC.p);
+					mpz_mul(R->x, PA_slope, PA_slope);	//c*c
+					mpz_sub(R->x, R->x, P->x);	//	c*c - A.x
+					mpz_sub(R->x, R->x, Q->x);	//(c*c - A.x) -  B.x
+					mpz_mod(R->x, R->x, EC.p);	// Rx % p
+					mpz_sub(PA_temp, P->x, R->x);
+					mpz_mul(R->y, PA_slope, PA_temp);
+					mpz_sub(R->y, R->y, P->y);
+					mpz_mod(R->y, R->y, EC.p);
+				}
+			}
+		}
+	}
+	mpz_clear(PA_temp);
+	mpz_clear(PA_slope);
+}
 
 void Scalar_Multiplication(struct Point P, struct Point *R, mpz_t m)	{
 	struct Point SM_T,SM_Q;
 	int no_of_bits, i;
-	/*
-	int debug = 0;
-	if(mpz_cmp_ui(m,5) == 0)	{
-		debug = 1;
-	}
-	*/
 	no_of_bits = mpz_sizeinbase(m, 2);
-	//if(debug == 1) printf("Numero de bits %i\n",no_of_bits);
 	mpz_init_set_ui(SM_Q.x,0);
 	mpz_init_set_ui(SM_Q.y,0);
 	mpz_init_set_ui(SM_T.x,0);
@@ -1111,12 +1264,10 @@ void Scalar_Multiplication(struct Point P, struct Point *R, mpz_t m)	{
 	mpz_set_ui(R->x, 0);
 	mpz_set_ui(R->y, 0);
 	if(mpz_cmp_ui(m, 0) != 0)	{
-		//if(debug == 1) printf("m no es 0\n");
 		mpz_set(SM_Q.x, P.x);
 		mpz_set(SM_Q.y, P.y);
 		for(i = 0; i < no_of_bits; i++) {
 			if(mpz_tstbit(m, i))	{
-				//if(debug == 1) printf("Bit %i es 1\n",i+1);
 				mpz_set(SM_T.x, R->x);
 				mpz_set(SM_T.y, R->y);
 				mpz_set(SM_Q.x,DoublingG[i].x);
@@ -1124,11 +1275,6 @@ void Scalar_Multiplication(struct Point P, struct Point *R, mpz_t m)	{
 				Point_Addition(&SM_T, &SM_Q, R);
 			}
 		}
-		/*
-		if(debug == 1) {
-			gmp_printf("R :( %0.64Zx , %0.64Zx)\n",R->x,R->y);
-		}
-		*/
 	}
 	mpz_clear(SM_T.x);
 	mpz_clear(SM_T.y);
@@ -1140,7 +1286,6 @@ void Point_Negation(struct Point *A, struct Point *S)	{
 	mpz_sub(S->y, EC.p, A->y);
 	mpz_set(S->x, A->x);
 }
-
 
 /*
 	Precalculate G Doublings for Scalar_Multiplication
@@ -1162,6 +1307,7 @@ void init_doublingG(struct Point *P)	{
 	}
 }
 
+/*
 char *pubkeytopubaddress_eth(char *pkey,int length)	{
 		char *temp,*pubaddress = calloc(MAXLENGTHADDRESS,1);
 		char *digest = malloc(32);
@@ -1178,6 +1324,7 @@ char *pubkeytopubaddress_eth(char *pkey,int length)	{
 		free(digest);
 		return pubaddress;
 }
+*/
 
 char *pubkeytopubaddress(char *pkey,int length)	{
 	char *pubaddress = calloc(MAXLENGTHADDRESS+10,1);
@@ -1254,8 +1401,8 @@ void *thread_process(void *vargp)	{
 	mpz_init(temporal.x);
 	mpz_init(temporal.y);
 	if(FLAGBITRANGE)	{
-		mpz_init_set_str(mpz_bit_range_min,bit_range_str_min,2);
-		mpz_init_set_str(mpz_bit_range_max,bit_range_str_max,2);
+		mpz_init_set_str(mpz_bit_range_min,bit_range_str_min,16);
+		mpz_init_set_str(mpz_bit_range_max,bit_range_str_max,16);
 		mpz_init(mpz_bit_range_diff);
 		mpz_sub(mpz_bit_range_diff,mpz_bit_range_max,mpz_bit_range_min);
 	}
@@ -1316,10 +1463,7 @@ void *thread_process(void *vargp)	{
 
           public_address_compressed = pubkeytopubaddress(public_key_compressed,33);
           public_address_uncompressed = pubkeytopubaddress(public_key_uncompressed,65);
-					/*
-					printf("Testing for %s\n",public_address_compressed);
-					printf("Testing for %s\n",public_address_uncompressed);
-					*/
+
           if(FLAGVANITY)  {
             if(strncmp(public_address_uncompressed,vanity,len_vanity) == 0)	{
               hextemp = malloc(65);
@@ -1429,7 +1573,7 @@ void *thread_process(void *vargp)	{
             gmp_sprintf(hextemp,"%0.64Zx",random_key_mpz);
             public_key_compressed_hex = tohex(public_key_compressed,33);
   					pthread_mutex_lock(&write_keys);
-  					keys = fopen("./keys.txt","a+");
+  					keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
   					if(keys != NULL)	{
   						fprintf(keys,"PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
   						fclose(keys);
@@ -1641,7 +1785,7 @@ void *thread_process_range(void *vargp)	{
           gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
           public_key_compressed_hex = tohex(public_key_compressed,33);
   				pthread_mutex_lock(&write_keys);
-  				keys = fopen("./keys.txt","a+");
+  				keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
   				if(keys != NULL)	{
   					fprintf(keys,"PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
   					fclose(keys);
@@ -1686,7 +1830,7 @@ void _introsort(char *arr,int depthLimit, int n) {
     }
     else  {
       if(depthLimit == 0) {
-        heapsort(arr,n);
+        myheapsort(arr,n);
       }
       else  {
         p = partition(arr,n);
@@ -1810,8 +1954,8 @@ void heapify(char *arr, int n, int i) {
     }
 }
 
-void heapsort(char  *arr, int n)  {
-  int i;
+void myheapsort(char  *arr, int64_t n)  {
+  int64_t i;
   for ( i = n / 2 - 1; i >= 0; i--)
     heapify(arr, n, i);
   for ( i = n - 1; i > 0; i--) {
@@ -1843,7 +1987,7 @@ void bsgs_introsort(struct bsgs_xvalue *arr,uint32_t depthLimit, int64_t n) {
     }
     else  {
       if(depthLimit == 0) {
-        bsgs_heapsort(arr,n);
+        bsgs_myheapsort(arr,n);
       }
       else  {
         p = bsgs_partition(arr,n);
@@ -1862,7 +2006,7 @@ void bsgs_insertionsort(struct bsgs_xvalue *arr, int64_t n) {
   for(i = 1; i < n ; i++ ) {
 		key = arr[i];
     j= i-1;
-    while(j >= 0 && memcmp(arr[j].value,key.value,BSGS_BUFFERXPOINTLENGTH) > 0) {
+    while(j >= 0 && memcmp(arr[j].value,key.value,BSGS_XVALUE_RAM) > 0) {
 			arr[j+1] = arr[j];
       j--;
     }
@@ -1879,10 +2023,10 @@ int64_t bsgs_partition(struct bsgs_xvalue *arr, int64_t n)  {
 	left = 0;
 	right = n-1;
 	do {
-		while(left  < right && memcmp(arr[left].value,pivot.value,BSGS_BUFFERXPOINTLENGTH) <= 0 )	{
+		while(left  < right && memcmp(arr[left].value,pivot.value,BSGS_XVALUE_RAM) <= 0 )	{
 			left++;
 		}
-		while(right >= left && memcmp(arr[right].value,pivot.value,BSGS_BUFFERXPOINTLENGTH) > 0)	{
+		while(right >= left && memcmp(arr[right].value,pivot.value,BSGS_XVALUE_RAM) > 0)	{
 			right--;
 		}
 		if(left < right)	{
@@ -1907,9 +2051,9 @@ void bsgs_heapify(struct bsgs_xvalue *arr, int64_t n, int64_t i) {
   int64_t largest = i;
   int64_t l = 2 * i + 1;
   int64_t r = 2 * i + 2;
-  if (l < n && memcmp(arr[l].value,arr[largest].value,BSGS_BUFFERXPOINTLENGTH) > 0)
+  if (l < n && memcmp(arr[l].value,arr[largest].value,BSGS_XVALUE_RAM) > 0)
     largest = l;
-  if (r < n && memcmp(arr[r].value,arr[largest].value,BSGS_BUFFERXPOINTLENGTH) > 0)
+  if (r < n && memcmp(arr[r].value,arr[largest].value,BSGS_XVALUE_RAM) > 0)
     largest = r;
   if (largest != i) {
     bsgs_swap(&arr[i],&arr[largest]);
@@ -1917,7 +2061,7 @@ void bsgs_heapify(struct bsgs_xvalue *arr, int64_t n, int64_t i) {
   }
 }
 
-void bsgs_heapsort(struct bsgs_xvalue  *arr, int64_t n)  {
+void bsgs_myheapsort(struct bsgs_xvalue  *arr, int64_t n)  {
   int64_t i;
   for ( i = (n / 2) - 1; i >=  0; i--)	{
     bsgs_heapify(arr, n, i);
@@ -1929,7 +2073,7 @@ void bsgs_heapsort(struct bsgs_xvalue  *arr, int64_t n)  {
 }
 
 
-int bsgs_searchbinary(struct bsgs_xvalue *buffer,char *data,int64_t _N,int64_t *r_value)  {
+int bsgs_searchbinary(struct bsgs_xvalue *buffer,char *data,int64_t _N,int64_t *r_value) {
 	char *temp_read;
 	int64_t min,max,half,current;
   int r = 0,rcmp;
@@ -1939,7 +2083,7 @@ int bsgs_searchbinary(struct bsgs_xvalue *buffer,char *data,int64_t _N,int64_t *
   half = _N;
   while(!r && half >= 1) {
     half = (max - min)/2;
-    rcmp = memcmp(data,buffer[current+half].value,BSGS_BUFFERXPOINTLENGTH);
+    rcmp = memcmp(data,buffer[current+half].value,BSGS_XVALUE_RAM);
     if(rcmp == 0)  {
 			*r_value = buffer[current+half].index;
 			r = 1;
@@ -1957,15 +2101,14 @@ int bsgs_searchbinary(struct bsgs_xvalue *buffer,char *data,int64_t _N,int64_t *
   return r;
 }
 
-
 void *thread_process_bsgs(void *vargp)	{
 	struct tothread *tt;
-	char pubkey[131],xpoint_str[65],xpoint_raw[32];
+	char pubkey[131],xpoint_str[65],xpoint_raw[32],tosearch[BSGS_XVALUE_RAM];
 	char *aux_c;
 	mpz_t base_key,keyfound;
 	FILE *filekey;
-	struct Point base_point,point_aux,point_aux2;
-	struct Point *BSGS_Q, *BSGS_S,BSGS_Q_AMP /* ,*BSGS_AMP*/;
+	struct Point base_point,point_aux,point_aux2,point_found;
+	struct Point *BSGS_Q, *BSGS_S,BSGS_Q_AMP;
 	int64_t j;
 	uint32_t i,k,r,salir,thread_number;
 	tt = (struct tothread *)vargp;
@@ -1979,17 +2122,18 @@ void *thread_process_bsgs(void *vargp)	{
 	mpz_init(point_aux.y);
 	mpz_init(point_aux2.x);
 	mpz_init(point_aux2.y);
-
+	mpz_init(point_found.x);
+	mpz_init(point_found.y);
 	mpz_init(BSGS_Q_AMP.x);
 	mpz_init(BSGS_Q_AMP.y);
 
 	BSGS_S = malloc(bsgs_point_number*sizeof(struct Point));
 	BSGS_Q = malloc(bsgs_point_number*sizeof(struct Point));
-	//BSGS_AMP = malloc(bsgs_point_number*sizeof(struct Point));
 	if(BSGS_Q == NULL || BSGS_S == NULL /*|| BSGS_AMP == NULL*/)	{
 		fprintf(stderr,"[E] error malloc(): thread_process_bsgs\n");
 		exit(0);
 	}
+
 	/* We initializing all BSGS_Q values this is GMP related stuff*/
 	for(k = 0; k < bsgs_point_number; k++)	{
 		mpz_init(BSGS_Q[k].x);
@@ -2017,7 +2161,8 @@ void *thread_process_bsgs(void *vargp)	{
 	while(mpz_cmp(base_key,n_range_end) < 0)	{
 		//gmp_printf("While cycle: base_key : %Zd < n_range_end: %Zd\n",base_key,n_range_end);
 		gmp_sprintf(xpoint_str,"%0.64Zx",base_key);
-		printf("[+] Thread %i: %s\n",thread_number,xpoint_str);
+
+		if(FLAGQUIET == 0) printf("[+] Thread %i: %s\n",thread_number,xpoint_str);
 		/*
 			Set base_point in to base_key * G
 			base_point = base_key * G
@@ -2068,46 +2213,105 @@ void *thread_process_bsgs(void *vargp)	{
 				i = 0;
 				do {
 					/* We need to test individually every point in BSGS_Q */
-					/*Extract BSGS_S.x into hexchars*/
+					/*Extract BSGS_S.x into xpoint_str*/
 					gmp_sprintf(xpoint_str,"%0.64Zx",BSGS_S[k].x);
-					/*hex -> binary*/
+					/*xpoint_str -> binary*/
 					hexs2bin(xpoint_str,(unsigned char*)xpoint_raw);
 					//printf("Looking X : %s\n",xpoint_str);
 					/* Lookup for the xpoint_raw into the bloom filter*/
+
 					r = bloom_check(&bloom_bPx,xpoint_raw,32);
 					if(r) {
 						/* Lookup for the xpoint_raw into the full sorted list*/
-						r = bsgs_searchbinary(bPtable,xpoint_raw,bsgs_m,&j);
+						tosearch[0] = xpoint_raw[6];
+						tosearch[1] = xpoint_raw[7];
+						tosearch[2] = xpoint_raw[14];
+						tosearch[3] = xpoint_raw[15];
+						tosearch[4] = xpoint_raw[22];
+						tosearch[5] = xpoint_raw[23];
+						tosearch[6] = xpoint_raw[30];
+						tosearch[7] = xpoint_raw[31];
+						r = bsgs_searchbinary(bPtable,tosearch,bsgs_m,&j);
 						if(r)	{
 							/* is the xpoint is in the sorted list we HIT one privkey*/
 							/* privkey = base_key + aM + b		*/
-							//printf("[+] a = %i, b = %i\n",i,j+1);
+							/*
+							printf("[+] bloom_r = %u\n",bloom_r);
+							printf("[+] a = %i, b = %i\n",i,j+1);
+							printf("[+] str: %s\n",xpoint_str);
+							*/
 							mpz_set(keyfound,BSGS_M);
 							mpz_mul_ui(keyfound,keyfound,i /* this is a*/);
 							mpz_add_ui(keyfound,keyfound,j+1 /* this is b*/);
 							mpz_add(keyfound,keyfound,base_key);
 
-							gmp_sprintf(xpoint_str,"%0.64Zx",keyfound);
-							printf("[+] Thread %i Key found privkey %s\n",thread_number,xpoint_str);
+							Scalar_Multiplication(G,&point_found,keyfound);
+							if(mpz_cmp(point_found.x,OriginalPointsBSGS[k].x) == 0)	{
+								gmp_sprintf(xpoint_str,"%0.64Zx",keyfound);
+								printf("[+] Thread %i Key found privkey %s\n",thread_number,xpoint_str);
 
-							Scalar_Multiplication(G,&point_aux2,keyfound);
-							gmp_sprintf(pubkey,"04%0.64Zx%0.64Zx",point_aux2.x,point_aux2.y);
-							printf("[+] Publickey %s\n",pubkey);
-							pthread_mutex_lock(&write_keys);
-							filekey = fopen("KEYFOUNDKEYFOUND.txt","a");
-							if(filekey != NULL)	{
-								fprintf(filekey,"Key found privkey %s\nPublickey %s\n",xpoint_str,pubkey);
-								fclose(filekey);
+								Scalar_Multiplication(G,&point_aux2,keyfound);
+								gmp_sprintf(pubkey,"04%0.64Zx%0.64Zx",point_aux2.x,point_aux2.y);
+								printf("[+] Publickey %s\n",pubkey);
+								pthread_mutex_lock(&write_keys);
+								filekey = fopen("KEYFOUNDKEYFOUND.txt","a");
+								if(filekey != NULL)	{
+									fprintf(filekey,"Key found privkey %s\nPublickey %s\n",xpoint_str,pubkey);
+									fclose(filekey);
+								}
+								pthread_mutex_unlock(&write_keys);
+								bsgs_found[k] = 1;
+								salir = 1;
+								for(j = 0; j < bsgs_point_number && salir; j++)	{
+									salir &= bsgs_found[j];
+								}
+								if(salir)	{
+									printf("All points were found\n");
+									exit(0);
+								}
 							}
-							pthread_mutex_unlock(&write_keys);
-							bsgs_found[k] = 1;
-							salir = 1;
-							for(j = 0; j < bsgs_point_number && salir; j++)	{
-								salir &= bsgs_found[j];
-							}
-							if(salir)	{
-								printf("All points were found\n");
-								exit(0);
+							else	{
+								/* privkey = base_key + aM - b	*/
+								mpz_set(keyfound,BSGS_M);
+								mpz_mul_ui(keyfound,keyfound,i /* this is a*/);
+								mpz_sub_ui(keyfound,keyfound,j+1 /* this is b*/);
+								mpz_add(keyfound,keyfound,base_key);
+								Scalar_Multiplication(G,&point_found,keyfound);
+								if(mpz_cmp(point_found.x,OriginalPointsBSGS[k].x) == 0)	{
+									gmp_sprintf(xpoint_str,"%0.64Zx",keyfound);
+
+									printf("[+] Thread %i Key found privkey %s\n",thread_number,xpoint_str);
+
+									Scalar_Multiplication(G,&point_aux2,keyfound);
+									gmp_sprintf(pubkey,"04%0.64Zx%0.64Zx",point_aux2.x,point_aux2.y);
+									printf("[+] Publickey %s\n",pubkey);
+									pthread_mutex_lock(&write_keys);
+									filekey = fopen("KEYFOUNDKEYFOUND.txt","a");
+									if(filekey != NULL)	{
+										fprintf(filekey,"Key found privkey %s\nPublickey %s\n",xpoint_str,pubkey);
+										fclose(filekey);
+									}
+									pthread_mutex_unlock(&write_keys);
+									bsgs_found[k] = 1;
+									salir = 1;
+									for(j = 0; j < bsgs_point_number && salir; j++)	{
+										salir &= bsgs_found[j];
+									}
+									if(salir)	{
+										printf("All points were found\n");
+										exit(0);
+									}
+								}
+									/*
+								else	{
+
+									printf("[E] Something is wrong!\n");
+									gmp_printf("[I] Basekey: 0x%Zx\n",base_key);
+									gmp_printf("[I] BSGS_M: 0x%Zx\n",BSGS_M);
+									printf("[I] a  = %i , b = %li\n",i,j+1);
+
+								}
+									*/
 							}
 						}
 					}
@@ -2115,7 +2319,7 @@ void *thread_process_bsgs(void *vargp)	{
 					mpz_set(BSGS_S[k].x,BSGS_Q_AMP.x);
 					mpz_set(BSGS_S[k].y,BSGS_Q_AMP.y);
 					i++;
-				}while( i < bsgs_m);
+				}while( i < bsgs_aux && !bsgs_found[k]);
 			} //end if
 		}// End for
 		steps[thread_number]++;
@@ -2145,14 +2349,14 @@ void *thread_process_bsgs(void *vargp)	{
 
 void *thread_process_bsgs_random(void *vargp)	{
 	struct tothread *tt;
-	char pubkey[131],xpoint_str[65],xpoint_raw[32];
+	char pubkey[131],xpoint_str[65],xpoint_raw[32],tosearch[BSGS_XVALUE_RAM];
 	char *aux_c;
 	mpz_t base_key,keyfound;
 	FILE *filekey;
-	struct Point base_point,point_aux,point_aux2;
+	struct Point base_point,point_aux,point_aux2,point_found;
 	struct Point *BSGS_Q, *BSGS_S,BSGS_Q_AMP /* ,*BSGS_AMP*/;
 	mpz_t n_range_random;
-	uint64_t j;
+	int64_t j;
 	uint32_t i,k,r,salir,thread_number;
 	tt = (struct tothread *)vargp;
 	thread_number = tt->nt;
@@ -2166,6 +2370,10 @@ void *thread_process_bsgs_random(void *vargp)	{
 	mpz_init(point_aux.y);
 	mpz_init(point_aux2.x);
 	mpz_init(point_aux2.y);
+
+	mpz_init(point_found.x);
+	mpz_init(point_found.y);
+
 
 	mpz_init(BSGS_Q_AMP.x);
 	mpz_init(BSGS_Q_AMP.y);
@@ -2210,7 +2418,7 @@ void *thread_process_bsgs_random(void *vargp)	{
 	while(mpz_cmp(base_key,n_range_end) < 0)	{
 		//gmp_printf("While cycle: base_key : %Zd < n_range_end: %Zd\n",base_key,n_range_end);
 		gmp_sprintf(xpoint_str,"%0.64Zx",base_key);
-		printf("[+] Thread %i: %s\n",thread_number,xpoint_str);
+		if(FLAGQUIET == 0) printf("[+] Thread %i: %s\n",thread_number,xpoint_str);
 		/*
 			Set base_point in to base_key * G
 			base_point = base_key * G
@@ -2254,20 +2462,30 @@ void *thread_process_bsgs_random(void *vargp)	{
 		/* We need to test individually every point in BSGS_Q */
 		for(k = 0; k < bsgs_point_number ; k++)	{
 			if(bsgs_found[k] == 0)	{
-
 			/*reset main variabler before the do-while cicle*/
 			salir = 0;
 			i = 0;
 			/* Main cycle
-				for every a in 0 to bsgs_m
+				for every a in 0 to bsgs_aux
 			*/
 			do {
 					gmp_sprintf(xpoint_str,"%0.64Zx",BSGS_S[k].x);
 					hexs2bin(xpoint_str,(unsigned char*)xpoint_raw);
+
+
 					r = bloom_check(&bloom_bPx,xpoint_raw,32);
 					if(r) {
+
 						/* Lookup for the xpoint_raw into the full sorted list*/
-						r = bsgs_searchbinary(bPtable,xpoint_raw,bsgs_m,&j);
+						tosearch[0] = xpoint_raw[6];
+						tosearch[1] = xpoint_raw[7];
+						tosearch[2] = xpoint_raw[14];
+						tosearch[3] = xpoint_raw[15];
+						tosearch[4] = xpoint_raw[22];
+						tosearch[5] = xpoint_raw[23];
+						tosearch[6] = xpoint_raw[30];
+						tosearch[7] = xpoint_raw[31];
+						r = bsgs_searchbinary(bPtable,tosearch,bsgs_m,&j);
 						if(r)	{
 							/* is the xpoint is in the sorted list we HIT one privkey*/
 							/* privkey = base_key + aM + b		*/
@@ -2277,35 +2495,81 @@ void *thread_process_bsgs_random(void *vargp)	{
 							mpz_add_ui(keyfound,keyfound,j+1 /* this is b*/);
 							mpz_add(keyfound,keyfound,base_key);
 
-							gmp_sprintf(xpoint_str,"%0.64Zx",keyfound);
-							printf("[+] Thread %i Key found privkey %s\n",thread_number,xpoint_str);
+							Scalar_Multiplication(G,&point_found,keyfound);
+							if(mpz_cmp(point_found.x,OriginalPointsBSGS[k].x) == 0)	{
+								gmp_sprintf(xpoint_str,"%0.64Zx",keyfound);
+								printf("[+] Thread %i Key found privkey %s\n",thread_number,xpoint_str);
 
-							Scalar_Multiplication(G,&point_aux2,keyfound);
-							gmp_sprintf(pubkey,"04%0.64Zx%0.64Zx",point_aux2.x,point_aux2.y);
-							printf("[+] Publickey %s\n",pubkey);
-							pthread_mutex_lock(&write_keys);
-							filekey = fopen("KEYFOUNDKEYFOUND.txt","a");
-							if(filekey != NULL)	{
-								fprintf(filekey,"Key found privkey %s\nPublickey %s\n",xpoint_str,pubkey);
-								fclose(filekey);
+								Scalar_Multiplication(G,&point_aux2,keyfound);
+								gmp_sprintf(pubkey,"04%0.64Zx%0.64Zx",point_aux2.x,point_aux2.y);
+								printf("[+] Publickey %s\n",pubkey);
+								pthread_mutex_lock(&write_keys);
+								filekey = fopen("KEYFOUNDKEYFOUND.txt","a");
+								if(filekey != NULL)	{
+									fprintf(filekey,"Key found privkey %s\nPublickey %s\n",xpoint_str,pubkey);
+									fclose(filekey);
+								}
+								pthread_mutex_unlock(&write_keys);
+								bsgs_found[k] = 1;
+								salir = 1;
+								for(j = 0; j < bsgs_point_number && salir; j++)	{
+									salir &= bsgs_found[j];
+								}
+								if(salir)	{
+									printf("All points were found\n");
+									exit(0);
+								}
 							}
-							pthread_mutex_unlock(&write_keys);
-							bsgs_found[k] = 1;
-							salir = 1;
-							for(j = 0; j < bsgs_point_number && salir; j++)	{
-								salir &= bsgs_found[j];
-							}
-							if(salir)	{
-								printf("All points were found\n");
-								exit(0);
+							else	{
+								/* then the key mus be */
+								/* privkey = base_key + aM - b		*/
+								mpz_set(keyfound,BSGS_M);
+								mpz_mul_ui(keyfound,keyfound,i /* this is a*/);
+								mpz_sub_ui(keyfound,keyfound,j+1 /* this is b*/);
+								mpz_add(keyfound,keyfound,base_key);
+								Scalar_Multiplication(G,&point_found,keyfound);
+								if(mpz_cmp(point_found.x,OriginalPointsBSGS[k].x) == 0)	{
+									gmp_sprintf(xpoint_str,"%0.64Zx",keyfound);
+
+									printf("[+] Thread %i Key found privkey %s\n",thread_number,xpoint_str);
+
+									Scalar_Multiplication(G,&point_aux2,keyfound);
+									gmp_sprintf(pubkey,"04%0.64Zx%0.64Zx",point_aux2.x,point_aux2.y);
+									printf("[+] Publickey %s\n",pubkey);
+									pthread_mutex_lock(&write_keys);
+									filekey = fopen("KEYFOUNDKEYFOUND.txt","a");
+									if(filekey != NULL)	{
+										fprintf(filekey,"Key found privkey %s\nPublickey %s\n",xpoint_str,pubkey);
+										fclose(filekey);
+									}
+									pthread_mutex_unlock(&write_keys);
+									bsgs_found[k] = 1;
+									salir = 1;
+									for(j = 0; j < bsgs_point_number && salir; j++)	{
+										salir &= bsgs_found[j];
+									}
+									if(salir)	{
+										printf("All points were found\n");
+										exit(0);
+									}
+								}
+								/*
+								else	{
+									printf("[E] Something is wrong!\n");
+									gmp_printf("[I] Basekey: 0x%Zx\n",base_key);
+									gmp_printf("[I] BSGS_M: 0x%Zx\n",BSGS_M);
+									printf("[I] a  = %i , b = %li\n",i,j+1);
+								}
+								*/
 							}
 						}
+
 					}
 					Point_Addition(&BSGS_Q[k],&BSGS_AMP[i],&BSGS_Q_AMP);
 					mpz_set(BSGS_S[k].x,BSGS_Q_AMP.x);
 					mpz_set(BSGS_S[k].y,BSGS_Q_AMP.y);
 					i++;
-				} while( i < bsgs_m && !bsgs_found[k]);
+				} while( i < bsgs_aux && !bsgs_found[k]);
 			}	//End if
 		} // End for with k bsgs_point_number
 		steps[thread_number]++;

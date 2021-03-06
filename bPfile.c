@@ -48,6 +48,7 @@ struct Elliptic_Curve EC;
 struct Point G;
 
 int main(int argc, char **argv)	{
+	mpz_t temp;
 	FILE *p_file;
 	char temporal[512],rawvalue[BSGS_BUFFERXPOINTLENGTH];
 	long int i,m,sz;
@@ -75,6 +76,8 @@ int main(int argc, char **argv)	{
 	mpz_init(point_t.x);
 	mpz_init(point_t.y);
 
+	mpz_init(temp);
+
 
 	m = mpz_get_ui(M);
 
@@ -87,6 +90,7 @@ int main(int argc, char **argv)	{
 		printf("Can't create file %s\n",argv[2]);
 		exit(0);
 	}
+	/*
 	fseek(p_file, 0L, SEEK_END);
 	sz = ftell(p_file);
 	if(sz % 32 != 0)	{
@@ -101,7 +105,8 @@ int main(int argc, char **argv)	{
 		i = m-(sz/32);
 		printf("OK, items missing %li\n",i);
 	}
-	exit(0);
+	mpz_set_ui(temp,i)
+	*/
 	i = 0;
 	printf("[+] precalculating %li bP elements in file %s\n",m,argv[2]);
 	do {

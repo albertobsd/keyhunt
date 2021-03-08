@@ -247,9 +247,10 @@ int main(int argc, char **argv)	{
 				if(bitrange > 0 && bitrange <=256 )	{
 					/*Buscar bit_range_str_min and bit_range_str_max*/
 
-					mpz_pow_ui(MPZAUX,TWO,bitrange);
+					mpz_pow_ui(MPZAUX,TWO,bitrange-1);
 					bit_range_str_min = mpz_get_str(NULL,16,MPZAUX);
-					mpz_pow_ui(MPZAUX,TWO,bitrange+1);
+					mpz_pow_ui(MPZAUX,TWO,bitrange);
+					mpz_sub_ui(MPZAUX,MPZAUX,1);
 					bit_range_str_max = mpz_get_str(NULL,16,MPZAUX);
 					if(bit_range_str_min == NULL||bit_range_str_max == NULL)	{
 						fprintf(stderr,"[E] error malloc()\n");

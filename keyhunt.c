@@ -1394,7 +1394,7 @@ void *thread_process(void *vargp)	{
   char *eth_address;
   char *public_address_compressed,*public_address_uncompressed;
 	unsigned long longtemp;
-	FILE *keys,*range_file,*vanityKeys;
+	FILE *keys,*vanityKeys;
 	mpz_t random_key_mpz,mpz_bit_range_min,mpz_bit_range_max,mpz_bit_range_diff;
 	mpz_init(random_key_mpz);
 	mpz_init(R.x);
@@ -1432,11 +1432,13 @@ void *thread_process(void *vargp)	{
 		gmp_sprintf(hextemp,"%0.64Zx",random_key_mpz);
 		pthread_mutex_lock(&write_range);
 		printf("Thread %i : Setting up base key: %s\n",thread_number,hextemp);
+		/*
 		range_file = fopen("./ranges.txt","a+");
 		if(range_file != NULL)	{
 			fprintf(range_file,"%s\n",hextemp);
 			fclose(range_file);
 		}
+		*/
 		pthread_mutex_unlock(&write_range);
 		free(hextemp);
 		Scalar_Multiplication(G, &R, random_key_mpz);
@@ -1632,11 +1634,13 @@ void *thread_process_range(void *vargp)	{
 	}
 	printf("Thread %i : Setting up base key: %s\n",thread_number,tt->rs);
   pthread_mutex_lock(&write_range);
+	/*
   range_file = fopen("./ranges.txt","a+");
   if(range_file != NULL)	{
     fprintf(range_file,"%s\n",tt->rs);
     fclose(range_file);
   }
+	*/
   pthread_mutex_unlock(&write_range);
   free(tt->rs);
   free(tt->rpt);

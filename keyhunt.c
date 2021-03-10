@@ -186,9 +186,9 @@ int main(int argc, char **argv)	{
 	uint64_t i;
 	int64_t j;
 	int readed,s,continue_flag,check_flag,r,lenaux,lendiff;
-	mpz_t total;
-	mpz_t pretotal;
-	mpz_t debugcount_mpz;
+
+	mpz_t total,pretotal,debugcount_mpz,Ysquared,mpz_aux,mpz_aux2;
+
 	uint32_t seconds = 0;
 
   int c;
@@ -650,7 +650,12 @@ int main(int argc, char **argv)	{
 				trim(aux," \t\n\r");
 				if(strlen(aux) >= 128)	{	//Length of a full address in hexadecimal without 04
 						N++;
+				}else	{
+					if(strlen(aux) >= 66)	{
+						N++;
+					}
 				}
+
 			}
 		}
 		if(N == 0)	{
@@ -666,16 +671,55 @@ int main(int argc, char **argv)	{
 			exit(0);
 		}
 		fseek(fd,0,SEEK_SET);
+		mpz_init(Ysquared);
+		mpz_init(mpz_aux);
+		mpz_init(mpz_aux2);
 		i = 0;
 		while(!feof(fd))  {
 			if(fgets(aux,1022,fd) == aux)	{
 				trim(aux," \t\n\r");
-				if(strlen(aux) >= 128)	{
+				if(strlen(aux) >= 66)	{
 					stringtokenizer(aux,&tokenizerbsgs);
 					aux2 = nextToken(&tokenizerbsgs);
 					memset(pointx_str,0,65);
 					memset(pointy_str,0,65);
 					switch(strlen(aux2))	{
+						case 66:	//Compress
+							memcpy(pointx_str,aux2+2,64);
+							if(isValidHex(pointx_str))	{
+								mpz_init_set_str(OriginalPointsBSGS[i].x,pointx_str,16);
+								mpz_init(OriginalPointsBSGS[i].y);
+								mpz_pow_ui(mpz_aux,OriginalPointsBSGS[i].x,3);
+								mpz_add_ui(mpz_aux2,mpz_aux,7);
+								mpz_mod(Ysquared,mpz_aux2,EC.p);
+								mpz_add_ui(mpz_aux,EC.p,1);
+								mpz_fdiv_q_ui(mpz_aux2,mpz_aux,4);
+								mpz_powm(OriginalPointsBSGS[i].y,Ysquared,mpz_aux2,EC.p);
+								mpz_sub(mpz_aux, EC.p,OriginalPointsBSGS[i].y);
+								switch(aux2[1])	{
+									case '2':
+										if(mpz_tstbit(OriginalPointsBSGS[i].y, 0) == 1)	{
+											mpz_set(OriginalPointsBSGS[i].y,mpz_aux);
+										}
+										i++;
+									break;
+									case '3':
+										if(mpz_tstbit(OriginalPointsBSGS[i].y, 0) == 0)	{
+											mpz_set(OriginalPointsBSGS[i].y,mpz_aux);
+										}
+										i++;
+									break;
+									default:
+										fprintf(stderr,"[E] Some invalid bit in the line: %c\n",aux2[1]);
+										N--;
+									break;
+								}
+							}
+							else	{
+								fprintf(stderr,"[E] Some invalid hexdata in the file: %s\n",aux2);
+								N--;
+							}
+						break;
 						case 128:	//Without the 04
 							memcpy(pointx_str,aux2,64);
 							memcpy(pointy_str,aux2+64,64);

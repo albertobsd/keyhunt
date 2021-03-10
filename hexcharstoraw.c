@@ -21,6 +21,7 @@ void heapsort(char  *arr, int n);
 void heapify(char *arr, int n, int i);
 
 int main(int argc,char **argv) {
+  int readed;
   char *line_input,*line_output,*aux;
   FILE *input,*output;
   int len,diff,i,count = 0;
@@ -50,7 +51,7 @@ int main(int argc,char **argv) {
             memcpy(line_input,aux,65);
             free(aux);
           }
-          hexs2bin(line_input,line_output);
+          hexs2bin(line_input,(unsigned char *)line_output);
           fwrite(line_output,1,MAXLENGTHADDRESS,output);
           count++;
         }
@@ -73,7 +74,10 @@ int main(int argc,char **argv) {
   } while(line_input == NULL);
   i = 0;
   while(i < count) {
-    fread(line_input+(i*32),1,MAXLENGTHADDRESS,output);
+    readed = fread(line_input+(i*32),1,MAXLENGTHADDRESS,output);
+    if(readed != MAXLENGTHADDRESS)  {
+      fprintf(stderr,"error fread()\n");
+    }
     i++;
   }
   fclose(output);

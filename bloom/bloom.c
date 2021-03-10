@@ -144,7 +144,7 @@ void bloom_print(struct bloom * bloom)
   printf("bloom at %p\n", (void *)bloom);
   if (!bloom->ready) { printf(" *** NOT READY ***\n"); }
   printf(" ->version = %d.%d\n", bloom->major, bloom->minor);
-  printf(" ->entries = %lu\n", bloom->entries);
+  printf(" ->entries = %llu\n", bloom->entries);
   printf(" ->error = %f\n", bloom->error);
   printf(" ->bits = %llu\n", bloom->bits);
   printf(" ->bits per elem = %f\n", bloom->bpe);

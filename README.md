@@ -1,6 +1,8 @@
 # keyhunt
 privkey hunt for crypto currencies that use secp256k1  elliptic curve
 
+Post: https://bitcointalk.org/index.php?topic=5322040.0
+
 Work for btc in this moment, only legacy Addresses that start with '1'
 
 Ethereum addresses is a work in develop
@@ -124,7 +126,7 @@ Example:
 Example output:
 
 ```
-$ ./keyhunt -m bsgs -f 120.txt -b 120 -k 20 -R -p ~/keyhunt/bPfile.bin
+$ ./keyhunt -m bsgs -f 120.txt -b 120 -k 20 -R
 [+] Version 0.1.20210306 K*BSGS
 [+] Setting mode BSGS
 [+] Min range: 800000000000000000000000000000

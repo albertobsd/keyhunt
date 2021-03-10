@@ -92,7 +92,7 @@ Line of execution in random mode **-R**
 Example Output:
 
 ```
-$ ./keyhunt -m bsgs -f 120.txt -b 120 -R
+$ ./keyhunt -m bsgs -f 120.txt -r 800000000000000000000000000000:FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF -R
 [+] Version 0.1.20210112 BSGS
 [+] Setting mode BSGS
 [+] Setting random mode.

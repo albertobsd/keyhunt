@@ -84,7 +84,7 @@ int main(int argc, char **argv)	{
 	mpz_init_set(P.x,G.x);
 	mpz_init_set(P.y,G.y);
 
-	p_file = fopen(argv[2],"w+b");
+	p_file = fopen(argv[2],"wb");
 
 	if(p_file == NULL)	{
 		printf("Can't create file %s\n",argv[2]);

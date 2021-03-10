@@ -14,11 +14,11 @@ and then execute:
 
 ``./keyhunt``
 
-you need to have tome file called **adddress.txt** or specify other file with the **-f** opcion
+you need to have some file called **adddress.txt** or specify other file with the **-f** option
 
 ``./keyhunt -f ~/some/path/to/other/file.txt``
 
-if you want more thereads use the **-t** option
+if you want more threads use the **-t** option
 
 ``./keyhunt -f ~/some/path/to/other/file.txt -t 8``
 
@@ -32,7 +32,7 @@ The default behaivor ot keyhunt is to choose a random key and check secuentialy 
 
 # BSGS ( Baby step giant step)
 
-The new version of keyhunt implement the bsgs algorithm to search privatekeys for a knowed publickey.
+The new version of keyhunt implement the BSGS algorimth to search privatekeys for a knowed publickey.
 
 The address.txt file need to have a 130 hexadecimal characters uncompress publickey per line any other word followed by an space is ignored example of the file:
 
@@ -52,7 +52,7 @@ btw any word followed by and space after the publickey is ignored the file can b
 
 To try to find those privatekey this is the line of execution:
 
-`` ./keyhunt -m bsgs -f test_120.txt -r 800000000000000000000000000000:FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF ``
+`` ./keyhunt -m bsgs -f test_120.txt -b 800000000000000000000000000000:FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF``
 
 Output:
 
@@ -86,13 +86,13 @@ Test the puzzle 120 with the next publickey:
 ```
 
 Line of execution in random mode **-R**
-``./keyhunt -m bsgs -f 120.txt -r 800000000000000000000000000000:FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF -R`` 
+``./keyhunt -m bsgs -f 120.txt -b 120 -R`` 
 
 
 Example Output:
 
 ```
-$ ./keyhunt -m bsgs -f 120.txt -r 800000000000000000000000000000:FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF -R
+$ ./keyhunt -m bsgs -f 120.txt -b 120 -R
 [+] Version 0.1.20210112 BSGS
 [+] Setting mode BSGS
 [+] Setting random mode.
@@ -116,39 +116,66 @@ Good speed no? 1.1 Terakeys/s for one single thread
 
 **Total 35184372088832 keys in 30 seconds: 1172812402961 keys/s**
 
-We can speed up our process selecting a bigger n value **-n value** btw the n value is the total length of item tested in the radom range, and bigger n value means more ram to be use:
+We can speed up our process selecting a bigger K value **-k value** btw the n value is the total length of item tested in the radom range, a bigger k value means more ram to be use:
 
 Example:
-``$ ./keyhunt -m bsgs -f 120.txt -r 800000000000000000000000000000:FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF -R -n 1000000000000000 -s 120``
+``$ ./keyhunt -m bsgs -f 120.txt -b 120 -k 20``
 
 Example output:
 
 ```
-$ ./keyhunt -m bsgs -f 120.txt -r 800000000000000000000000000000:FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF -R -n 1000000000000000 -s 120
-[+] Version 0.1.20210112 BSGS
+$ ./keyhunt -m bsgs -f 120.txt -b 120 -k 20 -R -p ~/keyhunt/bPfile.bin
+[+] Version 0.1.20210306 K*BSGS
 [+] Setting mode BSGS
+[+] Min range: 800000000000000000000000000000
+[+] Max range: ffffffffffffffffffffffffffffff
+[+] Setting k factor to 20
 [+] Setting random mode.
-[+] Stats output every 120 seconds
 [+] Opening file 120.txt
 [+] Added 1 points from file
-[+] Setting N up to 1000000025191729.
-[+] Init bloom filter for 31622777 elements : 54.00 MB
-[+] Allocating 965.00 MB for aMP Points
-[+] Precalculating 31622777 aMP points
-[+] Allocating 1085.00 MB for bP Points
-[+] precalculating 31622777 bP points
-[+] Sorting 31622777 elements
-[+] Thread 0: 0000000000000000000000000000000000f7e37bb1f8b39dc749ff0c6be2b918
-[+] Thread 0: 0000000000000000000000000000000000fe37e21c957baf3823262cf7270d67
-Total 1000000025191729 keys in 120 seconds: 8333333543264 keys/s
-[+] Thread 0: 0000000000000000000000000000000000af1723ee0314a3381a58b5421bce63
-Total 2000000050383458 keys in 240 seconds: 8333333543264 keys/s
-
+[+] Bit Range 120
+[+] Setting N up to 17592253153280.
+[+] Init bloom filter for 83886080 elements : 239.00 MB
+[+] Allocating 6.00 MB for aMP Points
+[+] Precalculating 209716 aMP points
+[+] Allocating 1280.00 MB for bP Points
+[+] precalculating 83886080 bP points
+[+] Sorting 83886080 elements
+(Thread output omited....)
+Total 562952100904960 keys in 30 seconds: 18765070030165 keys/s
+(Thread output omited....)
+Total 2445323188305920 keys in 120 seconds: 20377693235882 keys/s
 ```
 
-**8.3 Terakeys/s for one single thread**
+**20 Terakeys/s for one single thread**
 
-Please be careful with the n value and test it first by you own, againts a knowed publickey/privatekey, some values of n are bugging and I need to solve the errors, please report any extrage behaivor of the tool.
+Want to more Speed use a bigger -k value like 120, it will use some 9 GB of RAM
+
+
+```
+[+] Version 0.1.20210306 K*BSGS
+[+] Setting mode BSGS
+[+] Min range: 800000000000000000000000000000
+[+] Max range: ffffffffffffffffffffffffffffff
+[+] Setting k factor to 120
+[+] Setting random mode.
+[+] Opening file 120.txt
+[+] Added 1 points from file
+[+] Bit Range 120
+[+] Setting N up to 17592420925440.
+[+] Init bloom filter for 503316480 elements : 1437.00 MB
+[+] Allocating 1.00 MB for aMP Points
+[+] Precalculating 34953 aMP points
+[+] Allocating 7680.00 MB for bP Points
+[+] precalculating 503316480 bP points
+[+] Sorting 503316480 elements
+(Thread output omited....)
+Total 3465706922311680 keys in 30 seconds: 115523564077056 keys/s
+````
+
+**~100 Terakeys/s for one single thread**
+
+
 
 # Dependencies
 - libgmp

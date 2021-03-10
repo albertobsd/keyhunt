@@ -80,13 +80,13 @@ static int bloom_check_add(struct bloom * bloom,
 
 
 // DEPRECATED - Please migrate to bloom_init2.
-int bloom_init(struct bloom * bloom, int entries, double error)
+int bloom_init(struct bloom * bloom, unsigned long long int entries, double error)
 {
-  return bloom_init2(bloom, (unsigned int)entries, error);
+  return bloom_init2(bloom, entries, error);
 }
 
 
-int bloom_init2(struct bloom * bloom, unsigned int entries, double error)
+int bloom_init2(struct bloom * bloom, unsigned long long int entries, double error)
 {
   memset(bloom, 0, sizeof(struct bloom));
 
@@ -144,7 +144,7 @@ void bloom_print(struct bloom * bloom)
   printf("bloom at %p\n", (void *)bloom);
   if (!bloom->ready) { printf(" *** NOT READY ***\n"); }
   printf(" ->version = %d.%d\n", bloom->major, bloom->minor);
-  printf(" ->entries = %u\n", bloom->entries);
+  printf(" ->entries = %lu\n", bloom->entries);
   printf(" ->error = %f\n", bloom->error);
   printf(" ->bits = %llu\n", bloom->bits);
   printf(" ->bits per elem = %f\n", bloom->bpe);

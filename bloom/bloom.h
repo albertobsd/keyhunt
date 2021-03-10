@@ -24,7 +24,7 @@ struct bloom
   // These fields are part of the public interface of this structure.
   // Client code may read these values if desired. Client code MUST NOT
   // modify any of these.
-  unsigned int entries;
+  unsigned long long int entries;
   unsigned long long int bits;
   unsigned long long int bytes;
   unsigned char hashes;
@@ -68,7 +68,7 @@ struct bloom
  *     1 - on failure
  *
  */
-int bloom_init2(struct bloom * bloom, unsigned int entries, double error);
+int bloom_init2(struct bloom * bloom, unsigned long long int entries, double error);
 
 
 /**
@@ -76,7 +76,7 @@ int bloom_init2(struct bloom * bloom, unsigned int entries, double error);
  * Kept for compatibility with libbloom v.1. To be removed in v3.0.
  *
  */
-int bloom_init(struct bloom * bloom, int entries, double error);
+int bloom_init(struct bloom * bloom, unsigned long long int entries, double error);
 
 
 /** ***************************************************************************

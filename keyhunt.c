@@ -1,4 +1,3 @@
-
 /*
 Develop by Luis Alberto
 email: alberto.bsd@gmail.com
@@ -101,7 +100,6 @@ const char *minus_params[2] = {"quiet","help"};
 
 pthread_t *tid = NULL;
 pthread_mutex_t write_keys;
-pthread_mutex_t write_range;
 pthread_mutex_t write_random;
 pthread_mutex_t threads_end;
 pthread_mutex_t bsgs_thread;
@@ -427,16 +425,13 @@ int main(int argc, char **argv)	{
       break;
     }
   }
-	/*
-	gmp_printf("[+] %Zu\n",EC.p);
-	gmp_printf("[+] %Zu\n",EC.n);
-	*/
+
 	if(FLAGMODE != MODE_BSGS  && FLAGRANDOM == 1)	{
 		FLAGRANGE = 0;
 	}
 	if(DEBUGCOUNT  > N_SECUENTIAL_MAX)	{
 		DEBUGCOUNT = N_SECUENTIAL_MAX - 1;
-		//printf("Setting debug count to %u",N_SECUENTIAL_MAX);
+
 	}
 	if(FLAGFILE == 0) {
 		filename =(char*) default_filename;
@@ -503,7 +498,6 @@ int main(int argc, char **argv)	{
 		    hextemp = fgets(aux,1000,fd);
 				if(hextemp == aux)	{
 			    trim(aux," \t\n\r");
-					//printf("reading %s\n",aux);
 			    r = strlen(aux);
 			    if(r > 10)  { //Any length for invalid Address?
 			      if(r > MAXLENGTHADDRESS)  {
@@ -532,13 +526,13 @@ int main(int argc, char **argv)	{
 		}
 	  printf("[+] Initializing bloom filter for %u elements.\n",N);
 		if(N <= 10000)	{
-			if(bloom_init2(&bloom,10000,0.0001)  == 1){
+			if(bloom_init2(&bloom,10000,0.00001)  == 1){
 				fprintf(stderr,"[E] error bloom_init for 10000 elements.\n");
 				exit(0);
 			}
 		}
 		else	{
-			if(bloom_init2(&bloom,N,0.0001)  == 1){
+			if(bloom_init2(&bloom,N,0.00001)  == 1){
 				fprintf(stderr,"[E] error bloom_init for %u elements.\n",N);
 				fprintf(stderr,"[+] man enough is enough stop it\n");
 				exit(0);
@@ -796,13 +790,13 @@ int main(int argc, char **argv)	{
 
 		printf("[+] Setting N up to %llu.\n",(long long unsigned int)DEBUGCOUNT);
 		if(bsgs_m > 1000)	{
-			if(bloom_init2(&bloom_bPx,bsgs_m,0.001)  == 1){
+			if(bloom_init2(&bloom_bPx,bsgs_m,0.00001)  == 1){
 				fprintf(stderr,"[E] error bloom_init for %lu elements\n",bsgs_m);
 				exit(0);
 			}
 		}
 		else	{
-			if(bloom_init2(&bloom_bPx,1000,0.001)  == 1){
+			if(bloom_init2(&bloom_bPx,1000,0.00001)  == 1){
 				fprintf(stderr,"[E] error bloom_init for 1000 elements\n");
 				exit(0);
 			}
@@ -1040,9 +1034,11 @@ int main(int argc, char **argv)	{
 	mpz_init(debugcount_mpz);
 	sprintf(temporal,"%llu",(long long unsigned int)DEBUGCOUNT);
 	mpz_set_str(debugcount_mpz,temporal,10);
+	/*
 	printf("DEBUGCOUNT: %llu\n",DEBUGCOUNT);
 	gmp_printf("debugcount_mpz: %Zu\n",debugcount_mpz);
 	printf("NTHREADS: %i\n",NTHREADS);
+	*/
   do  {
     sleep(1);
     seconds+=1;
@@ -1064,7 +1060,6 @@ int main(int argc, char **argv)	{
         i = 0;
         while(i < NTHREADS) {
 					mpz_mul_ui(pretotal,debugcount_mpz,steps[i]);
-					/*printf("steps: %i\n",steps[i]);*/
 					mpz_add(total,total,pretotal);
           i++;
         }
@@ -1106,105 +1101,10 @@ void Point_Doubling(struct Point *P, struct Point *R)	{
 	mpz_clear(slope);
 }
 
-
-/*
-void Point_Doubling(struct Point *P, struct Point *R)	{
-	mpz_t slope, temp;
-	mpz_init(temp);
-	mpz_init(slope);
-	if(mpz_cmp_ui(P->y, 0) != 0) {
-		mpz_mul_ui(temp, P->y, 2);
-		mpz_invert(temp, temp, EC.p);
-		mpz_mul(slope, P->x, P->x);
-		mpz_mul_ui(slope, slope, 3);
-		mpz_mul(slope, slope, temp);
-		mpz_mod(slope, slope, EC.p);
-		mpz_mul(R->x, slope, slope);
-		mpz_sub(R->x, R->x, P->x);
-		mpz_sub(R->x, R->x, P->x);
-		mpz_mod(R->x, R->x, EC.p);
-		mpz_sub(temp, P->x, R->x);
-		mpz_mul(R->y, slope, temp);
-		mpz_sub(R->y, R->y, P->y);
-		mpz_mod(R->y, R->y, EC.p);
-	} else {
-		mpz_set_ui(R->x, 0);
-		mpz_set_ui(R->y, 0);
-	}
-	mpz_clear(temp);
-	mpz_clear(slope);
-}
-*/
-
-/*
 void Point_Addition(struct Point *P, struct Point *Q, struct Point *R)	{
 	mpz_t PA_temp,PA_slope;
 	mpz_init(PA_temp);
 	mpz_init(PA_slope);
-	mpz_mod(Q->x, Q->x, EC.p);
-	mpz_mod(Q->y, Q->y, EC.p);
-	mpz_mod(P->x, P->x, EC.p);
-	mpz_mod(P->y, P->y, EC.p);
-	if(mpz_cmp_ui(P->x, 0) == 0 && mpz_cmp_ui(P->y, 0) == 0) {
-		mpz_set(R->x, Q->x);
-		mpz_set(R->y, Q->y);
-	}
-	else	{
-		if(mpz_cmp_ui(Q->x, 0) == 0 && mpz_cmp_ui(Q->y, 0) == 0) {
-			mpz_set(R->x, P->x);
-			mpz_set(R->y, P->y);
-		}
-		else	{
-			if(mpz_cmp_ui(Q->y, 0) != 0) {
-				mpz_sub(PA_temp, EC.p, Q->y);
-				mpz_mod(PA_temp, PA_temp, EC.p);
-			}
-			else	{
-				mpz_set_ui(PA_temp, 0);
-			}
-			if(mpz_cmp(P->y, PA_temp) == 0 && mpz_cmp(P->x, Q->x) == 0) {
-				mpz_set_ui(R->x, 0);
-				mpz_set_ui(R->y, 0);
-			}
-			else	{
-				if(mpz_cmp(P->x, Q->x) == 0 && mpz_cmp(P->y, Q->y) == 0)	{
-					Point_Doubling(P, R);
-				}
-				else {
-					mpz_set_ui(PA_slope, 0);
-					mpz_sub(PA_temp, P->x, Q->x);
-					mpz_mod(PA_temp, PA_temp, EC.p);
-					mpz_invert(PA_temp, PA_temp, EC.p);
-					mpz_sub(PA_slope, P->y, Q->y);
-					mpz_mul(PA_slope, PA_slope, PA_temp);
-					mpz_mod(PA_slope, PA_slope, EC.p);
-					mpz_mul(R->x, PA_slope, PA_slope);
-					mpz_sub(R->x, R->x, P->x);
-					mpz_sub(R->x, R->x, Q->x);
-					mpz_mod(R->x, R->x, EC.p);
-					mpz_sub(PA_temp, P->x, R->x);
-					mpz_mul(R->y, PA_slope, PA_temp);
-					mpz_sub(R->y, R->y, P->y);
-					mpz_mod(R->y, R->y, EC.p);
-				}
-			}
-		}
-	}
-	mpz_clear(PA_temp);
-	mpz_clear(PA_slope);
-}
-*/
-
-void Point_Addition(struct Point *P, struct Point *Q, struct Point *R)	{
-	mpz_t PA_temp,PA_slope;
-	mpz_init(PA_temp);
-	mpz_init(PA_slope);
-	/*
-	mpz_mod(Q->x, Q->x, EC.p);
-	mpz_mod(Q->y, Q->y, EC.p);
-	mpz_mod(P->x, P->x, EC.p);
-	mpz_mod(P->y, P->y, EC.p);
-	*/
 	if(mpz_cmp_ui(P->x, 0) == 0 && mpz_cmp_ui(P->y, 0) == 0) {
 		mpz_set(R->x, Q->x);
 		mpz_set(R->y, Q->y);
@@ -1430,16 +1330,8 @@ void *thread_process(void *vargp)	{
 		pthread_mutex_unlock(&write_random);
     hextemp  = malloc(65);
 		gmp_sprintf(hextemp,"%0.64Zx",random_key_mpz);
-		pthread_mutex_lock(&write_range);
 		printf("Thread %i : Setting up base key: %s\n",thread_number,hextemp);
-		/*
-		range_file = fopen("./ranges.txt","a+");
-		if(range_file != NULL)	{
-			fprintf(range_file,"%s\n",hextemp);
-			fclose(range_file);
-		}
-		*/
-		pthread_mutex_unlock(&write_range);
+
 		free(hextemp);
 		Scalar_Multiplication(G, &R, random_key_mpz);
     count = 0;
@@ -1633,15 +1525,7 @@ void *thread_process_range(void *vargp)	{
 		exit(0);
 	}
 	printf("Thread %i : Setting up base key: %s\n",thread_number,tt->rs);
-  pthread_mutex_lock(&write_range);
-	/*
-  range_file = fopen("./ranges.txt","a+");
-  if(range_file != NULL)	{
-    fprintf(range_file,"%s\n",tt->rs);
-    fclose(range_file);
-  }
-	*/
-  pthread_mutex_unlock(&write_range);
+
   free(tt->rs);
   free(tt->rpt);
   free(tt);

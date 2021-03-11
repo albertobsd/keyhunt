@@ -48,7 +48,7 @@ struct tothread {
   char *rpt;  //rng per thread
 };
 
-const char *version = "0.1.20210306 K*BSGS";
+const char *version = "0.1.20210311 K*BSGS";
 const char *EC_constant_N = "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141";
 const char *EC_constant_P = "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f";
 const char *EC_constant_Gx = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
@@ -760,7 +760,13 @@ int main(int argc, char **argv)	{
 		}
 		fclose(fd);
 		bsgs_point_number = N;
-		printf("[+] Added %u points from file\n",bsgs_point_number);
+		if(N > 0)	{
+			printf("[+] Added %u points from file\n",bsgs_point_number);
+		}
+		else	{
+			printf("[E] The file don't have any valid publickeys\n");
+			exit(0);
+		}
 		mpz_init(BSGS_N);
 		mpz_init(BSGS_M);
 		mpz_init(point_temp.x);

@@ -1,3 +1,7 @@
+#Version 0.1.20210311 K*BSGS
+- Solved some bug when the publickeys in the input file was invalid but the program keeps running with 0 publickeys
+- Now publickeys can be compressed, not only uncompressed
+
 #Version 0.1.20210306 K*BSGS
 - Added K factor for BSGS
 - Added bPfile.c to generate a precalculated file

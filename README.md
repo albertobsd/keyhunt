@@ -54,7 +54,7 @@ btw any word followed by and space after the publickey is ignored the file can b
 
 To try to find those privatekey this is the line of execution:
 
-`` ./keyhunt -m bsgs -f test_120.txt -b 800000000000000000000000000000:FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF``
+``./keyhunt -m bsgs -f test_120.txt -r 800000000000000000000000000000:FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF``
 
 Output:
 

@@ -84,7 +84,7 @@ All points were found
 Test the puzzle 120 with the next publickey:
 
 ```
-04ceb6cbbcdbdf5ef7150682150f4ce2c6f4807b349827dcdbdd1f2efa885a26302b195386bea3f5f002dc033b92cfc2c9e71b586302b09cfe535e1ff290b1b5ac # Compressed Address : 17s2b9ksz5y7abUm92cHwG8jEPCzK3dLnT
+02CEB6CBBCDBDF5EF7150682150F4CE2C6F4807B349827DCDBDD1F2EFA885A2630
 ```
 
 Line of execution in random mode **-R**

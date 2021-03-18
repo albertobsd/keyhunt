@@ -1,4 +1,8 @@
 #Version 0.1.20210311 K*BSGS
+- Added mode rmd160, this method works two times faster than Address method. This mode can search all the altcoins
+
+
+#Version 0.1.20210311 K*BSGS
 - Solved some bug when the publickeys in the input file was invalid but the program keeps running with 0 publickeys
 - Now publickeys can be compressed, not only uncompressed
 

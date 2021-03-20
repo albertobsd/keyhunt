@@ -113,7 +113,7 @@ int main(int argc, char **argv)	{
 		mpz_set(point_t.x,P.x);
 		mpz_set(point_t.y,P.y);
 		gmp_sprintf(temporal,"%0.64Zx",P.x);
-		hexs2bin(temporal,rawvalue);
+		hexs2bin(temporal,(unsigned char *)rawvalue);
 		fwrite(rawvalue,1,32,p_file);
 		Point_Addition(&G,&point_t,&P);
 		i++;

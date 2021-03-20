@@ -55,7 +55,7 @@ struct tothread {
 	char *rpt;	//rng per thread
 };
 
-const char *version = "0.1.20210318 K*BSGS";
+const char *version = "0.1.20210320 K*BSGS";
 const char *EC_constant_N = "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141";
 const char *EC_constant_P = "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f";
 const char *EC_constant_Gx = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
@@ -88,7 +88,7 @@ int64_t bsgs_partition(struct bsgs_xvalue *arr, int64_t n);
 int bsgs_searchbinary(struct bsgs_xvalue *arr,char *data,int64_t _N,int64_t *r_value);
 
 void *thread_process(void *vargp);
-void *thread_process_range(void *vargp);
+
 void *thread_process_bsgs(void *vargp);
 void *thread_process_bsgs_random(void *vargp);
 
@@ -103,9 +103,8 @@ char *bit_range_str_max;
 
 const char *modes[4] = {"xpoint","address","bsgs","rmd160"};
 const char *cryptos[3] = {"btc","eth","all"};
-const char *publicsearch[3] = {"compress","uncompress","both"};
+const char *publicsearch[3] = {"uncompress","compress","both"};
 const char *default_filename = "addresses.txt";
-//const char *minus_params[2] = {"quiet","help"};
 
 pthread_t *tid = NULL;
 pthread_mutex_t write_keys;
@@ -181,9 +180,7 @@ struct Point point_temp,point_temp2;	//Temp value for some process
 mpz_t n_range_start;
 mpz_t n_range_end;
 mpz_t n_range_diff;
-mpz_t n_range_per_threads;
 mpz_t n_range_aux;
-mpz_t n_range_r;
 
 int main(int argc, char **argv)	{
 	char temporal[65];
@@ -210,7 +207,7 @@ int main(int argc, char **argv)	{
 	mpz_init_set_str(G.y , EC_constant_Gy, 16);
 	init_doublingG(&G);
 	mpz_init_set_ui(TWO,2);
-	mpz_init(MPZAUX);
+	
 
 	while ((c = getopt(argc, argv, "ehqRwb:c:f:g:k:l:m:n:p:r:s:t:v:-:")) != -1) {
 		switch(c) {
@@ -252,6 +249,7 @@ int main(int argc, char **argv)	{
 			case 'b':
 				bitrange = strtol(optarg,NULL,10);
 				if(bitrange > 0 && bitrange <=256 )	{
+					mpz_init(MPZAUX);
 					/*Buscar bit_range_str_min and bit_range_str_max*/
 
 					mpz_pow_ui(MPZAUX,TWO,bitrange-1);
@@ -266,6 +264,7 @@ int main(int argc, char **argv)	{
 					printf("[+] Min range: %s\n",bit_range_str_min);
 					printf("[+] Max range: %s\n",bit_range_str_max);
 					FLAGBITRANGE = 1;
+					mpz_clear(MPZAUX);
 				}
 				else	{
 					fprintf(stderr,"[E] invalid bits param: %s.\n",optarg);
@@ -374,7 +373,8 @@ int main(int argc, char **argv)	{
 				printf("[+] Setting random mode.\n");
 			break;
 			case 'r':
-				if(optarg != NULL)	{					stringtokenizer(optarg,&t);
+				if(optarg != NULL)	{					
+					stringtokenizer(optarg,&t);
 					switch(t.n)	{
 						case 1:
 							range_start = nextToken(&t);
@@ -436,30 +436,13 @@ int main(int argc, char **argv)	{
 			printf("[+] Data marked as RAW\n");
 				FLAGRAWDATA = 1;
 			break;
-			/*
-			case '-':
-				switch(indexOf(optarg,minus_params,2))	{
-					case 0:	//--quiet
-						FLAGQUIET	= 1;
-						printf("[+] Set quiet thread output\n");
-					break;
-					case 1:	// --help
-					break;
-					default:
-						printf("[E] unknow param %s\n",optarg);
-					break;
-				}
-			break;
-			*/
 			default:
 				printf("[E] Unknow opcion %c\n",c);
 			break;
 		}
 	}
 
-	if(FLAGMODE != MODE_BSGS	&& FLAGRANDOM == 1)	{
-		FLAGRANGE = 0;
-	}
+
 	if(DEBUGCOUNT	> N_SECUENTIAL_MAX)	{
 		DEBUGCOUNT = N_SECUENTIAL_MAX - 1;
 
@@ -477,24 +460,24 @@ int main(int argc, char **argv)	{
 		FLAGCRYPTO = CRYPTO_BTC;
 		printf("[+] Setting search for btc adddress\n");
 	}
+	mpz_init(n_range_start);
+	mpz_init(n_range_end);
+	mpz_init(n_range_diff);
+	
 	if(FLAGRANGE) {
-		mpz_init_set_str(n_range_start,range_start,16);
-		mpz_init_set_str(n_range_end,range_end,16);
+		mpz_set_str(n_range_start,range_start,16);
+		mpz_set_str(n_range_end,range_end,16);
 		if(mpz_cmp(n_range_start,n_range_end) != 0 ) {
 			if(mpz_cmp(n_range_start,EC.n) < 0 && mpz_cmp(n_range_end,EC.n) <= 0)	{
 				if(mpz_cmp(n_range_start,n_range_end) > 0) {
-					fprintf(stderr,"[W] Opps, start and range can't be great than End range. Swapping them\n");
-					mpz_init_set(n_range_aux,n_range_start);
+					fprintf(stderr,"[W] Opps, start range can't be great than end range. Swapping them\n");
+					mpz_init(n_range_aux);
+					mpz_set(n_range_aux,n_range_start);
 					mpz_set(n_range_start,n_range_end);
 					mpz_set(n_range_end,n_range_aux);
 					mpz_clear(n_range_aux);
 				}
-				mpz_init(n_range_per_threads);
-				mpz_init(n_range_diff);
-				mpz_init(n_range_r);
 				mpz_sub(n_range_diff,n_range_end,n_range_start);
-				mpz_fdiv_q_ui(n_range_per_threads,n_range_diff,NTHREADS);
-				mpz_mod_ui(n_range_r,n_range_diff,NTHREADS);
 			}
 			else	{
 				fprintf(stderr,"[E] Start and End range can't be great than N\nFallback to random mode!\n");
@@ -506,6 +489,24 @@ int main(int argc, char **argv)	{
 			FLAGRANGE = 0;
 		}
 	}
+	if(FLAGMODE != MODE_BSGS)	{
+		if(FLAGRANGE == 0 && FLAGBITRANGE == 0)	{
+			mpz_set_str(n_range_start,"1",10);
+			mpz_set(n_range_end,EC.n);
+			mpz_sub(n_range_diff,n_range_end,n_range_start);
+		}
+		else	{
+			if(FLAGBITRANGE)	{
+				mpz_set_str(n_range_start,bit_range_str_min,16);
+				mpz_set_str(n_range_end,bit_range_str_max,16);
+				mpz_sub(n_range_diff,n_range_end,n_range_start);
+			}
+			else	{
+				fprintf(stderr,"[W] WTF!\n");
+			}
+		}
+	}
+	
 	N =0;
 	if(FLAGMODE != MODE_BSGS)	{
 		aux = malloc(1000);
@@ -565,7 +566,7 @@ int main(int argc, char **argv)	{
 						if(hextemp == aux)	{
 							trim(aux," \t\n\r");
 							r = strlen(aux);
-							if(r > 10)	{ //Any length for invalid Address?
+							if(r >= 32)	{ //Any length for invalid Address?
 								N++;
 							}
 						}
@@ -581,7 +582,7 @@ int main(int argc, char **argv)	{
 		}
 		fseek(fd,0,SEEK_SET);
 
-		printf("[+] Allocating memory for %u elements: %.2f MB\n",N,(MAXLENGTHADDRESS*N)/1048576);
+		printf("[+] Allocating memory for %u elements: %.2f MB\n",N,(double)(MAXLENGTHADDRESS*N)/1048576);
 		i = 0;
 		do {
 			DATABUFFER = malloc(MAXLENGTHADDRESS*N);
@@ -646,38 +647,64 @@ int main(int argc, char **argv)	{
 					}
 				}
 				else	{
-					aux = malloc(3*MAXLENGTHADDRESS);
+					aux = malloc(5*MAXLENGTHADDRESS);
 					if(aux == NULL)	{
 						fprintf(stderr,"[E] error malloc()\n");
 						exit(0);
 					}
 					while(i < N)	{
-						memset(aux,0,3*MAXLENGTHADDRESS);
-						hextemp = fgets(aux,3*MAXLENGTHADDRESS,fd);
+						memset(aux,0,5*MAXLENGTHADDRESS);
+						hextemp = fgets(aux,(5*MAXLENGTHADDRESS) -2,fd);
 						memset(DATABUFFER + (i*MAXLENGTHADDRESS),0,MAXLENGTHADDRESS);
 						if(hextemp == aux)	{
 							trim(aux," \t\n\r");
 							lenaux = strlen(aux);
 							
 							if(isValidHex(aux)) {
-								if(lenaux <= 64)	{
-									if(lenaux < 64)	{
-										aux2 = calloc(3*MAXLENGTHADDRESS,1);
-										lendiff = 64 - lenaux;
-										memcpy(aux2+lendiff,aux,lenaux);
-										memset(aux2,'0',lendiff);
-										memcpy(aux,aux2,3*MAXLENGTHADDRESS);
-										free(aux2);
-									}
-									if(hexs2bin(aux,(unsigned char*)(DATABUFFER + (uint64_t)(i*MAXLENGTHADDRESS))))	{
-											bloom_add(&bloom,(char*)( DATABUFFER + (uint64_t)(i*MAXLENGTHADDRESS)),MAXLENGTHADDRESS);
-									}
-									else	{
-										fprintf(stderr,"[E] error hexs2bin\n");
-									}
-								}
-								else	{
-									fprintf(stderr,"[E] Omiting line : %s\n",aux);
+								switch(lenaux)	{
+									case 64:	/*X value*/
+										if(hexs2bin(aux,(unsigned char*)(DATABUFFER + (uint64_t)(i*MAXLENGTHADDRESS))))	{
+												bloom_add(&bloom,(char*)( DATABUFFER + (uint64_t)(i*MAXLENGTHADDRESS)),MAXLENGTHADDRESS);
+										}
+										else	{
+											fprintf(stderr,"[E] error hexs2bin\n");
+										}
+									break;
+									case 66:	/*Compress publickey*/
+										if(hexs2bin(aux+2,(unsigned char*)(DATABUFFER + (uint64_t)(i*MAXLENGTHADDRESS))))	{
+												bloom_add(&bloom,(char*)( DATABUFFER + (uint64_t)(i*MAXLENGTHADDRESS)),MAXLENGTHADDRESS);
+										}
+										else	{
+											fprintf(stderr,"[E] error hexs2bin\n");
+										}
+									break;
+									case 130:	/* Uncompress publickey length*/
+										memset(temporal,0,65);	
+										memcpy(temporal,aux+2,64);
+										if(hexs2bin(temporal,(unsigned char*)(DATABUFFER + (uint64_t)(i*MAXLENGTHADDRESS))))	{
+												bloom_add(&bloom,(char*)( DATABUFFER + (uint64_t)(i*MAXLENGTHADDRESS)),MAXLENGTHADDRESS);
+										}
+										else	{
+											fprintf(stderr,"[E] error hexs2bin\n");
+										}
+									break;
+									default:	
+										if(lenaux < 64)	{	/*Some *GENIUS* scripts omit the zeros at the beginning og the hash that is OK, but the hexs2bin expect an even size strings */
+											memset(temporal,'0',64);
+											temporal[64] = '\0';
+											lendiff = 64 - lenaux;
+											memcpy(temporal+lendiff,aux,lenaux);
+											if(hexs2bin(temporal,(unsigned char*)(DATABUFFER + (uint64_t)(i*MAXLENGTHADDRESS))))	{
+													bloom_add(&bloom,(char*)( DATABUFFER + (uint64_t)(i*MAXLENGTHADDRESS)),MAXLENGTHADDRESS);
+											}
+											else	{
+												fprintf(stderr,"[E] error hexs2bin\n");
+											}
+										}
+										else{	/*Unknow*/
+											fprintf(stderr,"[E] Omiting line unknow length size %i: %s\n",lenaux,aux);
+										}
+									break;
 								}
 							}
 							else	{
@@ -1079,7 +1106,7 @@ int main(int argc, char **argv)	{
 					mpz_set(point_temp.x,BSGS_P.x);
 					mpz_set(point_temp.y,BSGS_P.y);
 					gmp_sprintf(temporal,"%0.64Zx",BSGS_P.x);
-					hexs2bin(temporal,rawvalue);
+					hexs2bin(temporal,(unsigned char*)rawvalue);
 					memcpy(bPtable[i].value,rawvalue,BSGS_XVALUE_RAM);
 					bPtable[i].index = j;
 					bloom_add(&bloom_bPx, rawvalue,BSGS_BUFFERXPOINTLENGTH);
@@ -1095,7 +1122,7 @@ int main(int argc, char **argv)	{
 				mpz_set(point_temp.x,BSGS_P.x);
 				mpz_set(point_temp.y,BSGS_P.y);
 				gmp_sprintf(temporal,"%0.64Zx",BSGS_P.x);
-				hexs2bin(temporal, rawvalue );
+				hexs2bin(temporal,(unsigned char*) rawvalue );
 				memcpy(bPtable[i].value,rawvalue,BSGS_XVALUE_RAM);
 				bPtable[i].index = j;
 				bloom_add(&bloom_bPx, rawvalue ,BSGS_BUFFERXPOINTLENGTH);
@@ -1117,7 +1144,6 @@ int main(int argc, char **argv)	{
 		ends = (unsigned int *) calloc(NTHREADS,sizeof(int));
 		tid = (pthread_t *) calloc(NTHREADS,sizeof(pthread_t));
 		DEBUGCOUNT = (uint64_t)((uint64_t)bsgs_m * (uint64_t)bsgs_aux);
-		//DEBUGCOUNT = (uint64_t)((uint64_t)bsgs_m * (uint64_t)bsgs_m);
 		for(i= 0;i < NTHREADS; i++)	{
 			tt = malloc(sizeof(struct tothread));
 			tt->nt = i;
@@ -1140,47 +1166,17 @@ int main(int argc, char **argv)	{
 		ends = (unsigned int *) calloc(NTHREADS,sizeof(int));
 		tid = (pthread_t *) calloc(NTHREADS,sizeof(pthread_t));
 
-		if(FLAGRANGE == 0)	{
-			for(i= 0;i < NTHREADS; i++)	{
-				tt = malloc(sizeof(struct tothread));
-				tt->nt = i;
-				steps[i] = 0;
-				s = pthread_create(&tid[i],NULL,thread_process,(void *)tt);
-				if(s != 0)	{
-					fprintf(stderr,"[E] pthread_create thread_process\n");
-					exit(0);
-				}
+		for(i= 0;i < NTHREADS; i++)	{
+			tt = malloc(sizeof(struct tothread));
+			tt->nt = i;
+			steps[i] = 0;
+			s = pthread_create(&tid[i],NULL,thread_process,(void *)tt);
+			if(s != 0)	{
+				fprintf(stderr,"[E] pthread_create thread_process\n");
+				exit(0);
 			}
 		}
-		else	{
-			for(i= 0;i < NTHREADS; i++)	{
-				if(i == (NTHREADS)-1) {
-					mpz_add(n_range_per_threads,n_range_per_threads,n_range_r);
-				}
-				tt = malloc(sizeof(struct tothread));
-				tt->nt = i;
-				tt->rs = malloc(65);
-				mpz_get_str(tt->rs,16,n_range_start);
 
-				tt->rpt = malloc(65);
-				mpz_get_str(tt->rpt,16,n_range_per_threads);
-
-				steps[i] = 0;
-				s = pthread_create(&tid[i],NULL,thread_process_range,(void *)tt);
-				if(s != 0)	{
-					fprintf(stderr,"[E] pthread_create thread_process\n");
-					exit(0);
-				}
-				mpz_add(n_range_start,n_range_start,n_range_per_threads);
-			}
-		}
-		if(FLAGRANGE) {
-			mpz_clear(n_range_per_threads);
-			mpz_clear(n_range_start);
-			mpz_clear(n_range_end);
-			mpz_clear(n_range_diff);
-			mpz_clear(n_range_r);
-		}
 	}
 	continue_flag = 1;
 	mpz_init(total);
@@ -1381,8 +1377,6 @@ char *pubkeytopubaddress(char *pkey,int length)	{
 		fprintf(stderr,"error malloc()\n");
 		exit(0);
 	}
-
-
 	//digest [000...0]
  	sha256(pkey, length, digest);
 	//digest [SHA256 32 bytes+000....0]
@@ -1451,9 +1445,9 @@ void *thread_process(void *vargp)	{
 	struct tothread *tt;
 	struct Point R,temporal;
 	uint64_t count = 0;
-	int r,thread_number,found;
-	char *hexstrpoint;
-	char *public_key_compressed,*public_key_uncompressed,*publickeyhashrmd160_compress,*publickeyhashrmd160_uncompress;
+	int r,thread_number,found,continue_flag = 1;
+	char public_key_compressed[33],public_key_uncompressed[65],hexstrpoint[65];
+	char *publickeyhashrmd160_compress,*publickeyhashrmd160_uncompress;
 	char *hextemp,*public_key_compressed_hex,*public_key_uncompressed_hex;
 	char *eth_address;
 	char *public_address_compressed,*public_address_uncompressed;
@@ -1465,194 +1459,236 @@ void *thread_process(void *vargp)	{
 	mpz_init(R.y);
 	mpz_init(temporal.x);
 	mpz_init(temporal.y);
-	if(FLAGBITRANGE)	{
-		mpz_init_set_str(mpz_bit_range_min,bit_range_str_min,16);
-		mpz_init_set_str(mpz_bit_range_max,bit_range_str_max,16);
-		mpz_init(mpz_bit_range_diff);
-		mpz_sub(mpz_bit_range_diff,mpz_bit_range_max,mpz_bit_range_min);
-	}
-	public_key_compressed = malloc(33);
-	public_key_uncompressed = malloc(65);
-	hexstrpoint = malloc(65);
 	tt = (struct tothread *)vargp;
 	thread_number = tt->nt;
 	free(tt);
-	if(public_key_compressed == NULL || public_key_uncompressed == NULL || hexstrpoint == NULL)	{
-		fprintf(stderr,"error malloc!\n");
-		exit(0);
-	}
+
 	found = 0;
 	do {
-		pthread_mutex_lock(&write_random);
-		if(FLAGBITRANGE)	{
-			mpz_urandomm(key_mpz,state,mpz_bit_range_diff);
-			mpz_add(key_mpz,key_mpz,mpz_bit_range_min);
+		if(FLAGRANDOM){
+			mpz_urandomm(key_mpz,state,n_range_diff);
+			mpz_add(key_mpz,key_mpz,n_range_start);
 		}
 		else	{
-			mpz_urandomm(key_mpz,state,EC.n);
+			if(mpz_cmp(n_range_start,n_range_end) <= 0)	{
+				pthread_mutex_lock(&write_random);
+				mpz_set(key_mpz,n_range_start);
+				mpz_add_ui(n_range_start,n_range_start,N_SECUENTIAL_MAX);
+				pthread_mutex_unlock(&write_random);
+			}
+			else	{
+				continue_flag = 0;
+			}
 		}
-		pthread_mutex_unlock(&write_random);
-		hextemp	= malloc(65);
-		gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
-		printf("Thread %i : Setting up base key: %s\n",thread_number,hextemp);
-		free(hextemp);
-		Scalar_Multiplication(G, &R, key_mpz);
-		count = 0;
-		public_key_uncompressed[0] = 0x04;
+		if(continue_flag)	{
+			hextemp	= malloc(65);
+			gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
+			printf("Thread %i : Setting up base key: %s\n",thread_number,hextemp);
+			free(hextemp);
+			Scalar_Multiplication(G, &R, key_mpz);
+			count = 0;
+			public_key_uncompressed[0] = 0x04;
 
-		do {
-			mpz_set(temporal.x,R.x);
-			mpz_set(temporal.y,R.y);
+			do {
+				mpz_set(temporal.x,R.x);
+				mpz_set(temporal.y,R.y);
 
-			gmp_sprintf(hexstrpoint,"%0.64Zx",R.x);
-			hexs2bin(hexstrpoint,(unsigned char*)(public_key_compressed+1));
+				gmp_sprintf(hexstrpoint,"%0.64Zx",R.x);
+				hexs2bin(hexstrpoint,(unsigned char*)(public_key_compressed+1));
 
-			if(mpz_tstbit(R.y, 0) == 0)	{	// Even
-				public_key_compressed[0] = 0x02;
-			}
-			else	{	//Odd
-				public_key_compressed[0] = 0x03;
-			}
-			memcpy(public_key_uncompressed+1,public_key_compressed+1,32);
-			gmp_sprintf(hexstrpoint,"%0.64Zx",R.y);
-			hexs2bin(hexstrpoint,(unsigned char*)(public_key_uncompressed+33));
+				if(mpz_tstbit(R.y, 0) == 0)	{	// Even
+					public_key_compressed[0] = 0x02;
+				}
+				else	{	//Odd
+					public_key_compressed[0] = 0x03;
+				}
+				memcpy(public_key_uncompressed+1,public_key_compressed+1,32);
+				gmp_sprintf(hexstrpoint,"%0.64Zx",R.y);
+				hexs2bin(hexstrpoint,(unsigned char*)(public_key_uncompressed+33));
 
-			switch(FLAGMODE)	{
-				case MODE_ADDRESS:
-					switch(FLAGSEARCH)	{
-						case SEARCH_UNCOMPRESS:
-							public_address_uncompressed = pubkeytopubaddress(public_key_uncompressed,65);
-						break;
-						case SEARCH_COMPRESS:
-							public_address_compressed = pubkeytopubaddress(public_key_compressed,33);
-						break;
-						case SEARCH_BOTH:
-							public_address_compressed = pubkeytopubaddress(public_key_compressed,33);
-							public_address_uncompressed = pubkeytopubaddress(public_key_uncompressed,65);
-						break;
-					}
-					if(FLAGVANITY)	{
-						if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH){
-							if(strncmp(public_address_uncompressed,vanity,len_vanity) == 0)	{
-								hextemp = malloc(65);
-								gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
-								vanityKeys = fopen("vanitykeys.txt","a+");
-								if(vanityKeys != NULL)	{
-									fprintf(vanityKeys,"PrivKey: %s\nAddress uncompressed: %s\n",hextemp,public_address_uncompressed);
-									fclose(vanityKeys);
+				switch(FLAGMODE)	{
+					case MODE_ADDRESS:
+						switch(FLAGSEARCH)	{
+							case SEARCH_UNCOMPRESS:
+								public_address_uncompressed = pubkeytopubaddress(public_key_uncompressed,65);
+							break;
+							case SEARCH_COMPRESS:
+								public_address_compressed = pubkeytopubaddress(public_key_compressed,33);
+							break;
+							case SEARCH_BOTH:
+								public_address_compressed = pubkeytopubaddress(public_key_compressed,33);
+								public_address_uncompressed = pubkeytopubaddress(public_key_uncompressed,65);
+							break;
+						}
+						if(FLAGVANITY)	{
+							if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH){
+								if(strncmp(public_address_uncompressed,vanity,len_vanity) == 0)	{
+									hextemp = malloc(65);
+									gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
+									vanityKeys = fopen("vanitykeys.txt","a+");
+									if(vanityKeys != NULL)	{
+										fprintf(vanityKeys,"PrivKey: %s\nAddress uncompressed: %s\n",hextemp,public_address_uncompressed);
+										fclose(vanityKeys);
+									}
+									printf("Vanity privKey: %s\nAddress uncompressed:	%s\n",hextemp,public_address_uncompressed);
+									free(hextemp);
 								}
-								printf("Vanity privKey: %s\nAddress uncompressed:	%s\n",hextemp,public_address_uncompressed);
-								free(hextemp);
+							}
+							if(FLAGSEARCH == SEARCH_COMPRESS || FLAGSEARCH == SEARCH_BOTH){
+								if(strncmp(public_address_compressed,vanity,len_vanity) == 0)	{
+									hextemp = malloc(65);
+									gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
+									vanityKeys = fopen("vanitykeys.txt","a+");
+									if(vanityKeys != NULL)	{
+										fprintf(vanityKeys,"PrivKey: %s\nAddress compressed:	%s\n",hextemp,public_address_compressed);
+										fclose(vanityKeys);
+									}
+									printf("Vanity privKey: %s\nAddress compressed: %s\n",hextemp,public_address_compressed);
+									free(hextemp);
+								}
 							}
 						}
 						if(FLAGSEARCH == SEARCH_COMPRESS || FLAGSEARCH == SEARCH_BOTH){
-							if(strncmp(public_address_compressed,vanity,len_vanity) == 0)	{
-								hextemp = malloc(65);
-								gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
-								vanityKeys = fopen("vanitykeys.txt","a+");
-								if(vanityKeys != NULL)	{
-									fprintf(vanityKeys,"PrivKey: %s\nAddress compressed:	%s\n",hextemp,public_address_compressed);
-									fclose(vanityKeys);
-								}
-								printf("Vanity privKey: %s\nAddress compressed: %s\n",hextemp,public_address_compressed);
-								free(hextemp);
-							}
-						}
-					}
-					if(FLAGSEARCH == SEARCH_COMPRESS || FLAGSEARCH == SEARCH_BOTH){
-						r = bloom_check(&bloom,public_address_compressed,MAXLENGTHADDRESS);
-						if(r) {
-							r = searchbinary(DATABUFFER,public_address_compressed,MAXLENGTHADDRESS,N);
+							r = bloom_check(&bloom,public_address_compressed,MAXLENGTHADDRESS);
 							if(r) {
-								found++;
-								hextemp = malloc(65);
-								gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
-								public_key_compressed_hex = tohex(public_key_compressed,33);
-								pthread_mutex_lock(&write_keys);
-								keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
-								if(keys != NULL)	{
-									fprintf(keys,"PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_compressed_hex,public_address_compressed);
-									fclose(keys);
+								r = searchbinary(DATABUFFER,public_address_compressed,MAXLENGTHADDRESS,N);
+								if(r) {
+									found++;
+									hextemp = malloc(65);
+									gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
+									public_key_compressed_hex = tohex(public_key_compressed,33);
+									pthread_mutex_lock(&write_keys);
+									keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
+									if(keys != NULL)	{
+										fprintf(keys,"PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_compressed_hex,public_address_compressed);
+										fclose(keys);
+									}
+									printf("HIT!! PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_compressed_hex,public_address_compressed);
+									pthread_mutex_unlock(&write_keys);
+									free(public_key_compressed_hex);
+									free(hextemp);
 								}
-								printf("HIT!! PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_compressed_hex,public_address_compressed);
-								pthread_mutex_unlock(&write_keys);
-								free(public_key_compressed_hex);
-								free(hextemp);
 							}
+							free(public_address_compressed);
 						}
-						free(public_address_compressed);
-					}
-					
-					if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH){
-						r = bloom_check(&bloom,public_address_uncompressed,MAXLENGTHADDRESS);
-						if(r) {
-							r = searchbinary(DATABUFFER,public_address_uncompressed,MAXLENGTHADDRESS,N);
+						
+						if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH){
+							r = bloom_check(&bloom,public_address_uncompressed,MAXLENGTHADDRESS);
 							if(r) {
-								found++;
-								hextemp = malloc(65);
-								gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
-								public_key_uncompressed_hex = tohex(public_key_uncompressed,65);
-								pthread_mutex_lock(&write_keys);
-								keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
-								if(keys != NULL)	{
-									fprintf(keys,"PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,public_address_uncompressed);
-									fclose(keys);
+								r = searchbinary(DATABUFFER,public_address_uncompressed,MAXLENGTHADDRESS,N);
+								if(r) {
+									found++;
+									hextemp = malloc(65);
+									gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
+									public_key_uncompressed_hex = tohex(public_key_uncompressed,65);
+									pthread_mutex_lock(&write_keys);
+									keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
+									if(keys != NULL)	{
+										fprintf(keys,"PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,public_address_uncompressed);
+										fclose(keys);
+									}
+									printf("HIT!! PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,public_address_uncompressed);
+									pthread_mutex_unlock(&write_keys);
+									free(public_key_uncompressed_hex);
+									free(hextemp);
 								}
-								printf("HIT!! PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,public_address_uncompressed);
-								pthread_mutex_unlock(&write_keys);
-								free(public_key_uncompressed_hex);
-								free(hextemp);
-							}
-						}
-						free(public_address_uncompressed);
-					}		
-					if( (FLAGCRYPTO & CRYPTO_ETH) != 0) {
-						/*
-						mpz_export((public_key_uncompressed+1),&longtemp,1,8,1,0,R.x);
-						mpz_export((public_key_uncompressed+33),&longtemp,1,8,1,0,R.y);
-						public_address_uncompressed = pubkeytopubaddress_eth(public_key_uncompressed+1,64);
-						//printf("Testing for %s\n",public_address_uncompressed);
-						r = bloom_check(&bloom,public_address_uncompressed,MAXLENGTHADDRESS);
-						if(r) {
-							r = searchbinary(DATABUFFER,public_address_uncompressed,MAXLENGTHADDRESS,N);
-							if(r) {
-								hextemp = malloc(65);
-								mpz_get_str(hextemp,16,key_mpz);
-								public_key_uncompressed_hex = tohex(public_key_uncompressed+1,64);
-								pthread_mutex_lock(&write_keys);
-								keys = fopen("keys.txt","a+");
-								if(keys != NULL)	{
-									fprintf(keys,"PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,public_address_uncompressed);
-									fclose(keys);
-								}
-								printf("HIT!! PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,public_address_uncompressed);
-								pthread_mutex_unlock(&write_keys);
-								free(public_key_uncompressed_hex);
-								free(hextemp);
 							}
 							free(public_address_uncompressed);
+						}		
+						if( (FLAGCRYPTO & CRYPTO_ETH) != 0) {
+							/*
+							mpz_export((public_key_uncompressed+1),&longtemp,1,8,1,0,R.x);
+							mpz_export((public_key_uncompressed+33),&longtemp,1,8,1,0,R.y);
+							public_address_uncompressed = pubkeytopubaddress_eth(public_key_uncompressed+1,64);
+							//printf("Testing for %s\n",public_address_uncompressed);
+							r = bloom_check(&bloom,public_address_uncompressed,MAXLENGTHADDRESS);
+							if(r) {
+								r = searchbinary(DATABUFFER,public_address_uncompressed,MAXLENGTHADDRESS,N);
+								if(r) {
+									hextemp = malloc(65);
+									mpz_get_str(hextemp,16,key_mpz);
+									public_key_uncompressed_hex = tohex(public_key_uncompressed+1,64);
+									pthread_mutex_lock(&write_keys);
+									keys = fopen("keys.txt","a+");
+									if(keys != NULL)	{
+										fprintf(keys,"PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,public_address_uncompressed);
+										fclose(keys);
+									}
+									printf("HIT!! PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,public_address_uncompressed);
+									pthread_mutex_unlock(&write_keys);
+									free(public_key_uncompressed_hex);
+									free(hextemp);
+								}
+								free(public_address_uncompressed);
+							}
+							*/
 						}
-						*/
-					}
-				break;
-				case MODE_RMD160:
-					switch(FLAGSEARCH)	{
-						case SEARCH_UNCOMPRESS:
-							publickeyhashrmd160_uncompress = publickeytohashrmd160(public_key_uncompressed,65);
-						break;
-						case SEARCH_COMPRESS:
-							publickeyhashrmd160_compress = publickeytohashrmd160(public_key_compressed,33);
-						break;
-						case SEARCH_BOTH:
-							publickeyhashrmd160_compress = publickeytohashrmd160(public_key_compressed,33);
-							publickeyhashrmd160_uncompress = publickeytohashrmd160(public_key_uncompressed,65);
-						break;
-					}
-					
-					if(FLAGSEARCH == SEARCH_COMPRESS || FLAGSEARCH == SEARCH_BOTH){
-						r = bloom_check(&bloom,publickeyhashrmd160_compress,MAXLENGTHADDRESS);
+					break;
+					case MODE_RMD160:
+						switch(FLAGSEARCH)	{
+							case SEARCH_UNCOMPRESS:
+								publickeyhashrmd160_uncompress = publickeytohashrmd160(public_key_uncompressed,65);
+							break;
+							case SEARCH_COMPRESS:
+								publickeyhashrmd160_compress = publickeytohashrmd160(public_key_compressed,33);
+							break;
+							case SEARCH_BOTH:
+								publickeyhashrmd160_compress = publickeytohashrmd160(public_key_compressed,33);
+								publickeyhashrmd160_uncompress = publickeytohashrmd160(public_key_uncompressed,65);
+							break;
+						}
+						
+						if(FLAGSEARCH == SEARCH_COMPRESS || FLAGSEARCH == SEARCH_BOTH){
+							r = bloom_check(&bloom,publickeyhashrmd160_compress,MAXLENGTHADDRESS);
+							if(r) {
+								r = searchbinary(DATABUFFER,publickeyhashrmd160_compress,MAXLENGTHADDRESS,N);
+								if(r) {
+									found++;
+									hextemp = malloc(65);
+									gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
+									public_key_compressed_hex = tohex(public_key_compressed,33);
+									pthread_mutex_lock(&write_keys);
+									keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
+									if(keys != NULL)	{
+										fprintf(keys,"PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
+										fclose(keys);
+									}
+									printf("HIT!! PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
+									pthread_mutex_unlock(&write_keys);
+									free(public_key_compressed_hex);
+									free(hextemp);
+								}
+							}
+							free(publickeyhashrmd160_compress);
+						}
+						if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH){
+							r = bloom_check(&bloom,publickeyhashrmd160_uncompress,MAXLENGTHADDRESS);
+							if(r) {
+								r = searchbinary(DATABUFFER,publickeyhashrmd160_uncompress,MAXLENGTHADDRESS,N);
+								if(r) {
+									found++;
+									hextemp = malloc(65);
+									gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
+									public_key_uncompressed_hex = tohex(public_key_uncompressed,65);
+									pthread_mutex_lock(&write_keys);
+									keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
+									if(keys != NULL)	{
+										fprintf(keys,"PrivKey: %s\npubkey: %s\n",hextemp,public_key_uncompressed_hex);
+										fclose(keys);
+									}
+									printf("HIT!! PrivKey: %s\npubkey: %s\n",hextemp,public_key_uncompressed_hex);
+									pthread_mutex_unlock(&write_keys);
+									free(public_key_uncompressed_hex);
+									free(hextemp);
+								}
+							}
+							free(publickeyhashrmd160_uncompress);
+						}
+					break;
+					case MODE_XPOINT:
+						r = bloom_check(&bloom,public_key_compressed+1,MAXLENGTHADDRESS);
 						if(r) {
-							r = searchbinary(DATABUFFER,publickeyhashrmd160_compress,MAXLENGTHADDRESS,N);
+							r = searchbinary(DATABUFFER,public_key_compressed+1,MAXLENGTHADDRESS,N);
 							if(r) {
 								found++;
 								hextemp = malloc(65);
@@ -1670,350 +1706,22 @@ void *thread_process(void *vargp)	{
 								free(hextemp);
 							}
 						}
-						free(publickeyhashrmd160_compress);
-					}
-					if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH){
-						r = bloom_check(&bloom,publickeyhashrmd160_uncompress,MAXLENGTHADDRESS);
-						if(r) {
-							r = searchbinary(DATABUFFER,publickeyhashrmd160_uncompress,MAXLENGTHADDRESS,N);
-							if(r) {
-								found++;
-								hextemp = malloc(65);
-								gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
-								public_key_uncompressed_hex = tohex(public_key_uncompressed,65);
-								pthread_mutex_lock(&write_keys);
-								keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
-								if(keys != NULL)	{
-									fprintf(keys,"PrivKey: %s\npubkey: %s\n",hextemp,public_key_uncompressed_hex);
-									fclose(keys);
-								}
-								printf("HIT!! PrivKey: %s\npubkey: %s\n",hextemp,public_key_uncompressed_hex);
-								pthread_mutex_unlock(&write_keys);
-								free(public_key_uncompressed_hex);
-								free(hextemp);
-							}
-						}
-						free(publickeyhashrmd160_uncompress);
-					}
-
-					
-					
-
-				break;
-				case MODE_XPOINT:
-					r = bloom_check(&bloom,public_key_compressed+1,MAXLENGTHADDRESS);
-					if(r) {
-						r = searchbinary(DATABUFFER,public_key_compressed+1,MAXLENGTHADDRESS,N);
-						if(r) {
-							found++;
-							hextemp = malloc(65);
-							gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
-							public_key_compressed_hex = tohex(public_key_compressed,33);
-							pthread_mutex_lock(&write_keys);
-							keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
-							if(keys != NULL)	{
-								fprintf(keys,"PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
-								fclose(keys);
-							}
-							printf("HIT!! PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
-							pthread_mutex_unlock(&write_keys);
-							free(public_key_compressed_hex);
-							free(hextemp);
-						}
-					}
-				break;
-			}
-			count++;
-			if(count %	DEBUGCOUNT == 0)	{
-				steps[thread_number]++;
-			}
-			mpz_add_ui(key_mpz,key_mpz,1);
-			Point_Addition(&temporal,&G,&R);
-		}while(count <= N_SECUENTIAL_MAX);
-	} while(1);
-	printf("Testing Keys %lu\n",count);
-	printf("Found %i\n",found);
-}
-
-void *thread_process_range(void *vargp)	{
-	struct tothread *tt;
-	struct Point R,temporal;
-	uint64_t count = 0;
-	int r,thread_number,found = 0;
-	char *hexstrpoint;
-	char *public_key_compressed,*public_key_uncompressed,*publickeyhashrmd160_compress,*publickeyhashrmd160_uncompress;
-	char *hextemp,*public_key_compressed_hex,*public_key_uncompressed_hex;
-	char *eth_address;
-	char *public_address_compressed,*public_address_uncompressed;
-	unsigned long longtemp;
-	FILE *keys,*range_file,*vanityKeys;
-	mpz_t key_mpz,max_mpz;
-	mpz_init(R.x);
-	mpz_init(R.y);
-	mpz_init(temporal.x);
-	mpz_init(temporal.y);
-	tt = (struct tothread *) vargp;
-	thread_number = tt->nt;
-
-	mpz_init_set_str(key_mpz,tt->rs,16);
-	mpz_init_set_str(max_mpz,tt->rpt,16);
-	mpz_add(max_mpz,key_mpz,max_mpz);
-
-	public_key_compressed = malloc(33);
-	public_key_uncompressed = malloc(65);
-	hexstrpoint = malloc(65);
-
-	if(public_key_compressed == NULL || public_key_uncompressed == NULL || hexstrpoint == NULL)	{
-		fprintf(stderr,"error malloc!\n");
-		exit(0);
-	}
-	printf("Thread %i : Setting up base key: %s\n",thread_number,tt->rs);
-
-	free(tt->rs);
-	free(tt->rpt);
-	free(tt);
-	Scalar_Multiplication(G, &R, key_mpz);
-
-	public_key_uncompressed[0] = 0x04;
-	count = 0;
-
-	while(mpz_cmp(key_mpz,max_mpz) <= 0 ) {
-		mpz_set(temporal.x,R.x);
-		mpz_set(temporal.y,R.y);
-		//hexstrpoint
-		gmp_sprintf(hexstrpoint,"%0.64Zx",R.x);
-		hexs2bin(hexstrpoint,(unsigned char*)(public_key_compressed+1));
-
-		if(mpz_tstbit(R.y, 0) == 0)	{	// EVEN
-			public_key_compressed[0] = 0x02;
-		}
-		else	{ //ODD
-			public_key_compressed[0] = 0x03;
-		}
-		memcpy(public_key_uncompressed+1,public_key_compressed+1,32);
-		
-		gmp_sprintf(hexstrpoint,"%0.64Zx",R.y);
-		hexs2bin(hexstrpoint,(unsigned char*)(public_key_uncompressed+33));
-
-		switch(FLAGMODE)	{
-			case MODE_ADDRESS:
-				if( (FLAGCRYPTO & CRYPTO_BTC) != 0) {
-					switch(FLAGSEARCH)	{
-						case SEARCH_UNCOMPRESS:
-							public_address_uncompressed = pubkeytopubaddress(public_key_uncompressed,65);
-						break;
-						case SEARCH_COMPRESS:
-							public_address_compressed = pubkeytopubaddress(public_key_compressed,33);
-						break;
-						case SEARCH_BOTH:
-							public_address_compressed = pubkeytopubaddress(public_key_compressed,33);
-							public_address_uncompressed = pubkeytopubaddress(public_key_uncompressed,65);
-						break;
-					}
-					if(FLAGVANITY)	{
-						if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH){
-							if(strncmp(public_address_uncompressed,vanity,len_vanity) == 0)	{
-								hextemp = malloc(65);
-								gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
-								vanityKeys = fopen("vanitykeys.txt","a+");
-								if(vanityKeys != NULL)	{
-									fprintf(vanityKeys,"PrivKey: %s\nAddress uncompressed: %s\n",hextemp,public_address_uncompressed);
-									fclose(vanityKeys);
-								}
-								printf("Vanity privKey: %s\nAddress uncompressed: %s\n",hextemp,public_address_uncompressed);
-								free(hextemp);
-							}
-						}
-						if(FLAGSEARCH == SEARCH_COMPRESS || FLAGSEARCH == SEARCH_BOTH){
-							if(strncmp(public_address_compressed,vanity,len_vanity) == 0)	{
-								hextemp = malloc(65);
-								gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
-								vanityKeys = fopen("vanitykeys.txt","a+");
-								if(vanityKeys != NULL)	{
-									fprintf(vanityKeys,"PrivKey: %s\nAddress compressed: %s\n",hextemp,public_address_compressed);
-									fclose(vanityKeys);
-								}
-								printf("Vanity privKey: %s\nAddress compressed: %s\n",hextemp,public_address_compressed);
-								free(hextemp);
-							}
-						}
-					}
-					if(FLAGSEARCH == SEARCH_COMPRESS || FLAGSEARCH == SEARCH_BOTH){
-						r = bloom_check(&bloom,public_address_compressed,MAXLENGTHADDRESS);
-						if(r) {
-							//printf("bloom_check: %i	for %s\n",r,public_address_compressed);
-							r = searchbinary(DATABUFFER,public_address_compressed,MAXLENGTHADDRESS,N);
-							if(r) {
-								found++;
-								hextemp = malloc(65);
-								gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
-								public_key_compressed_hex = tohex(public_key_compressed,33);
-								pthread_mutex_lock(&write_keys);
-								keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
-								if(keys != NULL)	{
-									fprintf(keys,"PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_compressed_hex,public_address_compressed);
-									fclose(keys);
-								}
-								printf("HIT!! PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_compressed_hex,public_address_compressed);
-								pthread_mutex_unlock(&write_keys);
-								free(public_key_compressed_hex);
-								free(hextemp);
-							}
-						}
-						free(public_address_compressed);
-					}
-					if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH){
-						r = bloom_check(&bloom,public_address_uncompressed,MAXLENGTHADDRESS);
-						if(r) {
-							//printf("bloom_check: %i	for %s\n",r,public_address_uncompressed);
-							r = searchbinary(DATABUFFER,public_address_uncompressed,MAXLENGTHADDRESS,N);
-							if(r) {
-								found++;
-								hextemp = malloc(65);
-								gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
-								public_key_uncompressed_hex = tohex(public_key_uncompressed,65);
-								pthread_mutex_lock(&write_keys);
-								keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
-								if(keys != NULL)	{
-									fprintf(keys,"PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,public_address_uncompressed);
-									fclose(keys);
-								}
-								printf("HIT!! PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,public_address_uncompressed);
-								pthread_mutex_unlock(&write_keys);
-								free(public_key_uncompressed_hex);
-								free(hextemp);
-							}
-						}
-						free(public_address_uncompressed);
-					}
-					
-					
-				}
-
-				if( ( FLAGCRYPTO & CRYPTO_ETH ) != 0) {
-					/*
-					mpz_export((public_key_uncompressed+1),&longtemp,1,8,1,0,R.x);
-					mpz_export((public_key_uncompressed+33),&longtemp,1,8,1,0,R.y);
-					public_address_uncompressed = pubkeytopubaddress_eth(public_key_uncompressed+1,64);
-					//printf("Testing for %s\n",public_address_uncompressed);
-					r = bloom_check(&bloom,public_address_uncompressed,MAXLENGTHADDRESS);
-					if(r) {
-						r = searchbinary(DATABUFFER,public_address_uncompressed,MAXLENGTHADDRESS,N);
-						if(r) {
-							hextemp = malloc(65);
-							mpz_get_str(hextemp,16,key_mpz);
-							public_key_uncompressed_hex = tohex(public_key_uncompressed+1,64);
-							pthread_mutex_lock(&write_keys);
-							keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
-							if(keys != NULL)	{
-								fprintf(keys,"PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,public_address_uncompressed);
-								fclose(keys);
-							}
-							printf("HIT!! PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,public_address_uncompressed);
-							pthread_mutex_unlock(&write_keys);
-							free(public_key_uncompressed_hex);
-							free(hextemp);
-						}
-						free(public_address_uncompressed);
-					}
-					*/
-				}
-			break;
-			case MODE_RMD160:
-				switch(FLAGSEARCH)	{
-					case SEARCH_UNCOMPRESS:
-						publickeyhashrmd160_uncompress = publickeytohashrmd160(public_key_uncompressed,65);
-					break;
-					case SEARCH_COMPRESS:
-						publickeyhashrmd160_compress = publickeytohashrmd160(public_key_compressed,33);
-					break;
-					case SEARCH_BOTH:
-						publickeyhashrmd160_compress = publickeytohashrmd160(public_key_compressed,33);
-						publickeyhashrmd160_uncompress = publickeytohashrmd160(public_key_uncompressed,65);
 					break;
 				}
-				if(FLAGSEARCH == SEARCH_COMPRESS || FLAGSEARCH == SEARCH_BOTH){
-					r = bloom_check(&bloom,publickeyhashrmd160_compress,MAXLENGTHADDRESS);
-					if(r) {
-						r = searchbinary(DATABUFFER,publickeyhashrmd160_compress,MAXLENGTHADDRESS,N);
-						if(r) {
-							found++;
-							hextemp = malloc(65);
-							gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
-							public_key_compressed_hex = tohex(public_key_compressed,33);
-							pthread_mutex_lock(&write_keys);
-							keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
-							if(keys != NULL)	{
-								fprintf(keys,"PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
-								fclose(keys);
-							}
-							printf("HIT!! PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
-							pthread_mutex_unlock(&write_keys);
-							free(public_key_compressed_hex);
-							free(hextemp);
-						}
-					}
+				count++;
+				if(count %	DEBUGCOUNT == 0)	{
+					steps[thread_number]++;
 				}
-				if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH){
-					r = bloom_check(&bloom,publickeyhashrmd160_uncompress,MAXLENGTHADDRESS);
-					if(r) {
-						r = searchbinary(DATABUFFER,publickeyhashrmd160_uncompress,MAXLENGTHADDRESS,N);
-						if(r) {
-							found++;
-							hextemp = malloc(65);
-							gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
-							public_key_uncompressed_hex = tohex(public_key_uncompressed,65);
-							pthread_mutex_lock(&write_keys);
-							keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
-							if(keys != NULL)	{
-								fprintf(keys,"PrivKey: %s\npubkey: %s\n",hextemp,public_key_uncompressed_hex);
-								fclose(keys);
-							}
-							printf("HIT!! PrivKey: %s\npubkey: %s\n",hextemp,public_key_uncompressed_hex);
-							pthread_mutex_unlock(&write_keys);
-							free(public_key_uncompressed_hex);
-							free(hextemp);
-						}
-					}
-				}
-
-				free(publickeyhashrmd160_compress);
-				free(publickeyhashrmd160_uncompress);
-			break;
-			case MODE_XPOINT:
-				r = bloom_check(&bloom,public_key_compressed+1,MAXLENGTHADDRESS);
-				if(r) {
-					r = searchbinary(DATABUFFER,public_key_compressed+1,MAXLENGTHADDRESS,N);
-					if(r) {
-						found++;
-						hextemp = malloc(65);
-						gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
-						public_key_compressed_hex = tohex(public_key_compressed,33);
-						pthread_mutex_lock(&write_keys);
-						keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
-						if(keys != NULL)	{
-							fprintf(keys,"PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
-							fclose(keys);
-						}
-						printf("HIT!! PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
-						pthread_mutex_unlock(&write_keys);
-						free(public_key_compressed_hex);
-						free(hextemp);
-					}
-				}
-			break;
+				mpz_add_ui(key_mpz,key_mpz,1);
+				Point_Addition(&temporal,&G,&R);
+			}while(count <= N_SECUENTIAL_MAX);
 		}
-		count++;
-		if(count %	DEBUGCOUNT == 0)	{
-			steps[thread_number]++;
-		}
-		mpz_add_ui(key_mpz,key_mpz,1);
-		Point_Addition(&temporal,&G,&R);
-	}
-	printf("Testing Keys %lu\n",count);
+	} while(continue_flag);
 	printf("Found %i\n",found);
 	ends[thread_number] = 1;
+	return NULL;
 }
+
 
 
 void swap(char *a,char *b)	{
@@ -2278,7 +1986,6 @@ void bsgs_myheapsort(struct bsgs_xvalue	*arr, int64_t n)	{
 	}
 }
 
-
 int bsgs_searchbinary(struct bsgs_xvalue *buffer,char *data,int64_t _N,int64_t *r_value) {
 	char *temp_read;
 	int64_t min,max,half,current;
@@ -2313,8 +2020,7 @@ void *thread_process_bsgs(void *vargp)	{
 	char *aux_c;
 	mpz_t base_key,keyfound;
 	FILE *filekey;
-	struct Point base_point,point_aux,point_aux2,point_found;
-	struct Point *BSGS_Q, *BSGS_S,BSGS_Q_AMP;
+	struct Point base_point,point_aux,point_aux2,point_found,BSGS_S,BSGS_Q,BSGS_Q_AMP;
 	int64_t j;
 	uint32_t i,k,r,salir,thread_number;
 	tt = (struct tothread *)vargp;
@@ -2333,24 +2039,13 @@ void *thread_process_bsgs(void *vargp)	{
 	mpz_init(BSGS_Q_AMP.x);
 	mpz_init(BSGS_Q_AMP.y);
 
-	BSGS_S = malloc(bsgs_point_number*sizeof(struct Point));
-	BSGS_Q = malloc(bsgs_point_number*sizeof(struct Point));
-	if(BSGS_Q == NULL || BSGS_S == NULL /*|| BSGS_AMP == NULL*/)	{
-		fprintf(stderr,"[E] error malloc(): thread_process_bsgs\n");
-		exit(0);
-	}
+	mpz_init(BSGS_S.x);
+	mpz_init(BSGS_S.y);
+	mpz_init(BSGS_Q.x);
+	mpz_init(BSGS_Q.y);
 
-	/* We initializing all BSGS_Q values this is GMP related stuff*/
-	for(k = 0; k < bsgs_point_number; k++)	{
-		mpz_init(BSGS_Q[k].x);
-		mpz_init(BSGS_Q[k].y);
-		mpz_init(BSGS_S[k].x);
-		mpz_init(BSGS_S[k].x);
-		/*
-		mpz_init(BSGS_AMP[k].x);
-		mpz_init(BSGS_AMP[k].y);
-		*/
-	}
+
+
 	pthread_mutex_lock(&bsgs_thread);
 	/* we need to set our base_key to the current BSGS_CURRENT value*/
 	mpz_set(base_key,BSGS_CURRENT);
@@ -2379,36 +2074,7 @@ void *thread_process_bsgs(void *vargp)	{
 			point_aux = -( base_point * G)
 		*/
 		Point_Negation(&base_point,&point_aux);		//Point_Negation(&R,&S);
-		/*
-			We make a copy of the points OriginalPointsBSGS,
-			to work with them in the thread
-		*/
-		for(k = 0; k < bsgs_point_number; k++)	{
-			/*
-				We coppy OriginalPointsBSGS[k] into BSGS_Q[k]
-				BSGS_Q[k] is our Q point
-			*/
-			mpz_set(BSGS_Q[k].x,OriginalPointsBSGS[k].x);
-			mpz_set(BSGS_Q[k].y,OriginalPointsBSGS[k].y);
-			/*
-				We need to translate our Actually Q point into our Test Key Space
-				Test Key Space : 1 to M
-				S = Q - base_key*G
-				point_aux is "- base_key*G"
-			*/
-			Point_Addition(&OriginalPointsBSGS[k],&point_aux,&BSGS_S[k]);
-			/*
-				We save our BSGS_S again in BSGS_Q
-				This BSGS_Q value es now our "Normalize" Q point
-				or S in the next formula:	S		= Q - base_key*G
-			*/
-			mpz_set(BSGS_Q[k].x,BSGS_S[k].x);
-			mpz_set(BSGS_Q[k].y,BSGS_S[k].y);
-			/*
-			mpz_set_ui(BSGS_AMP[k].x,0);
-			mpz_set_ui(BSGS_AMP[k].y,0);
-			*/
-		}
+
 		for(k = 0; k < bsgs_point_number ; k++)	{
 			if(bsgs_found[k] == 0)	{
 				/*reset main variabler before the do-while cicle*/
@@ -2417,10 +2083,14 @@ void *thread_process_bsgs(void *vargp)	{
 				*/
 				salir = 0;
 				i = 0;
+				Point_Addition(&OriginalPointsBSGS[k],&point_aux,&BSGS_Q);
+				mpz_set(BSGS_S.x,BSGS_Q.x);
+				mpz_set(BSGS_S.y,BSGS_Q.y);
+				
 				do {
 					/* We need to test individually every point in BSGS_Q */
 					/*Extract BSGS_S.x into xpoint_str*/
-					gmp_sprintf(xpoint_str,"%0.64Zx",BSGS_S[k].x);
+					gmp_sprintf(xpoint_str,"%0.64Zx",BSGS_S.x);
 					/*xpoint_str -> binary*/
 					hexs2bin(xpoint_str,(unsigned char*)xpoint_raw);
 					//printf("Looking X : %s\n",xpoint_str);
@@ -2503,9 +2173,9 @@ void *thread_process_bsgs(void *vargp)	{
 							}
 						}
 					}
-					Point_Addition(&BSGS_Q[k],&BSGS_AMP[i],&BSGS_Q_AMP);
-					mpz_set(BSGS_S[k].x,BSGS_Q_AMP.x);
-					mpz_set(BSGS_S[k].y,BSGS_Q_AMP.y);
+					Point_Addition(&BSGS_Q,&BSGS_AMP[i],&BSGS_Q_AMP);
+					mpz_set(BSGS_S.x,BSGS_Q_AMP.x);
+					mpz_set(BSGS_S.y,BSGS_Q_AMP.y);
 					i++;
 				}while( i < bsgs_aux && !bsgs_found[k]);
 			} //end if
@@ -2516,14 +2186,12 @@ void *thread_process_bsgs(void *vargp)	{
 		mpz_add(BSGS_CURRENT,BSGS_CURRENT,BSGS_N);
 		pthread_mutex_unlock(&bsgs_thread);
 	}
-	for(i = 0; i < bsgs_point_number ; i++)	{
-		mpz_clear(BSGS_Q[i].x);
-		mpz_clear(BSGS_Q[i].y);
-		mpz_clear(BSGS_S[i].x);
-		mpz_clear(BSGS_S[i].y);
-	}
-	free(BSGS_Q);
-	free(BSGS_S);
+	
+	mpz_clear(BSGS_Q.x);
+	mpz_clear(BSGS_Q.y);
+	mpz_clear(BSGS_S.x);
+	mpz_clear(BSGS_S.y);
+
 	mpz_clear(base_key);
 	mpz_clear(keyfound);
 	mpz_clear(base_point.x);
@@ -2533,6 +2201,7 @@ void *thread_process_bsgs(void *vargp)	{
 	mpz_clear(point_aux2.x);
 	mpz_clear(point_aux2.y);
 	ends[thread_number] = 1;
+	return NULL;
 }
 
 void *thread_process_bsgs_random(void *vargp)	{
@@ -2541,8 +2210,7 @@ void *thread_process_bsgs_random(void *vargp)	{
 	char *aux_c;
 	mpz_t base_key,keyfound;
 	FILE *filekey;
-	struct Point base_point,point_aux,point_aux2,point_found;
-	struct Point *BSGS_Q, *BSGS_S,BSGS_Q_AMP /* ,*BSGS_AMP*/;
+	struct Point base_point,point_aux,point_aux2,point_found,BSGS_S,BSGS_Q,BSGS_Q_AMP;
 	mpz_t n_range_random;
 	int64_t j;
 	uint32_t i,k,r,salir,thread_number;
@@ -2566,28 +2234,12 @@ void *thread_process_bsgs_random(void *vargp)	{
 	mpz_init(BSGS_Q_AMP.x);
 	mpz_init(BSGS_Q_AMP.y);
 
-	BSGS_S = malloc(bsgs_point_number*sizeof(struct Point));
-	BSGS_Q = malloc(bsgs_point_number*sizeof(struct Point));
-	/*
-	BSGS_S_1 = malloc(bsgs_point_number*sizeof(struct Point));
-	BSGS_Q_2 = malloc(bsgs_point_number*sizeof(struct Point));
-	*/
-	//BSGS_AMP = malloc(bsgs_point_number*sizeof(struct Point));
-	if(BSGS_Q == NULL || BSGS_S == NULL /*|| BSGS_AMP == NULL*/)	{
-		fprintf(stderr,"[E] error malloc(): thread_process_bsgs\n");
-		exit(0);
-	}
-	/* We initializing all BSGS_Q values this is GMP related stuff*/
-	for(k = 0; k < bsgs_point_number; k++)	{
-		mpz_init(BSGS_Q[k].x);
-		mpz_init(BSGS_Q[k].y);
-		mpz_init(BSGS_S[k].x);
-		mpz_init(BSGS_S[k].x);
-		/*
-		mpz_init(BSGS_AMP[k].x);
-		mpz_init(BSGS_AMP[k].y);
-		*/
-	}
+
+	mpz_init(BSGS_S.x);
+	mpz_init(BSGS_S.y);
+	mpz_init(BSGS_Q.x);
+	mpz_init(BSGS_Q.y);
+
 	pthread_mutex_lock(&bsgs_thread);
 	/*			| Start Range	 | End Range		|
 		None	| 1							|	EC.N				 |
@@ -2617,49 +2269,22 @@ void *thread_process_bsgs_random(void *vargp)	{
 			point_aux = -( base_point * G)
 		*/
 		Point_Negation(&base_point,&point_aux);		//Point_Negation(&R,&S);
-		/*
-			We make a copy of the points OriginalPointsBSGS,
-			to work with them in the thread
-		*/
-		for(k = 0; k < bsgs_point_number; k++)	{
-			/*
-				We coppy OriginalPointsBSGS[k] into BSGS_Q[k]
-				BSGS_Q[k] is our Q point
-			*/
-			mpz_set(BSGS_Q[k].x,OriginalPointsBSGS[k].x);
-			mpz_set(BSGS_Q[k].y,OriginalPointsBSGS[k].y);
-			/*
-				We need to translate our Actually Q point into our Test Key Space
-				Test Key Space : 1 to M
-				S = Q - base_key*G
-				point_aux is "- base_key*G"
-			*/
-			Point_Addition(&OriginalPointsBSGS[k],&point_aux,&BSGS_S[k]);
-			/*
-				We save our BSGS_S again in BSGS_Q
-				This BSGS_Q value es now our "Normalize" Q point
-				or S in the next formula:	S		= Q - base_key*G
-			*/
-			mpz_set(BSGS_Q[k].x,BSGS_S[k].x);
-			mpz_set(BSGS_Q[k].y,BSGS_S[k].y);
-			/*
-			mpz_set_ui(BSGS_AMP[k].x,0);
-			mpz_set_ui(BSGS_AMP[k].y,0);
-			*/
-		}
+
+
 		/* We need to test individually every point in BSGS_Q */
 		for(k = 0; k < bsgs_point_number ; k++)	{
 			if(bsgs_found[k] == 0)	{
 			/*reset main variabler before the do-while cicle*/
 			salir = 0;
 			i = 0;
-			/* Main cycle
-				for every a in 0 to bsgs_aux
+			/* Main cycle for every a in 0 to bsgs_aux
 			*/
+			Point_Addition(&OriginalPointsBSGS[k],&point_aux,&BSGS_Q);
+			mpz_set(BSGS_S.x,BSGS_Q.x);
+			mpz_set(BSGS_S.y,BSGS_Q.y);
 			do {
-					gmp_sprintf(xpoint_str,"%0.64Zx",BSGS_S[k].x);
+					gmp_sprintf(xpoint_str,"%0.64Zx",BSGS_S.x);
 					hexs2bin(xpoint_str,(unsigned char*)xpoint_raw);
-
 
 					r = bloom_check(&bloom_bPx,xpoint_raw,32);
 					if(r) {
@@ -2737,9 +2362,9 @@ void *thread_process_bsgs_random(void *vargp)	{
 						}
 
 					}
-					Point_Addition(&BSGS_Q[k],&BSGS_AMP[i],&BSGS_Q_AMP);
-					mpz_set(BSGS_S[k].x,BSGS_Q_AMP.x);
-					mpz_set(BSGS_S[k].y,BSGS_Q_AMP.y);
+					Point_Addition(&BSGS_Q,&BSGS_AMP[i],&BSGS_Q_AMP);
+					mpz_set(BSGS_S.x,BSGS_Q_AMP.x);
+					mpz_set(BSGS_S.y,BSGS_Q_AMP.y);
 					i++;
 				} while( i < bsgs_aux && !bsgs_found[k]);
 			}	//End if
@@ -2750,14 +2375,11 @@ void *thread_process_bsgs_random(void *vargp)	{
 		mpz_add(base_key,n_range_start,n_range_random);
 		pthread_mutex_unlock(&bsgs_thread);
 	}
-	for(i = 0; i < bsgs_point_number ; i++)	{
-		mpz_clear(BSGS_Q[i].x);
-		mpz_clear(BSGS_Q[i].y);
-		mpz_clear(BSGS_S[i].x);
-		mpz_clear(BSGS_S[i].y);
-	}
-	free(BSGS_Q);
-	free(BSGS_S);
+	mpz_clear(BSGS_Q.x);
+	mpz_clear(BSGS_Q.y);
+	mpz_clear(BSGS_S.x);
+	mpz_clear(BSGS_S.y);
+	
 	mpz_clear(base_key);
 	mpz_clear(keyfound);
 	mpz_clear(base_point.x);
@@ -2767,4 +2389,5 @@ void *thread_process_bsgs_random(void *vargp)	{
 	mpz_clear(point_aux2.x);
 	mpz_clear(point_aux2.y);
 	ends[thread_number] = 1;
+	return NULL;
 }

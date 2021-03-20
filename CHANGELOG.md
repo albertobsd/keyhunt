@@ -1,3 +1,8 @@
+#Version 0.1.20210320 K*BSGS
+- Solved little error with compress and uncompress new param -l. See https://github.com/albertobsd/keyhunt/issues/17
+- funtion bsgs optimized to use a little less RAM (not related with Pfile)
+- Again removed some compile warnings. See https://github.com/albertobsd/keyhunt/issues/16
+
 #Version 0.1.20210311 K*BSGS
 - Added mode rmd160, this method works two times faster than Address method. This mode can search all the altcoins
 

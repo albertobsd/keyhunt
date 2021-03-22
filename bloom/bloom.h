@@ -28,7 +28,7 @@ struct bloom
   unsigned long long int bits;
   unsigned long long int bytes;
   unsigned char hashes;
-  double error;
+  long double error;
 
   // Fields below are private to the implementation. These may go away or
   // change incompatibly at any moment. Client code MUST NOT access or rely
@@ -68,7 +68,7 @@ struct bloom
  *     1 - on failure
  *
  */
-int bloom_init2(struct bloom * bloom, unsigned long long int entries, double error);
+int bloom_init2(struct bloom * bloom, unsigned long long int entries, long double error);
 
 
 /**
@@ -76,7 +76,7 @@ int bloom_init2(struct bloom * bloom, unsigned long long int entries, double err
  * Kept for compatibility with libbloom v.1. To be removed in v3.0.
  *
  */
-int bloom_init(struct bloom * bloom, unsigned long long int entries, double error);
+int bloom_init(struct bloom * bloom, unsigned long long int entries, long double error);
 
 
 /** ***************************************************************************

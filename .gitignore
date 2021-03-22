@@ -8,7 +8,6 @@ heapsort.c
 insertionsorttest.c
 introsort.c
 
-*.txt
 # Prerequisites
 *.d
 

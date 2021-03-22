@@ -22,6 +22,7 @@
 
 #include "bloom.h"
 #include "murmurhash2.h"
+#include "../xxhash/xxhash.h"
 
 #define MAKESTRING(n) STRING(n)
 #define STRING(n) #n
@@ -29,8 +30,7 @@
 #define BLOOM_VERSION_MAJOR 2
 #define BLOOM_VERSION_MINOR 1
 
-inline static int test_bit_set_bit(unsigned char * buf,
-                                   unsigned int bit, int set_bit)
+inline static int test_bit_set_bit(unsigned char * buf, uint64_t bit, int set_bit)
 {
   unsigned int byte = bit >> 3;
   unsigned char c = buf[byte];        // expensive memory access
@@ -56,9 +56,9 @@ static int bloom_check_add(struct bloom * bloom,
   }
 
   unsigned char hits = 0;
-  unsigned int a = murmurhash2(buffer, len, 0x9747b28c);
-  unsigned int b = murmurhash2(buffer, len, a);
-  unsigned int x;
+  uint64_t a = XXH64(buffer, len, 0x59f2815b16f81798);/*0x9747b28c); */
+  uint64_t b = XXH64(buffer, len, a);
+  uint64_t x;
   unsigned char i;
 
   for (i = 0; i < bloom->hashes; i++) {
@@ -80,13 +80,13 @@ static int bloom_check_add(struct bloom * bloom,
 
 
 // DEPRECATED - Please migrate to bloom_init2.
-int bloom_init(struct bloom * bloom, unsigned long long int entries, double error)
+int bloom_init(struct bloom * bloom, unsigned long long int entries, long double error)
 {
   return bloom_init2(bloom, entries, error);
 }
 
 
-int bloom_init2(struct bloom * bloom, unsigned long long int entries, double error)
+int bloom_init2(struct bloom * bloom, unsigned long long int entries, long double error)
 {
   memset(bloom, 0, sizeof(struct bloom));
 
@@ -145,7 +145,7 @@ void bloom_print(struct bloom * bloom)
   if (!bloom->ready) { printf(" *** NOT READY ***\n"); }
   printf(" ->version = %d.%d\n", bloom->major, bloom->minor);
   printf(" ->entries = %llu\n", bloom->entries);
-  printf(" ->error = %f\n", bloom->error);
+  printf(" ->error = %lf\n", bloom->error);
   printf(" ->bits = %llu\n", bloom->bits);
   printf(" ->bits per elem = %f\n", bloom->bpe);
   printf(" ->bytes = %llu", bloom->bytes);

@@ -55,7 +55,7 @@ struct tothread {
 	char *rpt;	//rng per thread
 };
 
-const char *version = "0.1.20210321 K*BSGS";
+const char *version = "0.1.20210322";
 const char *EC_constant_N = "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141";
 const char *EC_constant_P = "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f";
 const char *EC_constant_Gx = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";

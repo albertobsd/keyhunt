@@ -1,3 +1,8 @@
+# Version 0.1.20210328
+- Added a progress counter (this solve bug https://github.com/albertobsd/keyhunt/issues/18 )
+- Added multithread for precalculating bP items or reading then from file
+- Fixed the code to avoid warnings (this solve the issue https://github.com/albertobsd/keyhunt/issues/19)
+
 # Version 0.1.20210322
 - Added xxhash for bloomfilter it hash better performance than murmurhash2. And it is 64 bits hash :)
 - We reduce the number of items of the bPtable in ram using a second bloom filter, thanks @iceland2k14

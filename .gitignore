@@ -2,11 +2,7 @@ bPfile
 hexcharstoraw
 *.bin
 keyhunt
-test_bloom.c
-xpoints.c
-heapsort.c
-insertionsorttest.c
-introsort.c
+KEYFOUNDKEYFOUND.txt
 
 # Prerequisites
 *.d

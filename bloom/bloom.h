@@ -24,20 +24,20 @@ struct bloom
   // These fields are part of the public interface of this structure.
   // Client code may read these values if desired. Client code MUST NOT
   // modify any of these.
-  unsigned long long int entries;
-  unsigned long long int bits;
-  unsigned long long int bytes;
-  unsigned char hashes;
+  uint64_t entries;
+  uint64_t bits;
+  uint64_t bytes;
+  uint8_t hashes;
   long double error;
 
   // Fields below are private to the implementation. These may go away or
   // change incompatibly at any moment. Client code MUST NOT access or rely
   // on these.
-  unsigned char ready;
-  unsigned char major;
-  unsigned char minor;
+  uint8_t ready;
+  uint8_t major;
+  uint8_t minor;
   double bpe;
-  unsigned char * bf;
+  uint8_t *bf;
 };
 
 
@@ -68,7 +68,7 @@ struct bloom
  *     1 - on failure
  *
  */
-int bloom_init2(struct bloom * bloom, unsigned long long int entries, long double error);
+int bloom_init2(struct bloom * bloom, uint64_t entries, long double error);
 
 
 /**
@@ -76,7 +76,7 @@ int bloom_init2(struct bloom * bloom, unsigned long long int entries, long doubl
  * Kept for compatibility with libbloom v.1. To be removed in v3.0.
  *
  */
-int bloom_init(struct bloom * bloom, unsigned long long int entries, long double error);
+int bloom_init(struct bloom * bloom, uint64_t entries, long double error);
 
 
 /** ***************************************************************************

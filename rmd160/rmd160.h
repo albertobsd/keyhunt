@@ -3,6 +3,7 @@
 #ifndef _RMD160_H_
 #define _RMD160_H_
 
+#include <stdint.h>
 #include <sys/types.h>
 
 #define RMD160_BLOCKBYTES 64
@@ -20,9 +21,9 @@
 
 /* RIPEMD160 context. */
 typedef struct RMD160Context {
- u_int32_t key[RIPEMD160_BLOCKWORDS];
- u_int32_t iv[RIPEMD160_HASHWORDS];
- u_int32_t bytesHi, bytesLo;
+ uint32_t key[RIPEMD160_BLOCKWORDS];
+ uint32_t iv[RIPEMD160_HASHWORDS];
+ uint32_t bytesHi, bytesLo;
 } RMD160_CTX;
 
 #define RIPEMD160Context RMD160Context

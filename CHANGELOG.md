@@ -1,3 +1,7 @@
+# Version 0.1.20210330
+- xpoint mode now accept files with comments, useful for susbtracted keys with index
+- custom bloomfilter, this bloom avoid hashing process
+
 # Version 0.1.20210328
 - Added a progress counter (this solve bug https://github.com/albertobsd/keyhunt/issues/18 )
 - Added multithread for precalculating bP items or reading then from file

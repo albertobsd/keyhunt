@@ -17,6 +17,7 @@ email: alberto.bsd@gmail.com
 #include "rmd160/rmd160.h"
 #include "sha256/sha256.h"
 #include "bloom/bloom.h"
+#include "custombloom/bloom.h"
 #include "sha3/sha3.h"
 #include "util.h"
 
@@ -63,7 +64,7 @@ struct bPload	{
 };
 
 
-const char *version = "0.1.20210328";
+const char *version = "0.1.20210330";
 const char *EC_constant_N = "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141";
 const char *EC_constant_P = "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f";
 const char *EC_constant_Gx = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
@@ -173,10 +174,9 @@ uint64_t BSGS_BUFFERREGISTERLENGTH = 36;
 int *bsgs_found;
 struct Point *OriginalPointsBSGS;
 struct bsgs_xvalue *bPtable;
-struct bloom bloom_bP[256];
+struct custombloom bloom_bP[256];
+struct custombloom bloom_bPx2nd; //Second Bloom filter check
 uint64_t bloom_bP_totalbytes = 0;
-struct bloom bloom_bPx;
-struct bloom bloom_bPx2nd; //Second Bloom filter check
 char *precalculated_p_filename;
 uint64_t bsgs_m;
 uint64_t bsgs_m2;
@@ -209,7 +209,7 @@ int main(int argc, char **argv)	{
 	char temporal[65];
 	char rawvalue[32];
 	struct tothread *tt;	//tothread
-	Tokenizer t,tokenizerbsgs;	//tokenizer
+	Tokenizer t,tokenizerbsgs,tokenizer_xpoint;	//tokenizer
 	char *filename,*precalculated_mp_filename;
 	FILE *fd;
 	char *hextemp,*aux,*aux2,*pointx_str,*pointy_str;
@@ -685,9 +685,10 @@ int main(int argc, char **argv)	{
 						memset(DATABUFFER + (i*MAXLENGTHADDRESS),0,MAXLENGTHADDRESS);
 						if(hextemp == aux)	{
 							trim(aux," \t\n\r");
-							lenaux = strlen(aux);
-
-							if(isValidHex(aux)) {
+							stringtokenizer(aux,&tokenizer_xpoint);
+							hextemp = nextToken(&tokenizer_xpoint);
+							lenaux = strlen(hextemp);
+							if(isValidHex(hextemp)) {
 								switch(lenaux)	{
 									case 64:	/*X value*/
 										if(hexs2bin(aux,(unsigned char*)(DATABUFFER + (uint64_t)(i*MAXLENGTHADDRESS))))	{
@@ -737,11 +738,13 @@ int main(int argc, char **argv)	{
 							else	{
 								fprintf(stderr,"[E] Ignoring invalid hexvalue %s\n",aux);
 							}
+							freetokenizer(&tokenizer_xpoint);
 						}
 						else	{
 							fprintf(stderr,"[E] Omiting line : %s\n",aux);
 							N--;
 						}
+
 						i++;
 					}
 				}
@@ -1031,35 +1034,35 @@ int main(int argc, char **argv)	{
 
 		for(i=0; i< 256; i++)	{
 			if(((int)(bsgs_m/256)) > 1000)	{
-				if(bloom_init2(&bloom_bP[i],(int)(bsgs_m/256),0.000001)	== 1){
+				if(custombloom_init2(&bloom_bP[i],(int)(bsgs_m/256),0.000001)	== 1){
 					fprintf(stderr,"[E] error bloom_init [%"PRIu64"]\n",i);
 					exit(0);
 				}
 			}
 			else	{
-				if(bloom_init2(&bloom_bP[i],1000,0.000001)	== 1){
+				if(custombloom_init2(&bloom_bP[i],1000,0.000001)	== 1){
 					fprintf(stderr,"[E] error bloom_init for 1000 elements [%"PRIu64"]\n",i);
 					exit(0);
 				}
 			}
 			bloom_bP_totalbytes += bloom_bP[i].bytes;
-			if(FLAGDEBUG) bloom_print(&bloom_bP[i]);
+			if(FLAGDEBUG) custombloom_print(&bloom_bP[i]);
 		}
 		printf("[+] Init 1st bloom filter for %lu elements : %.2f MB\n",bsgs_m,(float)((uint64_t)bloom_bP_totalbytes/(uint64_t)1048576));
 
 		if(bsgs_m2 > 1000)	{
-			if(bloom_init2(&bloom_bPx2nd,bsgs_m2,0.000001)	== 1){
+			if(custombloom_init2(&bloom_bPx2nd,bsgs_m2,0.000001)	== 1){
 				fprintf(stderr,"[E] error bloom_init for %lu elements\n",bsgs_m2);
 				exit(0);
 			}
 		}
 		else	{
-			if(bloom_init2(&bloom_bPx2nd,1000,0.000001)	== 1){
+			if(custombloom_init2(&bloom_bPx2nd,1000,0.000001)	== 1){
 				fprintf(stderr,"[E] error bloom_init for 1000 elements\n");
 				exit(0);
 			}
 		}
-		if(FLAGDEBUG) bloom_print(&bloom_bPx2nd);
+		if(FLAGDEBUG) custombloom_print(&bloom_bPx2nd);
 		printf("[+] Init 2nd bloom filter for %lu elements : %.2f MB\n",bsgs_m2,(double)((double)bloom_bPx2nd.bytes/(double)1048576));
 		//bloom_print(&bloom_bPx2nd);
 
@@ -1197,8 +1200,9 @@ int main(int argc, char **argv)	{
 				for(i = 0; i < NTHREADS; i++)	{
 					total_precalculated+=temp[i].counter;
 				}
-				printf("\r[+] processing %lu/%lu bP points : %i %%",total_precalculated,bsgs_m,(int) (((double)total_precalculated/(double)bsgs_m)*100));
+				printf("\r[+] processing %lu/%lu bP points : %i%%",total_precalculated,bsgs_m,(int) (((double)total_precalculated/(double)bsgs_m)*100));
 		} while(total_precalculated < bsgs_m);
+
 		for(i = 0; i < NTHREADS; i++)	{
 			pthread_join(tid[i], NULL);
 		}
@@ -2080,7 +2084,7 @@ int bsgs_searchbinary(struct bsgs_xvalue *buffer,char *data,int64_t _N,uint64_t 
 	half = _N;
 	while(!r && half >= 1) {
 		half = (max - min)/2;
-		rcmp = memcmp(data,buffer[current+half].value,BSGS_XVALUE_RAM);
+		rcmp = memcmp(data+16,buffer[current+half].value,BSGS_XVALUE_RAM);
 		if(rcmp == 0)	{
 			*r_value = buffer[current+half].index;
 			r = 1;
@@ -2182,7 +2186,7 @@ void *thread_process_bsgs(void *vargp)	{
 					//printf("Looking X : %s\n",xpoint_str);
 					/* Lookup for the xpoint_raw into the bloom filter*/
 
-					r = bloom_check(&bloom_bP[((unsigned char)xpoint_raw[0])],xpoint_raw,32);
+					r = custombloom_check(&bloom_bP[((unsigned char)xpoint_raw[0])],xpoint_raw,32);
 					if(r) {
 						bloom_counter++;
 						/* Lookup for the xpoint_raw into the full sorted list*/
@@ -2331,7 +2335,7 @@ void *thread_process_bsgs_random(void *vargp)	{
 					gmp_sprintf(xpoint_str,"%0.64Zx",BSGS_S.x);
 					hexs2bin(xpoint_str,(unsigned char*)xpoint_raw);
 
-					r = bloom_check(&bloom_bP[((unsigned char)xpoint_raw[0])],xpoint_raw,32);
+					r = custombloom_check(&bloom_bP[((unsigned char)xpoint_raw[0])],xpoint_raw,32);
 					if(r) {
 						bloom_counter++;
 						/* Lookup for the xpoint_raw into the full sorted list*/
@@ -2433,7 +2437,7 @@ int bsgs_secondcheck(mpz_t start_range,uint32_t a,struct Point *target,mpz_t *pr
 	do {
 		gmp_sprintf(xpoint_str,"%0.64Zx",BSGS_S.x);
 		hexs2bin(xpoint_str,(unsigned char*)xpoint_raw);
-		r = bloom_check(&bloom_bPx2nd,xpoint_raw,32);
+		r = custombloom_check(&bloom_bPx2nd,xpoint_raw,32);
 		if(r)	{
 			//printf("bloom_bPx2nd MAYBE!!\n");
 			/* Lookup for the xpoint_raw into the full sorted list*/
@@ -2505,12 +2509,12 @@ void *thread_bPload(void *vargp)	{
 		gmp_sprintf(hexvalue,"%0.64Zx",P.x);
 		hexs2bin(hexvalue,(unsigned char*) rawvalue );
 		if(i < bsgs_m2)	{
-			memcpy(bPtable[j].value,rawvalue,BSGS_XVALUE_RAM);
+			memcpy(bPtable[j].value,rawvalue+16,BSGS_XVALUE_RAM);
 			bPtable[j].index = j;
-			bloom_add(&bloom_bPx2nd, rawvalue, BSGS_BUFFERXPOINTLENGTH);
+			custombloom_add(&bloom_bPx2nd, rawvalue, BSGS_BUFFERXPOINTLENGTH);
 			j++;
 		}
-		bloom_add(&bloom_bP[((uint8_t)rawvalue[0])], rawvalue ,BSGS_BUFFERXPOINTLENGTH);
+		custombloom_add(&bloom_bP[((uint8_t)rawvalue[0])], rawvalue ,BSGS_BUFFERXPOINTLENGTH);
 		Point_Addition(&G,&temp,&P);
 		i++;
 		tt->counter++;
@@ -2545,12 +2549,12 @@ void *thread_bPloadFile(void *vargp)	{
 	do {
 		if(fread(rawvalue,1,32,fd) == 32)	{
 			if(i < bsgs_m2)	{
-				memcpy(bPtable[j].value,rawvalue,BSGS_XVALUE_RAM);
+				memcpy(bPtable[j].value,rawvalue+16,BSGS_XVALUE_RAM);
 				bPtable[j].index = j;
-				bloom_add(&bloom_bPx2nd, rawvalue, BSGS_BUFFERXPOINTLENGTH);
+				custombloom_add(&bloom_bPx2nd, rawvalue, BSGS_BUFFERXPOINTLENGTH);
 				j++;
 			}
-			bloom_add(&bloom_bP[((uint8_t)rawvalue[0])], rawvalue ,BSGS_BUFFERXPOINTLENGTH);
+			custombloom_add(&bloom_bP[((uint8_t)rawvalue[0])], rawvalue ,BSGS_BUFFERXPOINTLENGTH);
 			i++;
 			tt->counter++;
 		}

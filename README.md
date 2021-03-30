@@ -422,8 +422,15 @@ Total 157238958864990208 keys in 30 seconds: 5241298628833006 keys/s
 ```
 I get 5.2 Petakeys/s total
 
-# Dependencies
+## Dependencies
 - libgmp
 - pthread
 
 Tested under Debian
+
+## Donation
+
+- BTC: 1Coffee1jV4gB5gaXfHgSHDz9xx9QSECVW
+- ETH: 0x6222978c984C22d21b11b5b6b0Dd839C75821069
+- DOGE: DKAG4g2HwVFCLzs7YWdgtcsK6v5jym1ErV
+- BCB: bcb_3rf4pzhrdeziygir8t5pmep4xdwqwyk1xgmytzyo991gdez1sgq1ehb3a8jh

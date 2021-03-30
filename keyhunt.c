@@ -20,6 +20,9 @@ email: alberto.bsd@gmail.com
 #include "custombloom/bloom.h"
 #include "sha3/sha3.h"
 #include "util.h"
+#ifdef WIN32
+	#include <windows.h>
+#endif
 
 #define CRYPTO_NONE 0
 #define CRYPTO_BTC 1
@@ -1458,7 +1461,7 @@ char *pubkeytopubaddress_eth(char *pkey,int length)	{
 char *pubkeytopubaddress(char *pkey,int length)	{
 	char *pubaddress = calloc(MAXLENGTHADDRESS+10,1);
 	char *digest = calloc(60,1);
-	long unsigned int pubaddress_size = MAXLENGTHADDRESS+10;
+	size_t pubaddress_size = MAXLENGTHADDRESS+10;
 	if(pubaddress == NULL || digest == NULL)	{
 		fprintf(stderr,"error malloc()\n");
 		exit(0);

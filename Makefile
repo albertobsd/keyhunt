@@ -7,7 +7,7 @@ default:
 	gcc -O3 -c sha3/sha3.c -o sha3.o
 	gcc -O3 -c xxhash/xxhash.c -o xxhash.o
 	gcc -O3 -c keyhunt.c -o keyhunt.o -lm
-	gcc -o keyhunt keyhunt.o base58.o rmd160.o sha256.o custombloom.o bloom.o xxhash.o -lgmp -lm -lpthread
+	gcc -o keyhunt keyhunt.o base58.o rmd160.o sha256.o custombloom.o bloom.o xxhash.o -lgmp -lm -lpthread -ggdb
 	gcc -O3 hexcharstoraw.c -o hexcharstoraw -lm
 	gcc -o bPfile bPfile.c -lgmp -lm
 clean:

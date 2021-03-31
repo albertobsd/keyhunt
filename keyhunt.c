@@ -54,6 +54,10 @@ struct bsgs_xvalue	{
 	uint64_t index;
 };
 
+struct address_value	{
+	uint8_t value[20];
+};
+
 struct tothread {
 	int nt; 		//Number thread
 	char *rs; 	//range start
@@ -67,7 +71,7 @@ struct bPload	{
 };
 
 
-const char *version = "0.1.20210330";
+const char *version = "0.1.20210331";
 const char *EC_constant_N = "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141";
 const char *EC_constant_P = "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f";
 const char *EC_constant_Gx = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
@@ -78,16 +82,16 @@ void Point_Doubling(struct Point *P, struct Point *R);
 void Point_Addition(struct Point *P, struct Point *Q, struct Point *R);
 void Scalar_Multiplication(struct Point P, struct Point *R, mpz_t m);
 void Point_Negation(struct Point *A, struct Point *S);
-int searchbinary(char *BUFFER,char *data,int length,int _N);
+int searchbinary(struct address_value *buffer,char *data,int64_t _N);
 void sleep_ms(int milliseconds);
 
-void _sort(char *arr,int N);
-void _insertionsort(char *arr, int n);
-void _introsort(char *arr,int depthLimit, int n);
-void swap(char *a,char *b);
-int partition(char *arr, int n);
-void myheapsort(char	*arr, int64_t n);
-void heapify(char *arr, int n, int i);
+void _sort(struct address_value *arr,int64_t N);
+void _insertionsort(struct address_value *arr, int64_t n);
+void _introsort(struct address_value *arr,uint32_t depthLimit, int64_t n);
+void _swap(struct address_value *a,struct address_value *b);
+int64_t _partition(struct address_value *arr, int64_t n);
+void _myheapsort(struct address_value	*arr, int64_t n);
+void _heapify(struct address_value *arr, int64_t n, int64_t i);
 
 void bsgs_sort(struct bsgs_xvalue *arr,int64_t n);
 void bsgs_myheapsort(struct bsgs_xvalue *arr, int64_t n);
@@ -106,7 +110,6 @@ void *thread_process_bsgs(void *vargp);
 void *thread_process_bsgs_random(void *vargp);
 void *thread_bPload(void *vargp);
 void *thread_bPloadFile(void *vargp);
-
 
 void init_doublingG(struct Point *P);
 char *publickeytohashrmd160(char *pkey,int length);
@@ -134,7 +137,6 @@ struct Point G;
 
 unsigned int *steps = NULL;
 unsigned int *ends = NULL;
-char *DATABUFFER;
 uint32_t N = 0;
 gmp_randstate_t state;
 
@@ -172,11 +174,12 @@ uint64_t BSGS_BUFFERXPOINTLENGTH = 32;
 uint64_t BSGS_BUFFERREGISTERLENGTH = 36;
 
 /*
-	BSGS Variables
+BSGS Variables
 */
 int *bsgs_found;
 struct Point *OriginalPointsBSGS;
 struct bsgs_xvalue *bPtable;
+struct address_value *addressTable;
 struct custombloom bloom_bP[256];
 struct custombloom bloom_bPx2nd; //Second Bloom filter check
 uint64_t bloom_bP_totalbytes = 0;
@@ -612,19 +615,20 @@ int main(int argc, char **argv)	{
 		}
 		fseek(fd,0,SEEK_SET);
 
-		printf("[+] Allocating memory for %u elements: %.2f MB\n",N,(double)(MAXLENGTHADDRESS*N)/1048576);
+		printf("[+] Allocating memory for %u elements: %.2f MB\n",N,(double)(sizeof(struct address_value)*N)/1048576);
 		i = 0;
+
 		do {
-			DATABUFFER = malloc(MAXLENGTHADDRESS*N);
+			addressTable = malloc(sizeof(struct address_value)*N);
 			i++;
-		} while(DATABUFFER == NULL && i < 10);
-		if(DATABUFFER == NULL)	{
+		} while(addressTable == NULL && i < 10);
+		if(addressTable == NULL)	{
 			fprintf(stderr,"[E] Can't alloc memory for %u elements\n",N);
 			exit(0);
 		}
 		printf("[+] Initializing bloom filter for %u elements.\n",N);
-		if(N <= 10000)	{
-			if(bloom_init2(&bloom,10000,0.00001)	== 1){
+		if(N <= 1000)	{
+			if(bloom_init2(&bloom,1000,0.00001)	== 1){
 				fprintf(stderr,"[E] error bloom_init for 10000 elements.\n");
 				exit(0);
 			}
@@ -647,12 +651,12 @@ int main(int argc, char **argv)	{
 				}
 				while(i < N)	{
 					memset(aux,0,2*MAXLENGTHADDRESS);
-					memset(DATABUFFER + (i*MAXLENGTHADDRESS),0,MAXLENGTHADDRESS);
+					memset((void *)&addressTable[i],0,sizeof(struct address_value));
 					hextemp = fgets(aux,2*MAXLENGTHADDRESS,fd);
 					if(hextemp == aux)	{
 						trim(aux," \t\n\r");
 						bloom_add(&bloom, aux,MAXLENGTHADDRESS);
-						memcpy(DATABUFFER + (i*MAXLENGTHADDRESS),aux,MAXLENGTHADDRESS);
+						memcpy(addressTable[i].value,aux,20);
 						i++;
 					}
 					else	{
@@ -670,7 +674,7 @@ int main(int argc, char **argv)	{
 					}
 					while(i < N)	{
 						if(fread(aux,1,MAXLENGTHADDRESS,fd) == 32)	{
-							memcpy(DATABUFFER + (i*MAXLENGTHADDRESS),aux,MAXLENGTHADDRESS);
+							memcpy(addressTable[i].value,aux,20);
 							bloom_add(&bloom, aux,MAXLENGTHADDRESS);
 						}
 						i++;
@@ -685,7 +689,8 @@ int main(int argc, char **argv)	{
 					while(i < N)	{
 						memset(aux,0,5*MAXLENGTHADDRESS);
 						hextemp = fgets(aux,(5*MAXLENGTHADDRESS) -2,fd);
-						memset(DATABUFFER + (i*MAXLENGTHADDRESS),0,MAXLENGTHADDRESS);
+						memset((void *)&addressTable[i],0,sizeof(struct address_value));
+
 						if(hextemp == aux)	{
 							trim(aux," \t\n\r");
 							stringtokenizer(aux,&tokenizer_xpoint);
@@ -694,16 +699,20 @@ int main(int argc, char **argv)	{
 							if(isValidHex(hextemp)) {
 								switch(lenaux)	{
 									case 64:	/*X value*/
-										if(hexs2bin(aux,(unsigned char*)(DATABUFFER + (uint64_t)(i*MAXLENGTHADDRESS))))	{
-												bloom_add(&bloom,(char*)( DATABUFFER + (uint64_t)(i*MAXLENGTHADDRESS)),MAXLENGTHADDRESS);
+										r = hexs2bin(aux,rawvalue);
+										if(r)	{
+											memcpy(addressTable[i].value,rawvalue,20);
+											bloom_add(&bloom,rawvalue,MAXLENGTHADDRESS);
 										}
 										else	{
 											fprintf(stderr,"[E] error hexs2bin\n");
 										}
 									break;
 									case 66:	/*Compress publickey*/
-										if(hexs2bin(aux+2,(unsigned char*)(DATABUFFER + (uint64_t)(i*MAXLENGTHADDRESS))))	{
-												bloom_add(&bloom,(char*)( DATABUFFER + (uint64_t)(i*MAXLENGTHADDRESS)),MAXLENGTHADDRESS);
+									r = hexs2bin(aux+2,rawvalue);
+										if(r)	{
+											memcpy(addressTable[i].value,rawvalue,20);
+											bloom_add(&bloom,rawvalue,MAXLENGTHADDRESS);
 										}
 										else	{
 											fprintf(stderr,"[E] error hexs2bin\n");
@@ -712,29 +721,17 @@ int main(int argc, char **argv)	{
 									case 130:	/* Uncompress publickey length*/
 										memset(temporal,0,65);
 										memcpy(temporal,aux+2,64);
-										if(hexs2bin(temporal,(unsigned char*)(DATABUFFER + (uint64_t)(i*MAXLENGTHADDRESS))))	{
-												bloom_add(&bloom,(char*)( DATABUFFER + (uint64_t)(i*MAXLENGTHADDRESS)),MAXLENGTHADDRESS);
+										r = hexs2bin(temporal,rawvalue);
+										if(r)	{
+												memcpy(addressTable[i].value,rawvalue,20);
+												bloom_add(&bloom,rawvalue,MAXLENGTHADDRESS);
 										}
 										else	{
 											fprintf(stderr,"[E] error hexs2bin\n");
 										}
 									break;
 									default:
-										if(lenaux < 64)	{	/*Some *GENIUS* scripts omit the zeros at the beginning og the hash that is OK, but the hexs2bin expect an even size strings */
-											memset(temporal,'0',64);
-											temporal[64] = '\0';
-											lendiff = 64 - lenaux;
-											memcpy(temporal+lendiff,aux,lenaux);
-											if(hexs2bin(temporal,(unsigned char*)(DATABUFFER + (uint64_t)(i*MAXLENGTHADDRESS))))	{
-													bloom_add(&bloom,(char*)( DATABUFFER + (uint64_t)(i*MAXLENGTHADDRESS)),MAXLENGTHADDRESS);
-											}
-											else	{
-												fprintf(stderr,"[E] error hexs2bin\n");
-											}
-										}
-										else{	/*Unknow*/
-											fprintf(stderr,"[E] Omiting line unknow length size %i: %s\n",lenaux,aux);
-										}
+										fprintf(stderr,"[E] Omiting line unknow length size %i: %s\n",lenaux,aux);
 									break;
 								}
 							}
@@ -761,7 +758,7 @@ int main(int argc, char **argv)	{
 					}
 					while(i < N)	{
 						if(fread(aux,1,MAXLENGTHADDRESS,fd) == 20)	{
-							memcpy(DATABUFFER + (i*MAXLENGTHADDRESS),aux,MAXLENGTHADDRESS);
+							memcpy(addressTable[i].value,aux,20);
 							bloom_add(&bloom, aux,MAXLENGTHADDRESS);
 						}
 						i++;
@@ -776,14 +773,14 @@ int main(int argc, char **argv)	{
 					while(i < N)	{
 						memset(aux,0,3*MAXLENGTHADDRESS);
 						hextemp = fgets(aux,3*MAXLENGTHADDRESS,fd);
-						memset(DATABUFFER + (i*MAXLENGTHADDRESS),0,MAXLENGTHADDRESS);
+						memset(addressTable[i].value,0,20);
 						if(hextemp == aux)	{
 							trim(aux," \t\n\r");
 							lenaux = strlen(aux);
 							if(isValidHex(aux)) {
 								if(lenaux == 40)	{
-									if(hexs2bin(aux,(unsigned char*)(DATABUFFER + (uint64_t)(i*MAXLENGTHADDRESS))))	{
-											bloom_add(&bloom,(char*)( DATABUFFER + (uint64_t)(i*MAXLENGTHADDRESS)),MAXLENGTHADDRESS);
+									if(hexs2bin(aux,addressTable[i].value))	{
+											bloom_add(&bloom,addressTable[i].value,MAXLENGTHADDRESS);
 									}
 									else	{
 										fprintf(stderr,"[E] error hexs2bin\n");
@@ -805,20 +802,17 @@ int main(int argc, char **argv)	{
 				}
 			break;
 		}
-
 		free(aux);
 		fclose(fd);
 		printf("[+] Bloomfilter completed\n");
 		if(FLAGALREADYSORTED)	{
 			printf("[+] File mark already sorted, skipping sort proccess\n");
 			printf("[+] %i values were loaded\n",N);
-			_sort(DATABUFFER,N);
-			_insertionsort(DATABUFFER,N);
+			_sort(addressTable,N);
 		}
 		else	{
 			printf("[+] Sorting data\n");
-			_sort(DATABUFFER,N);
-			_insertionsort(DATABUFFER,N);
+			_sort(addressTable,N);
 			printf("[+] %i values were loaded and sorted\n",N);
 		}
 	}
@@ -1137,7 +1131,7 @@ int main(int argc, char **argv)	{
 			}
 		}
 
-		//printf("[+] Precalculating 20 aMP points (2nd)\n");
+
 		mpz_set(point_temp.x,BSGS_MP2.x);
 		mpz_set(point_temp.y,BSGS_MP2.y);
 		for(i = 0; i < 20; i++)	{
@@ -1501,17 +1495,16 @@ char *publickeytohashrmd160(char *pkey,int length)	{
 }
 
 
-int searchbinary(char *buffer,char *data,int length,int _N) {
-	char *temp_read;
-	int r = 0,rcmp,current_offset,half,min,max,current;
+int searchbinary(struct address_value *buffer,char *data,int64_t _N) {
+	int64_t half,min,max,current;
+	int r = 0,rcmp;
 	min = 0;
 	current = 0;
 	max = _N;
 	half = _N;
 	while(!r && half >= 1) {
 		half = (max - min)/2;
-		temp_read = buffer + ((current+half) * length);
-		rcmp = memcmp(data,temp_read,length);
+		rcmp = memcmp(data,buffer[current+half].value,20);
 		if(rcmp == 0)	{
 			r = 1;	//Found!!
 		}
@@ -1524,9 +1517,7 @@ int searchbinary(char *buffer,char *data,int length,int _N) {
 			}
 			current = min;
 		}
-		//c++;
 	}
-	//printf("Searchs %i\n",c);
 	return r;
 }
 
@@ -1621,7 +1612,7 @@ void *thread_process(void *vargp)	{
 										fprintf(vanityKeys,"PrivKey: %s\nAddress uncompressed: %s\n",hextemp,public_address_uncompressed);
 										fclose(vanityKeys);
 									}
-									printf("Vanity privKey: %s\nAddress uncompressed:	%s\n",hextemp,public_address_uncompressed);
+									printf("\nVanity privKey: %s\nAddress uncompressed:	%s\n",hextemp,public_address_uncompressed);
 									free(hextemp);
 								}
 							}
@@ -1634,7 +1625,7 @@ void *thread_process(void *vargp)	{
 										fprintf(vanityKeys,"PrivKey: %s\nAddress compressed:	%s\n",hextemp,public_address_compressed);
 										fclose(vanityKeys);
 									}
-									printf("Vanity privKey: %s\nAddress compressed: %s\n",hextemp,public_address_compressed);
+									printf("\nVanity privKey: %s\nAddress compressed: %s\n",hextemp,public_address_compressed);
 									free(hextemp);
 								}
 							}
@@ -1642,7 +1633,7 @@ void *thread_process(void *vargp)	{
 						if(FLAGSEARCH == SEARCH_COMPRESS || FLAGSEARCH == SEARCH_BOTH){
 							r = bloom_check(&bloom,public_address_compressed,MAXLENGTHADDRESS);
 							if(r) {
-								r = searchbinary(DATABUFFER,public_address_compressed,MAXLENGTHADDRESS,N);
+								r = searchbinary(addressTable,public_address_compressed,N);
 								if(r) {
 									found++;
 									hextemp = malloc(65);
@@ -1654,7 +1645,7 @@ void *thread_process(void *vargp)	{
 										fprintf(keys,"PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_compressed_hex,public_address_compressed);
 										fclose(keys);
 									}
-									printf("HIT!! PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_compressed_hex,public_address_compressed);
+									printf("\nHIT!! PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_compressed_hex,public_address_compressed);
 									pthread_mutex_unlock(&write_keys);
 									free(public_key_compressed_hex);
 									free(hextemp);
@@ -1666,7 +1657,7 @@ void *thread_process(void *vargp)	{
 						if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH){
 							r = bloom_check(&bloom,public_address_uncompressed,MAXLENGTHADDRESS);
 							if(r) {
-								r = searchbinary(DATABUFFER,public_address_uncompressed,MAXLENGTHADDRESS,N);
+								r = searchbinary(addressTable,public_address_uncompressed,N);
 								if(r) {
 									found++;
 									hextemp = malloc(65);
@@ -1678,7 +1669,7 @@ void *thread_process(void *vargp)	{
 										fprintf(keys,"PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,public_address_uncompressed);
 										fclose(keys);
 									}
-									printf("HIT!! PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,public_address_uncompressed);
+									printf("\nHIT!! PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,public_address_uncompressed);
 									pthread_mutex_unlock(&write_keys);
 									free(public_key_uncompressed_hex);
 									free(hextemp);
@@ -1694,7 +1685,7 @@ void *thread_process(void *vargp)	{
 							//printf("Testing for %s\n",public_address_uncompressed);
 							r = bloom_check(&bloom,public_address_uncompressed,MAXLENGTHADDRESS);
 							if(r) {
-								r = searchbinary(DATABUFFER,public_address_uncompressed,MAXLENGTHADDRESS,N);
+								r = searchbinary(addressTable,public_address_uncompressed,N);
 								if(r) {
 									hextemp = malloc(65);
 									mpz_get_str(hextemp,16,key_mpz);
@@ -1732,7 +1723,7 @@ void *thread_process(void *vargp)	{
 						if(FLAGSEARCH == SEARCH_COMPRESS || FLAGSEARCH == SEARCH_BOTH){
 							r = bloom_check(&bloom,publickeyhashrmd160_compress,MAXLENGTHADDRESS);
 							if(r) {
-								r = searchbinary(DATABUFFER,publickeyhashrmd160_compress,MAXLENGTHADDRESS,N);
+								r = searchbinary(addressTable,publickeyhashrmd160_compress,N);
 								if(r) {
 									found++;
 									hextemp = malloc(65);
@@ -1744,7 +1735,7 @@ void *thread_process(void *vargp)	{
 										fprintf(keys,"PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
 										fclose(keys);
 									}
-									printf("HIT!! PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
+									printf("\nHIT!! PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
 									pthread_mutex_unlock(&write_keys);
 									free(public_key_compressed_hex);
 									free(hextemp);
@@ -1755,7 +1746,7 @@ void *thread_process(void *vargp)	{
 						if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH){
 							r = bloom_check(&bloom,publickeyhashrmd160_uncompress,MAXLENGTHADDRESS);
 							if(r) {
-								r = searchbinary(DATABUFFER,publickeyhashrmd160_uncompress,MAXLENGTHADDRESS,N);
+								r = searchbinary(addressTable,publickeyhashrmd160_uncompress,N);
 								if(r) {
 									found++;
 									hextemp = malloc(65);
@@ -1767,7 +1758,7 @@ void *thread_process(void *vargp)	{
 										fprintf(keys,"PrivKey: %s\npubkey: %s\n",hextemp,public_key_uncompressed_hex);
 										fclose(keys);
 									}
-									printf("HIT!! PrivKey: %s\npubkey: %s\n",hextemp,public_key_uncompressed_hex);
+									printf("\nHIT!! PrivKey: %s\npubkey: %s\n",hextemp,public_key_uncompressed_hex);
 									pthread_mutex_unlock(&write_keys);
 									free(public_key_uncompressed_hex);
 									free(hextemp);
@@ -1779,7 +1770,7 @@ void *thread_process(void *vargp)	{
 					case MODE_XPOINT:
 						r = bloom_check(&bloom,public_key_compressed+1,MAXLENGTHADDRESS);
 						if(r) {
-							r = searchbinary(DATABUFFER,public_key_compressed+1,MAXLENGTHADDRESS,N);
+							r = searchbinary(addressTable,public_key_compressed+1,N);
 							if(r) {
 								found++;
 								hextemp = malloc(65);
@@ -1791,7 +1782,7 @@ void *thread_process(void *vargp)	{
 									fprintf(keys,"PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
 									fclose(keys);
 								}
-								printf("HIT!! PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
+								printf("\nHIT!! PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
 								pthread_mutex_unlock(&write_keys);
 								free(public_key_compressed_hex);
 								free(hextemp);
@@ -1813,159 +1804,107 @@ void *thread_process(void *vargp)	{
 	return NULL;
 }
 
-
-
-void swap(char *a,char *b)	{
-	char t[MAXLENGTHADDRESS];
-	memcpy(t,a,MAXLENGTHADDRESS);
-	memcpy(a,b,MAXLENGTHADDRESS);
-	memcpy(b,t,MAXLENGTHADDRESS);
+void _swap(struct address_value *a,struct address_value *b)	{
+	struct address_value t;
+	t  = *a;
+	*a = *b;
+	*b =  t;
 }
 
-void _sort(char *arr,int n)	{
-	int depthLimit = ((int) ceil(log(n))) * 2;
+void _sort(struct address_value *arr,int64_t n)	{
+	uint32_t depthLimit = ((uint32_t) ceil(log(n))) * 2;
 	_introsort(arr,depthLimit,n);
 }
 
-void _introsort(char *arr,int depthLimit, int n) {
-	int p;
+void _introsort(struct address_value *arr,uint32_t depthLimit, int64_t n) {
+	int64_t p;
 	if(n > 1)	{
 		if(n <= 16) {
 			_insertionsort(arr,n);
 		}
 		else	{
 			if(depthLimit == 0) {
-				myheapsort(arr,n);
+				_myheapsort(arr,n);
 			}
 			else	{
-				p = partition(arr,n);
-				if(p >= 2) {
-					_introsort(arr , depthLimit-1 , p);
-				}
-				if((n - (p + 1)) >= 2 ) {
-					_introsort(arr + ((p+1) *MAXLENGTHADDRESS) , depthLimit-1 , n - (p + 1));
-				}
+				p = _partition(arr,n);
+				if(p > 0) _introsort(arr , depthLimit-1 , p);
+				if(p < n) _introsort(&arr[p+1],depthLimit-1,n-(p+1));
 			}
 		}
 	}
 }
 
-void _insertionsort(char *arr, int n) {
-	int j,i;
-	char *arrj,*temp;
-	char key[MAXLENGTHADDRESS];
-	for(i = 1; i < n ; i++ ) {
-		j= i-1;
-		memcpy(key,arr + (i*MAXLENGTHADDRESS),MAXLENGTHADDRESS);
-		arrj = arr + (j*MAXLENGTHADDRESS);
-		while(j >= 0 && memcmp(arrj,key,MAXLENGTHADDRESS) > 0) {
-			memcpy(arr + ((j+1)*MAXLENGTHADDRESS),arrj,MAXLENGTHADDRESS);
-			j--;
-			if(j >= 0)	{
-				arrj = arr + (j*MAXLENGTHADDRESS);
-			}
-		}
-		memcpy(arr + ((j+1)*MAXLENGTHADDRESS),key,MAXLENGTHADDRESS);
-	}
-}
-
-int partition(char *arr, int n)	{
-	char pivot[MAXLENGTHADDRESS];
-	int j,i,t, r = (int) n/2,jaux = -1,iaux = -1, iflag, jflag;
-	char *a,*b,*hextemp,*hextemp_pivot;
-	i = - 1;
-	memcpy(pivot,arr + (r*MAXLENGTHADDRESS),MAXLENGTHADDRESS);
-	i = 0;
-	j = n-1;
-	do {
-		iflag = 1;
-		jflag = 1;
-		t = memcmp(arr + (i*MAXLENGTHADDRESS),pivot,MAXLENGTHADDRESS);
-		iflag = (t <= 0);
-		while(i < j && iflag) {
-			i++;
-			t = memcmp(arr + (i*MAXLENGTHADDRESS),pivot,MAXLENGTHADDRESS);
-			iflag = (t <= 0);
-		}
-		t = memcmp(arr + (j*MAXLENGTHADDRESS),pivot,MAXLENGTHADDRESS);
-		jflag = (t > 0);
-		while(i < j && jflag) {
-			j--;
-			t = memcmp(arr + (j*MAXLENGTHADDRESS),pivot,MAXLENGTHADDRESS);
-			jflag = (t > 0);
-		}
-		if(i < j) {
-			if(i == r )	{
-				r = j;
-			}
-			else	{
-				if(j == r )	{
-					r = i;
-				}
-			}
-
-			swap(arr + (i*MAXLENGTHADDRESS),arr + (j*MAXLENGTHADDRESS) );
-			jaux = j;
-			iaux = i;
-			j--;
-			i++;
-		}
-
-	} while(j > i );
-	if(jaux != -1 && iaux != -1)	{
-		if(iflag || jflag)	{
-			if(iflag) {
-				if(r != j)
-					swap(arr + (r*MAXLENGTHADDRESS),arr + ((j )*MAXLENGTHADDRESS) );
-				jaux = j;
-			}
-			if(jflag) {
-				if(r != j-1)
-					swap(arr + (r*MAXLENGTHADDRESS),arr + ((j-1 )*MAXLENGTHADDRESS) );
-				jaux = j-1;
-			}
-		}
-		else{
-			if(r != j)
-				swap(arr + (r*MAXLENGTHADDRESS),arr + ((j )*MAXLENGTHADDRESS) );
-			jaux = j;
-		}
-	}
-	else	{
-		if(iflag && jflag)	{
-			jaux = r;
-		}
-		else	{
-			if(iflag ) {
-				swap(arr + (r*MAXLENGTHADDRESS),arr + ((j)*MAXLENGTHADDRESS) );
-				jaux = j;
-			}
-		}
-	}
-	return jaux;
-}
-
-void heapify(char *arr, int n, int i) {
-		int largest = i;
-		int l = 2 * i + 1;
-		int r = 2 * i + 2;
-		if (l < n && memcmp(arr +(l*MAXLENGTHADDRESS),arr +(largest * MAXLENGTHADDRESS),MAXLENGTHADDRESS) > 0)
-				largest = l;
-		if (r < n && memcmp(arr +(r*MAXLENGTHADDRESS),arr +(largest *MAXLENGTHADDRESS),MAXLENGTHADDRESS) > 0)
-				largest = r;
-		if (largest != i) {
-				swap(arr +(i*MAXLENGTHADDRESS), arr +(largest*MAXLENGTHADDRESS));
-				heapify(arr, n, largest);
-		}
-}
-
-void myheapsort(char	*arr, int64_t n)	{
+void _insertionsort(struct address_value *arr, int64_t n) {
+	int64_t j;
 	int64_t i;
-	for ( i = n / 2 - 1; i >= 0; i--)
-		heapify(arr, n, i);
+	struct address_value key;
+	for(i = 1; i < n ; i++ ) {
+		key = arr[i];
+		j= i-1;
+		while(j >= 0 && memcmp(arr[j].value,key.value,20) > 0) {
+			arr[j+1] = arr[j];
+			j--;
+		}
+		arr[j+1] = key;
+	}
+}
+
+int64_t _partition(struct address_value *arr, int64_t n)	{
+	struct address_value pivot;
+	int64_t r,left,right;
+	char *hextemp;
+	r = n/2;
+	pivot = arr[r];
+	left = 0;
+	right = n-1;
+	do {
+		while(left	< right && memcmp(arr[left].value,pivot.value,20) <= 0 )	{
+			left++;
+		}
+		while(right >= left && memcmp(arr[right].value,pivot.value,20) > 0)	{
+			right--;
+		}
+		if(left < right)	{
+			if(left == r || right == r)	{
+				if(left == r)	{
+					r = right;
+				}
+				if(right == r)	{
+					r = left;
+				}
+			}
+			_swap(&arr[right],&arr[left]);
+		}
+	}while(left < right);
+	if(right != r)	{
+		_swap(&arr[right],&arr[r]);
+	}
+	return right;
+}
+
+void _heapify(struct address_value *arr, int64_t n, int64_t i) {
+	int64_t largest = i;
+	int64_t l = 2 * i + 1;
+	int64_t r = 2 * i + 2;
+	if (l < n && memcmp(arr[l].value,arr[largest].value,20) > 0)
+		largest = l;
+	if (r < n && memcmp(arr[r].value,arr[largest].value,20) > 0)
+		largest = r;
+	if (largest != i) {
+		_swap(&arr[i],&arr[largest]);
+		_heapify(arr, n, largest);
+	}
+}
+
+void _myheapsort(struct address_value	*arr, int64_t n)	{
+	int64_t i;
+	for ( i = (n / 2) - 1; i >=	0; i--)	{
+		_heapify(arr, n, i);
+	}
 	for ( i = n - 1; i > 0; i--) {
-		swap(arr , arr +(i*MAXLENGTHADDRESS));
-		heapify(arr, i, 0);
+		_swap(&arr[0] , &arr[i]);
+		_heapify(arr, i, 0);
 	}
 }
 

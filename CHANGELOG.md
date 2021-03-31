@@ -1,6 +1,8 @@
-# Version 0.1.20210330
-- xpoint mode now accept files with comments, useful for susbtracted keys with index
-- custom bloomfilter, this bloom avoid hashing process
+# Version 0.1.20210331
+- Small changes to be compiled with mingw on Windows
+- Changed sort funtions and binary search for modes address/rmd160/xpoint, now those modes can load MAX 2^64 items
+- xpoint input file now can contains Comments after the line of data
+- from this version all furters developments will be in the branch `development`
 
 # Version 0.1.20210328
 - Added a progress counter (this solve bug https://github.com/albertobsd/keyhunt/issues/18 )

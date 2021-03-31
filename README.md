@@ -10,11 +10,11 @@ Ethereum addresses is a work in develop
 # How to build
 First compile:
 
-``make``
+`make`
 
 and then execute:
 
-``./keyhunt``
+`./keyhunt`
 
 # Modes
 
@@ -27,7 +27,7 @@ The current availables modes are:
 
 ## address mode
 
-This is the most basic approach to work, in this mode your text file need to have a list of the publickeys to be search.
+This is the most basic approach to work, in this mode your text file need to have a list of the publicaddress to be search.
 
 Example of address from solved puzzles, this file is already on the repository `tests/1to32.txt`
 
@@ -66,7 +66,7 @@ Example of address from solved puzzles, this file is already on the repository `
 1FRoHA9xewq7DjrZ1psWJVeTer8gHRqEvR
 ```
 
-To targert that file we need to execute keyhunt with this line
+To target that file we need to execute keyhunt with this line
 
 `./keyhunt -m address -f tests/1to32.txt -r 1:FFFFFFFF`
 
@@ -232,16 +232,79 @@ Output:
 Thread 0 : Setting up base key: 000000000000000000000000000000000000000000000000f7d1beda50ed79d4
 Total 27262976 keys in 120 seconds: 227191 keys/s
 (Output omited)
-
 ```
 
 BTW this rmd160 mode doesn't allow search by vanity address
 
+## xpoint mode
+
+This method can target the X value of the publickey in the same way that the tool search for address or rmd160 hash, this tool can search for the X values
+
+The speed for this method is is better than the speed for address or rmd160
+
+The input file can have per line one of the next values:
+
+- X value (64 hexcharacters)
+- Publickey Compress (66 hexcharacters)
+- Publickey Uncompress (130 hexcharacters)
+
+Example input file:
+
+A few substracted values from puzzle *40*
+
+```
+034eee474fe724cb631d19f24934e88016e4ef2aee80d086621d87d7f6066ff860 # - 453856235784
+0274241b684e7c31e7933510b510aa14de9ac88ec3635bdd35a3bcf1d16da210be # + 453856235784
+03abc6aff092b9a64bf69e00f4ec7a8b7ca51cfc6656732cbbc9f5674925b88609 # - 529328067324
+034f4fe33b02c202b732d278f90eedc635af6f3be8a93c8d1cb0a01f6399aab2a4 # + 529328067324
+03716ff57705e6446ac3e217c8c8bd9e9c8e58547457a6fe93ac254c37fd48afcb # - 14711740067
+02ffa0769b0459c64b41f59f93495063ae031de0b846180bee37f921f20e141f60 # + 14711740067
+03de1df5d801bbd5e7d86577bf14950f732fd41e586945d06d19e0fdea41a37d62 # - 549755814000
+038d3711fd681e26c05b2f0cd423fa596e15054024e40add24a93bfa0c630531f1 # + 549755814000
+03a2efa402fd5268400c77c20e574ba86409ededee7c4020e4b9f0edbee53de0d4 # target
+```
+
+
+Now you can use keyhunt againts some thousand values of the puzzle 40:
+
+`./keyhunt -m xpoint -f tests/substracted40.txt -n 65536 -t 4 -b 40`
+
+Output:
+
+```
+[+] Version 0.1.20210330a
+[+] Setting mode xpoint
+[+] Setting 4 threads
+[+] Min range: 8000000000
+[+] Max range: ffffffffff
+[+] Opening file tests/substracted40.txt
+[+] Allocating memory for 6003 elements: 0.11 MB
+[+] Initializing bloom filter for 6003 elements.
+[+] Loading data to the bloomfilter
+[+] Bloomfilter completed
+[+] Sorting data
+[+] 6003 values were loaded and sorted
+Thread 3 : Setting up base key: 0000000000000000000000000000000000000000000000000000008001d00000
+Thread 0 : Setting up base key: 00000000000000000000000000000000000000000000000000000080025b0000
+HIT!! PrivKey: 000000000000000000000000000000000000000000000000000000800258a2ce
+pubkey: 0274241b684e7c31e7933510b510aa14de9ac88ec3635bdd35a3bcf1d16da210be
+Thread 1 : Setting up base key: 0000000000000000000000000000000000000000000000000000008002910000^C
+```
+
+After the hit we need to search the substracted index and make a simple math operation to get the real privatek:
+
+```
+0274241b684e7c31e7933510b510aa14de9ac88ec3635bdd35a3bcf1d16da210be # + 453856235784
+```
+The Operation is `800258a2ce` hex (+/-) in this case + `453856235784` decimal equals to `E9AE4933D6`
+
+This is an easy example, I been trying the puzzle 120 with more than 500 millions of substracted keys and no luck.
+
 ## bsgs mode (baby step giant step)
 
-The new version of keyhunt implement the BSGS algorimth to search privatekeys for a knowed publickey.
+Keyhunt implement the BSGS algorithm to search privatekeys for a knowed publickey.
 
-The address.txt file need to have a 130 hexadecimal characters uncompress publickey per line any other word followed by an space is ignored example of the file:
+The address.txt or your input file need to have a 130 hexadecimal characters uncompressed or compressed publickey per line any other word followed by an space is ignored example of the file:
 
 ```
 043ffa1cc011a8d23dec502c7656fb3f93dbe4c61f91fd443ba444b4ec2dd8e6f0406c36edf3d8a0dfaa7b8f309b8f1276a5c04131762c23594f130a023742bdde # 0000000000000000000000000000000000800000000000000000100000000000
@@ -330,7 +393,7 @@ Good speed no? 1.1 Terakeys/s for one single thread
 We can speed up our process selecting a bigger K value `-k value` btw the n value is the total length of item tested in the radom range, a bigger k value means more ram to be use:
 
 Example:
-``$ ./keyhunt -m bsgs -f tests/120.txt -b 120 -R -k 20`
+`$ ./keyhunt -m bsgs -f tests/120.txt -b 120 -R -k 20`
 
 Example output:
 
@@ -422,11 +485,19 @@ Total 157238958864990208 keys in 30 seconds: 5241298628833006 keys/s
 ```
 I get 5.2 Petakeys/s total
 
+## FAQ
+
+- Where the privatekeys will be saved?
+R: In a file called `KEYFOUNDKEYFOUND.txt`
+
+- Is available for Windows?
+R: It can be compiled with mingw, It can be executed in the Ubuntu shell for windows 10
+
 ## Dependencies
 - libgmp
 - pthread
 
-Tested under Debian
+Tested under Debian, Termux, Ubuntu Shell for windows 10
 
 ## Donation
 

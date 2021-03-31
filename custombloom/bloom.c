@@ -22,6 +22,7 @@
 #include <unistd.h>
 
 #include "bloom.h"
+#include "../xxhash/xxhash.h"
 
 #define MAKESTRING(n) STRING(n)
 #define STRING(n) #n
@@ -52,11 +53,13 @@ static int custombloom_check_add(struct custombloom * bloom, const void * buffer
     return -1;
   }
   uint8_t hits = 0;
-  uint64_t *data = (uint64_t *)buffer;
+  //uint64_t *data = (uint64_t *)buffer;
+  uint64_t a = XXH64(buffer, len, 0x59f2815b16f81798);
+  uint64_t b = XXH64(buffer, len, a);
   uint64_t x;
   uint8_t i;
   for (i = 0; i < bloom->hashes; i++) {
-    x = (data[0] + data[1] *i) % bloom->bits;
+    x = (a + b *i) % bloom->bits;
     if (custombloom_test_bit_set_bit(bloom->bf, x, add)) {
       hits++;
     } else if (!add) {

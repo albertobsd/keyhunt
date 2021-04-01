@@ -17,7 +17,6 @@ email: alberto.bsd@gmail.com
 #include "rmd160/rmd160.h"
 #include "sha256/sha256.h"
 #include "bloom/bloom.h"
-#include "custombloom/bloom.h"
 #include "sha3/sha3.h"
 #include "util.h"
 #ifdef WIN32
@@ -128,7 +127,7 @@ const char *default_filename = "addresses.txt";
 pthread_t *tid = NULL;
 pthread_mutex_t write_keys;
 pthread_mutex_t write_random;
-pthread_mutex_t threads_end;
+
 pthread_mutex_t bsgs_thread;
 
 struct Elliptic_Curve EC;
@@ -137,7 +136,7 @@ struct Point G;
 
 unsigned int *steps = NULL;
 unsigned int *ends = NULL;
-uint32_t N = 0;
+uint64_t N = 0;
 gmp_randstate_t state;
 
 uint64_t N_SECUENTIAL_MAX = 0xffffffff;
@@ -162,6 +161,7 @@ int FLAGRANDOM = 0;
 int FLAG_N = 0;
 int FLAGPRECALCUTED_P_FILE = 0;
 int FLAGPRECALCUTED_MP_FILE = 0;
+int FLAGBLOOMFILTER = 0;
 
 int len_vanity;
 int bitrange;
@@ -180,8 +180,8 @@ int *bsgs_found;
 struct Point *OriginalPointsBSGS;
 struct bsgs_xvalue *bPtable;
 struct address_value *addressTable;
-struct custombloom bloom_bP[256];
-struct custombloom bloom_bPx2nd; //Second Bloom filter check
+struct bloom bloom_bP[256];
+struct bloom bloom_bPx2nd; //Second Bloom filter check
 uint64_t bloom_bP_totalbytes = 0;
 char *precalculated_p_filename;
 uint64_t bsgs_m;
@@ -238,7 +238,7 @@ int main(int argc, char **argv)	{
 	mpz_init_set_ui(TWO,2);
 
 
-	while ((c = getopt(argc, argv, "dehqRwb:c:f:g:k:l:m:n:p:r:s:t:v:-:")) != -1) {
+	while ((c = getopt(argc, argv, "dehqRwzb:c:f:g:k:l:m:n:p:r:s:t:v:-:")) != -1) {
 		switch(c) {
 			case 'h':
 				printf("\nUsage:\n-h\t\tshow this help\n");
@@ -250,7 +250,7 @@ int main(int argc, char **argv)	{
 				printf("\t\tYour file MUST be sordted if no you are going to lose collisions\n");
 				printf("-f file\t\tSpecify filename with addresses or xpoints or uncompressed public keys\n");
 				printf("-g count\tJust for the stats, mark as counted every debugcount keys	\n");
-				printf("-k value\tUse this with bsgs mode, k value is factor for M, more speed but more RAM use wisely\n");
+				printf("-k value\tUse this only with bsgs mode, k value is factor for M, more speed but more RAM use wisely\n");
 				printf("-l look\tWhat type of address/hash160 are you looking for < compress , uncompress , both>\n");
 				printf("-m mode\t\tmode of search for cryptos. ( bsgs , xpoint , rmd160 , address ) default: address (more slow)\n");
 				printf("-n uptoN\tCheck for N secuential numbers before the random chossen this only work with -R option\n");
@@ -263,6 +263,7 @@ int main(int argc, char **argv)	{
 				printf("-t tn\t\tThreads number, must be positive integer\n");
 				printf("-v va\t\tSearch for vanity Address, only with -m address\n");
 				printf("-w\t\tMark the input file as RAW data xpoint fixed 32 byte each point. Valid only with -m xpoint\n");
+				printf("-z\t\tSave and load bloom bloomfilter from File\n");
 				printf("\t\tUse the hexcharstoraw tool to create a raw file from your current hexadecimal file\n");
 				printf("\nExample\n\n");
 				printf("%s -t 16 -r 00000001:FFFFFFFF -s 0\n\n",argv[0]);
@@ -467,6 +468,10 @@ int main(int argc, char **argv)	{
 			printf("[+] Data marked as RAW\n");
 				FLAGRAWDATA = 1;
 			break;
+			case 'z':
+			printf("[+] Bloom filter marked to be saved\n");
+				FLAGBLOOMFILTER = 1;
+			break;
 			default:
 				printf("[E] Unknow opcion %c\n",c);
 			break;
@@ -539,7 +544,6 @@ int main(int argc, char **argv)	{
 			}
 		}
 	}
-
 	N =0;
 	if(FLAGMODE != MODE_BSGS)	{
 		aux = malloc(1000);
@@ -615,7 +619,7 @@ int main(int argc, char **argv)	{
 		}
 		fseek(fd,0,SEEK_SET);
 
-		printf("[+] Allocating memory for %u elements: %.2f MB\n",N,(double)(sizeof(struct address_value)*N)/1048576);
+		printf("[+] Allocating memory for %"PRIu64" elements: %.2f MB\n",N,(double)(sizeof(struct address_value)*N)/1048576);
 		i = 0;
 
 		do {
@@ -623,10 +627,10 @@ int main(int argc, char **argv)	{
 			i++;
 		} while(addressTable == NULL && i < 10);
 		if(addressTable == NULL)	{
-			fprintf(stderr,"[E] Can't alloc memory for %u elements\n",N);
+			fprintf(stderr,"[E] Can't alloc memory for %"PRIu64" elements\n",N);
 			exit(0);
 		}
-		printf("[+] Initializing bloom filter for %u elements.\n",N);
+		printf("[+] Initializing bloom filter for %"PRIu64" elements.\n",N);
 		if(N <= 1000)	{
 			if(bloom_init2(&bloom,1000,0.00001)	== 1){
 				fprintf(stderr,"[E] error bloom_init for 10000 elements.\n");
@@ -640,7 +644,7 @@ int main(int argc, char **argv)	{
 				exit(0);
 			}
 		}
-		printf("[+] Loading data to the bloomfilter\n");
+		printf("[+] Loading data to the bloomfilter total: %.2f MB\n",(double)(((double) bloom.bytes)/(double)1048576));
 		i = 0;
 		switch (FLAGMODE) {
 			case MODE_ADDRESS:
@@ -807,13 +811,13 @@ int main(int argc, char **argv)	{
 		printf("[+] Bloomfilter completed\n");
 		if(FLAGALREADYSORTED)	{
 			printf("[+] File mark already sorted, skipping sort proccess\n");
-			printf("[+] %i values were loaded\n",N);
+			printf("[+] %"PRIu64" values were loaded\n",N);
 			_sort(addressTable,N);
 		}
 		else	{
 			printf("[+] Sorting data\n");
 			_sort(addressTable,N);
-			printf("[+] %i values were loaded and sorted\n",N);
+			printf("[+] %"PRIu64" values were loaded and sorted\n",N);
 		}
 	}
 	if(FLAGMODE == MODE_BSGS)	{
@@ -1031,35 +1035,35 @@ int main(int argc, char **argv)	{
 
 		for(i=0; i< 256; i++)	{
 			if(((int)(bsgs_m/256)) > 1000)	{
-				if(custombloom_init2(&bloom_bP[i],(int)(bsgs_m/256),0.000001)	== 1){
+				if(bloom_init2(&bloom_bP[i],(int)(bsgs_m/256),0.000001)	== 1){
 					fprintf(stderr,"[E] error bloom_init [%"PRIu64"]\n",i);
 					exit(0);
 				}
 			}
 			else	{
-				if(custombloom_init2(&bloom_bP[i],1000,0.000001)	== 1){
+				if(bloom_init2(&bloom_bP[i],1000,0.000001)	== 1){
 					fprintf(stderr,"[E] error bloom_init for 1000 elements [%"PRIu64"]\n",i);
 					exit(0);
 				}
 			}
 			bloom_bP_totalbytes += bloom_bP[i].bytes;
-			if(FLAGDEBUG) custombloom_print(&bloom_bP[i]);
+			if(FLAGDEBUG) bloom_print(&bloom_bP[i]);
 		}
 		printf("[+] Init 1st bloom filter for %lu elements : %.2f MB\n",bsgs_m,(float)((uint64_t)bloom_bP_totalbytes/(uint64_t)1048576));
 
 		if(bsgs_m2 > 1000)	{
-			if(custombloom_init2(&bloom_bPx2nd,bsgs_m2,0.000001)	== 1){
+			if(bloom_init2(&bloom_bPx2nd,bsgs_m2,0.000001)	== 1){
 				fprintf(stderr,"[E] error bloom_init for %lu elements\n",bsgs_m2);
 				exit(0);
 			}
 		}
 		else	{
-			if(custombloom_init2(&bloom_bPx2nd,1000,0.000001)	== 1){
+			if(bloom_init2(&bloom_bPx2nd,1000,0.000001)	== 1){
 				fprintf(stderr,"[E] error bloom_init for 1000 elements\n");
 				exit(0);
 			}
 		}
-		if(FLAGDEBUG) custombloom_print(&bloom_bPx2nd);
+		if(FLAGDEBUG) bloom_print(&bloom_bPx2nd);
 		printf("[+] Init 2nd bloom filter for %lu elements : %.2f MB\n",bsgs_m2,(double)((double)bloom_bPx2nd.bytes/(double)1048576));
 		//bloom_print(&bloom_bPx2nd);
 
@@ -1295,8 +1299,6 @@ int main(int argc, char **argv)	{
 			}
 		}
 	}while(continue_flag);
-
-
 }
 
 void Point_Doubling(struct Point *P, struct Point *R)	{
@@ -2128,7 +2130,7 @@ void *thread_process_bsgs(void *vargp)	{
 					//printf("Looking X : %s\n",xpoint_str);
 					/* Lookup for the xpoint_raw into the bloom filter*/
 
-					r = custombloom_check(&bloom_bP[((unsigned char)xpoint_raw[0])],xpoint_raw,32);
+					r = bloom_check(&bloom_bP[((unsigned char)xpoint_raw[0])],xpoint_raw,32);
 					if(r) {
 						bloom_counter++;
 						/* Lookup for the xpoint_raw into the full sorted list*/
@@ -2277,7 +2279,7 @@ void *thread_process_bsgs_random(void *vargp)	{
 					gmp_sprintf(xpoint_str,"%0.64Zx",BSGS_S.x);
 					hexs2bin(xpoint_str,(unsigned char*)xpoint_raw);
 
-					r = custombloom_check(&bloom_bP[((unsigned char)xpoint_raw[0])],xpoint_raw,32);
+					r = bloom_check(&bloom_bP[((unsigned char)xpoint_raw[0])],xpoint_raw,32);
 					if(r) {
 						bloom_counter++;
 						/* Lookup for the xpoint_raw into the full sorted list*/
@@ -2379,7 +2381,7 @@ int bsgs_secondcheck(mpz_t start_range,uint32_t a,struct Point *target,mpz_t *pr
 	do {
 		gmp_sprintf(xpoint_str,"%0.64Zx",BSGS_S.x);
 		hexs2bin(xpoint_str,(unsigned char*)xpoint_raw);
-		r = custombloom_check(&bloom_bPx2nd,xpoint_raw,32);
+		r = bloom_check(&bloom_bPx2nd,xpoint_raw,32);
 		if(r)	{
 			//printf("bloom_bPx2nd MAYBE!!\n");
 			/* Lookup for the xpoint_raw into the full sorted list*/
@@ -2453,10 +2455,10 @@ void *thread_bPload(void *vargp)	{
 		if(i < bsgs_m2)	{
 			memcpy(bPtable[j].value,rawvalue+16,BSGS_XVALUE_RAM);
 			bPtable[j].index = j;
-			custombloom_add(&bloom_bPx2nd, rawvalue, BSGS_BUFFERXPOINTLENGTH);
+			bloom_add(&bloom_bPx2nd, rawvalue, BSGS_BUFFERXPOINTLENGTH);
 			j++;
 		}
-		custombloom_add(&bloom_bP[((uint8_t)rawvalue[0])], rawvalue ,BSGS_BUFFERXPOINTLENGTH);
+		bloom_add(&bloom_bP[((uint8_t)rawvalue[0])], rawvalue ,BSGS_BUFFERXPOINTLENGTH);
 		Point_Addition(&G,&temp,&P);
 		i++;
 		tt->counter++;
@@ -2473,7 +2475,6 @@ void *thread_bPloadFile(void *vargp)	{
 	FILE *fd;
 	char rawvalue[32];
 	struct bPload *tt;
-
 	uint32_t j;
 	uint64_t i;
 	tt = (struct bPload *)vargp;
@@ -2484,8 +2485,8 @@ void *thread_bPloadFile(void *vargp)	{
 	}
 	i = tt->from -1;
 	j = tt->from -1;
-	if(fseek(fd,i*32,SEEK_SET) != 0)	{
-		fprintf(stderr,"Can't seek the file\n");
+	if(fseek(fd,(uint64_t)(i*32),SEEK_SET) != 0)	{
+		fprintf(stderr,"Can't seek the file at index %"PRIu64", offset %"PRIu64"\n",i,(uint64_t)(i*32));
 		exit(0);
 	}
 	do {
@@ -2493,10 +2494,10 @@ void *thread_bPloadFile(void *vargp)	{
 			if(i < bsgs_m2)	{
 				memcpy(bPtable[j].value,rawvalue+16,BSGS_XVALUE_RAM);
 				bPtable[j].index = j;
-				custombloom_add(&bloom_bPx2nd, rawvalue, BSGS_BUFFERXPOINTLENGTH);
+				bloom_add(&bloom_bPx2nd, rawvalue, BSGS_BUFFERXPOINTLENGTH);
 				j++;
 			}
-			custombloom_add(&bloom_bP[((uint8_t)rawvalue[0])], rawvalue ,BSGS_BUFFERXPOINTLENGTH);
+			bloom_add(&bloom_bP[((uint8_t)rawvalue[0])], rawvalue ,BSGS_BUFFERXPOINTLENGTH);
 			i++;
 			tt->counter++;
 		}

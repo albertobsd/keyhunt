@@ -1,3 +1,6 @@
+# Version Last
+- Change N variable type for modes address,rmd160 and xpoint, from uint32_t to uint64_t
+
 # Version 0.1.20210331
 - Small changes to be compiled with mingw on Windows
 - Changed sort funtions and binary search for modes address/rmd160/xpoint, now those modes can load MAX 2^64 items

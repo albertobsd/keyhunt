@@ -32,6 +32,7 @@ email: alberto.bsd@gmail.com
 #define MODE_ADDRESS 1
 #define MODE_BSGS 2
 #define MODE_RMD160 3
+#define MODE_PUB2RMD 4
 
 #define SEARCH_UNCOMPRESS 0
 #define SEARCH_COMPRESS 1
@@ -68,6 +69,18 @@ struct bPload	{
 	uint64_t to;
 	uint64_t counter;
 };
+
+struct __attribute__((__packed__)) publickey {
+  uint8_t parity;
+	union	{
+		uint8_t data8[32];
+		uint32_t data32[8];
+		uint64_t data64[4];
+	} X;
+};
+
+
+const char *bloomnames[256] = {"bloom_0","bloom_1","bloom_2","bloom_3","bloom_4","bloom_5","bloom_6","bloom_7","bloom_8","bloom_9","bloom_10","bloom_11","bloom_12","bloom_13","bloom_14","bloom_15","bloom_16","bloom_17","bloom_18","bloom_19","bloom_20","bloom_21","bloom_22","bloom_23","bloom_24","bloom_25","bloom_26","bloom_27","bloom_28","bloom_29","bloom_30","bloom_31","bloom_32","bloom_33","bloom_34","bloom_35","bloom_36","bloom_37","bloom_38","bloom_39","bloom_40","bloom_41","bloom_42","bloom_43","bloom_44","bloom_45","bloom_46","bloom_47","bloom_48","bloom_49","bloom_50","bloom_51","bloom_52","bloom_53","bloom_54","bloom_55","bloom_56","bloom_57","bloom_58","bloom_59","bloom_60","bloom_61","bloom_62","bloom_63","bloom_64","bloom_65","bloom_66","bloom_67","bloom_68","bloom_69","bloom_70","bloom_71","bloom_72","bloom_73","bloom_74","bloom_75","bloom_76","bloom_77","bloom_78","bloom_79","bloom_80","bloom_81","bloom_82","bloom_83","bloom_84","bloom_85","bloom_86","bloom_87","bloom_88","bloom_89","bloom_90","bloom_91","bloom_92","bloom_93","bloom_94","bloom_95","bloom_96","bloom_97","bloom_98","bloom_99","bloom_100","bloom_101","bloom_102","bloom_103","bloom_104","bloom_105","bloom_106","bloom_107","bloom_108","bloom_109","bloom_110","bloom_111","bloom_112","bloom_113","bloom_114","bloom_115","bloom_116","bloom_117","bloom_118","bloom_119","bloom_120","bloom_121","bloom_122","bloom_123","bloom_124","bloom_125","bloom_126","bloom_127","bloom_128","bloom_129","bloom_130","bloom_131","bloom_132","bloom_133","bloom_134","bloom_135","bloom_136","bloom_137","bloom_138","bloom_139","bloom_140","bloom_141","bloom_142","bloom_143","bloom_144","bloom_145","bloom_146","bloom_147","bloom_148","bloom_149","bloom_150","bloom_151","bloom_152","bloom_153","bloom_154","bloom_155","bloom_156","bloom_157","bloom_158","bloom_159","bloom_160","bloom_161","bloom_162","bloom_163","bloom_164","bloom_165","bloom_166","bloom_167","bloom_168","bloom_169","bloom_170","bloom_171","bloom_172","bloom_173","bloom_174","bloom_175","bloom_176","bloom_177","bloom_178","bloom_179","bloom_180","bloom_181","bloom_182","bloom_183","bloom_184","bloom_185","bloom_186","bloom_187","bloom_188","bloom_189","bloom_190","bloom_191","bloom_192","bloom_193","bloom_194","bloom_195","bloom_196","bloom_197","bloom_198","bloom_199","bloom_200","bloom_201","bloom_202","bloom_203","bloom_204","bloom_205","bloom_206","bloom_207","bloom_208","bloom_209","bloom_210","bloom_211","bloom_212","bloom_213","bloom_214","bloom_215","bloom_216","bloom_217","bloom_218","bloom_219","bloom_220","bloom_221","bloom_222","bloom_223","bloom_224","bloom_225","bloom_226","bloom_227","bloom_228","bloom_229","bloom_230","bloom_231","bloom_232","bloom_233","bloom_234","bloom_235","bloom_236","bloom_237","bloom_238","bloom_239","bloom_240","bloom_241","bloom_242","bloom_243","bloom_244","bloom_245","bloom_246","bloom_247","bloom_248","bloom_249","bloom_250","bloom_251","bloom_252","bloom_253","bloom_254","bloom_255"};
 
 
 const char *version = "0.1.20210331";
@@ -109,6 +122,7 @@ void *thread_process_bsgs(void *vargp);
 void *thread_process_bsgs_random(void *vargp);
 void *thread_bPload(void *vargp);
 void *thread_bPloadFile(void *vargp);
+void *thread_pub2rmd(void *vargp);
 
 void init_doublingG(struct Point *P);
 char *publickeytohashrmd160(char *pkey,int length);
@@ -119,7 +133,7 @@ int THREADOUTPUT = 0;
 char *bit_range_str_min;
 char *bit_range_str_max;
 
-const char *modes[4] = {"xpoint","address","bsgs","rmd160"};
+const char *modes[5] = {"xpoint","address","bsgs","rmd160","pub2rmd"};
 const char *cryptos[3] = {"btc","eth","all"};
 const char *publicsearch[3] = {"uncompress","compress","both"};
 const char *default_filename = "addresses.txt";
@@ -131,6 +145,7 @@ pthread_mutex_t write_random;
 pthread_mutex_t bsgs_thread;
 
 struct Elliptic_Curve EC;
+struct bloom dummybloom;
 struct bloom bloom;
 struct Point G;
 
@@ -219,17 +234,16 @@ int main(int argc, char **argv)	{
 	char *filename,*precalculated_mp_filename;
 	FILE *fd;
 	char *hextemp,*aux,*aux2,*pointx_str,*pointy_str;
-	uint64_t i,seconds;
-	uint64_t j,total_precalculated,PERTHREAD,BASE,PERTHREAD_R;
+	uint64_t j,total_precalculated,i,seconds,PERTHREAD,BASE,PERTHREAD_R;
+	uint64_t itemsbloom,itemsbloom2;
 	int readed,s,continue_flag,check_flag,r,lenaux,lendiff;
 	mpz_t total,pretotal,debugcount_mpz,Ysquared,mpz_aux,mpz_aux2;
 	clock_t c_beging,c_ending, time_spent;
 	struct bPload *temp;
-
 	int c;
+
 	gmp_randinit_mt(state);
 	gmp_randseed_ui(state, ((int)clock()) + ((int)time(NULL)) );
-	printf("[+] Version %s\n",version);
 	mpz_init_set_str(EC.p, EC_constant_P, 16);
 	mpz_init_set_str(EC.n, EC_constant_N, 16);
 	mpz_init_set_str(G.x , EC_constant_Gx, 16);
@@ -237,6 +251,7 @@ int main(int argc, char **argv)	{
 	init_doublingG(&G);
 	mpz_init_set_ui(TWO,2);
 
+	printf("[+] Version %s\n",version);
 
 	while ((c = getopt(argc, argv, "dehqRwzb:c:f:g:k:l:m:n:p:r:s:t:v:-:")) != -1) {
 		switch(c) {
@@ -361,7 +376,7 @@ int main(int argc, char **argv)	{
 				}
 			break;
 			case 'm':
-				switch(indexOf(optarg,modes,4)) {
+				switch(indexOf(optarg,modes,5)) {
 					case MODE_XPOINT: //xpoint
 						FLAGMODE = MODE_XPOINT;
 						printf("[+] Setting mode xpoint\n");
@@ -377,6 +392,10 @@ int main(int argc, char **argv)	{
 					case MODE_RMD160:
 						FLAGMODE = MODE_RMD160;
 						printf("[+] Setting mode rmd160\n");
+					break;
+					case MODE_PUB2RMD:
+						FLAGMODE = MODE_PUB2RMD;
+						printf("[+] Setting mode pub2rmd\n");
 					break;
 					default:
 						FLAGMODE = MODE_ADDRESS;
@@ -544,7 +563,7 @@ int main(int argc, char **argv)	{
 			}
 		}
 	}
-	N =0;
+	N = 0;
 	if(FLAGMODE != MODE_BSGS)	{
 		aux = malloc(1000);
 		if(aux == NULL)	{
@@ -567,6 +586,7 @@ int main(int argc, char **argv)	{
 				}
 				MAXLENGTHADDRESS = 32;
 			break;
+			case MODE_PUB2RMD:
 			case MODE_RMD160:
 				if(FLAGRAWDATA) {
 					while(!feof(fd))	{
@@ -619,9 +639,8 @@ int main(int argc, char **argv)	{
 		}
 		fseek(fd,0,SEEK_SET);
 
-		printf("[+] Allocating memory for %"PRIu64" elements: %.2f MB\n",N,(double)(sizeof(struct address_value)*N)/1048576);
+		printf("[+] Allocating memory for %"PRIu64" elements: %.2f MB\n",N,(double)(((double) sizeof(struct address_value)*N)/(double)1048576));
 		i = 0;
-
 		do {
 			addressTable = malloc(sizeof(struct address_value)*N);
 			i++;
@@ -753,6 +772,7 @@ int main(int argc, char **argv)	{
 					}
 				}
 			break;
+			case MODE_PUB2RMD:
 			case MODE_RMD160:
 				if(FLAGRAWDATA)	{
 					aux = malloc(MAXLENGTHADDRESS);
@@ -1031,20 +1051,63 @@ int main(int argc, char **argv)	{
 		bsgs_aux = mpz_get_ui(BSGS_AUX);
 		DEBUGCOUNT = (uint64_t)((uint64_t)bsgs_m * (uint64_t)bsgs_aux);
 
-		printf("[+] Setting N up to %llu.\n",(long long unsigned int)DEBUGCOUNT);
+		printf("[+] Setting N up to %"PRIu64".\n",DEBUGCOUNT);
 
-		for(i=0; i< 256; i++)	{
-			if(((int)(bsgs_m/256)) > 1000)	{
-				if(bloom_init2(&bloom_bP[i],(int)(bsgs_m/256),0.000001)	== 1){
-					fprintf(stderr,"[E] error bloom_init [%"PRIu64"]\n",i);
-					exit(0);
+		itemsbloom = ((uint64_t)(bsgs_m/256)) > 1000 ? (uint64_t)(bsgs_m/256) : 1000;
+		itemsbloom2 = bsgs_m2 > 1000 ? bsgs_m : 1000;
+
+		if( FLAGBLOOMFILTER == 1	)	{
+			int continuebloom = 1;
+			int numberbloom = 0;
+			for(i=0; i< 256 && continuebloom; i++)	{
+				if(bloom_loadcustom(&bloom_bP[i],(char*)bloomnames[i])	== 1){
+					continuebloom = 0;
+				}
+				else	{
+					if(bloom_dummy(&dummybloom,itemsbloom,0.000001)	== 0){
+						numberbloom++;
+						if(dummybloom.bytes != bloom_bP[i].bytes)	{
+							continuebloom = 0;
+						}
+					}
+					else	{
+						continuebloom = 0;
+					}
 				}
 			}
-			else	{
-				if(bloom_init2(&bloom_bP[i],1000,0.000001)	== 1){
-					fprintf(stderr,"[E] error bloom_init for 1000 elements [%"PRIu64"]\n",i);
-					exit(0);
+			if(continuebloom == 1)	{
+				if(bloom_loadcustom(&bloom_bPx2nd,"bPx2nd")	== 1)	{
+					continuebloom == 0;
 				}
+				else	{
+					if(bloom_dummy(&dummybloom,itemsbloom2,0.000001)	== 0){
+						if(dummybloom.bytes != bloom_bPx2nd.bytes)	{
+							continuebloom = 0;
+						}
+						if(continuebloom == 0)	{
+							bloom_free(&bloom_bPx2nd);
+						}
+					}
+				}
+			}
+			if(continuebloom == 0)	{
+				fprintf(stderr,"[E] Some bloom file fail or missmatch size\n");
+				FLAGBLOOMFILTER = 0;
+				for(i=0; i < numberbloom ; i++)	{
+					bloom_free(&bloom_bP[i]);
+				}
+			}
+		}
+
+
+
+/*
+		if( FLAGBLOOMFILTER == 0)	{
+*/
+		for(i=0; i< 256; i++)	{
+			if(bloom_init2(&bloom_bP[i],itemsbloom,0.000001)	== 1){
+				fprintf(stderr,"[E] error bloom_init [%"PRIu64"]\n",i);
+				exit(0);
 			}
 			bloom_bP_totalbytes += bloom_bP[i].bytes;
 			if(FLAGDEBUG) bloom_print(&bloom_bP[i]);
@@ -1246,19 +1309,28 @@ int main(int argc, char **argv)	{
 			tt = malloc(sizeof(struct tothread));
 			tt->nt = i;
 			steps[i] = 0;
-			s = pthread_create(&tid[i],NULL,thread_process,(void *)tt);
+			switch(FLAGMODE)	{
+				case MODE_ADDRESS:
+				case MODE_XPOINT:
+				case MODE_RMD160:
+					s = pthread_create(&tid[i],NULL,thread_process,(void *)tt);
+				break;
+				case MODE_PUB2RMD:
+					s = pthread_create(&tid[i],NULL,thread_pub2rmd,(void *)tt);
+				break;
+			}
 			if(s != 0)	{
 				fprintf(stderr,"[E] pthread_create thread_process\n");
 				exit(0);
 			}
 		}
-
 	}
 	continue_flag = 1;
 	mpz_init(total);
 	mpz_init(pretotal);
 	mpz_init(debugcount_mpz);
-	sprintf(temporal,"%llu",(long long unsigned int)DEBUGCOUNT);
+	sprintf(temporal,"%"PRIu64,DEBUGCOUNT);
+	//printf("[I] Debug count : %s\n",temporal);
 	mpz_set_str(debugcount_mpz,temporal,10);
 	seconds = 0;
 	do	{
@@ -2094,7 +2166,7 @@ void *thread_process_bsgs(void *vargp)	{
 		//gmp_printf("While cycle: base_key : %Zd < n_range_end: %Zd\n",base_key,n_range_end);
 		if(FLAGQUIET == 0){
 			gmp_sprintf(xpoint_str,"%0.64Zx",base_key);
-			printf("\r[+] Thread %i: %s",thread_number,xpoint_str);
+			printf("\r[+] Thread  %s   ",xpoint_str);
 			fflush(stdout);
 			THREADOUTPUT = 1;
 		}
@@ -2139,7 +2211,7 @@ void *thread_process_bsgs(void *vargp)	{
 
 						if(r)	{
 							gmp_sprintf(xpoint_str,"%0.64Zx",keyfound);
-							printf("\n[+] Thread %i Key found privkey %s\n",thread_number,xpoint_str);
+							printf("\n[+] Thread Key found privkey %s\n",xpoint_str);
 							Scalar_Multiplication(G,&point_aux2,keyfound);
 							gmp_sprintf(pubkey,"04%0.64Zx%0.64Zx",point_aux2.x,point_aux2.y);
 							printf("[+] Publickey %s\n",pubkey);
@@ -2248,7 +2320,7 @@ void *thread_process_bsgs_random(void *vargp)	{
 		//gmp_printf("While cycle: base_key : %Zd < n_range_end: %Zd\n",base_key,n_range_end);
 		if(FLAGQUIET == 0){
 			gmp_sprintf(xpoint_str,"%0.64Zx",base_key);
-			printf("\r[+] Thread %i: %s",thread_number,xpoint_str);
+			printf("\r[+] Thread %s",xpoint_str);
 			fflush(stdout);
 			THREADOUTPUT = 1;
 		}
@@ -2286,7 +2358,7 @@ void *thread_process_bsgs_random(void *vargp)	{
 						r = bsgs_secondcheck(base_key,i,&OriginalPointsBSGS[k],&keyfound);
 						if(r)	{
 							gmp_sprintf(xpoint_str,"%0.64Zx",keyfound);
-							printf("\n[+] Thread %i Key found privkey %s\n",thread_number,xpoint_str);
+							printf("\n[+] Thread Key found privkey %s\n",xpoint_str);
 							Scalar_Multiplication(G,&point_aux2,keyfound);
 							gmp_sprintf(pubkey,"04%0.64Zx%0.64Zx",point_aux2.x,point_aux2.y);
 							printf("[+] Publickey %s\n",pubkey);
@@ -2522,4 +2594,106 @@ void sleep_ms(int milliseconds)	{ // cross-platform sleep function
       sleep(milliseconds / 1000);
     usleep((milliseconds % 1000) * 1000);
 #endif
+}
+
+void *thread_pub2rmd(void *vargp)	{
+	FILE *fd;
+	mpz_t key_mpz;
+	struct tothread *tt;
+	uint64_t i,limit,j;
+	char digest160[20];
+  char digest256[32];
+	char *temphex;
+	int thread_number,r;
+	int pub2rmd_continue = 1;
+	struct publickey pub;
+	limit = 0xFFFFFFFF;
+	tt = (struct tothread *)vargp;
+	thread_number = tt->nt;
+	mpz_init(key_mpz);
+	do {
+		if(FLAGRANDOM){
+			mpz_urandomm(key_mpz,state,n_range_diff);
+			mpz_add(key_mpz,key_mpz,n_range_start);
+		}
+		else	{
+			if(mpz_cmp(n_range_start,n_range_end) <= 0)	{
+				pthread_mutex_lock(&write_random);
+				mpz_set(key_mpz,n_range_start);
+				mpz_add_ui(n_range_start,n_range_start,N_SECUENTIAL_MAX);
+				pthread_mutex_unlock(&write_random);
+			}
+			else	{
+				pub2rmd_continue = 0;
+			}
+		}
+		if(pub2rmd_continue)	{
+			temphex = malloc(65);
+			gmp_sprintf(temphex,"%0.64Zx",key_mpz);
+			hexs2bin(temphex,pub.X.data8);
+			free(temphex);
+			pub.parity = 0x02;
+			pub.X.data32[7] = 0;
+			if(FLAGQUIET == 0)	{
+				temphex = tohex((char*)&pub,33);
+				printf("\r[+] Thread %s",temphex);
+				fflush(stdout);
+				THREADOUTPUT = 1;
+			}
+			for(i = 0 ; i < limit ; i++) {
+		    pub.parity = 0x02;
+		    sha256((char*)&pub, 33, digest256);
+		    RMD160Data((const unsigned char*)digest256,32, digest160);
+	    	r = bloom_check(&bloom,digest160,MAXLENGTHADDRESS);
+	      if(r)  {
+					r = searchbinary(addressTable,digest160,N);
+					if(r)	{
+						temphex = tohex((char*)&pub,33);
+						printf("\nHit: Publickey found %s\n",temphex);
+						fd = fopen("KEYFOUNDKEYFOUND.txt","a+");
+						if(fd != NULL)	{
+							pthread_mutex_lock(&write_keys);
+							fprintf(fd,"Publickey found %s\n",temphex);
+							fclose(fd);
+							pthread_mutex_unlock(&write_keys);
+						}
+						else	{
+							fprintf(stderr,"\nPublickey found %s\nbut the file can't be open\n",temphex);
+							exit(0);
+						}
+						free(temphex);
+					}
+	      }
+		    pub.parity = 0x03;
+		    sha256((char*)&pub, 33, digest256);
+		    RMD160Data((const unsigned char*)digest256,32, digest160);
+				r = bloom_check(&bloom,digest160,MAXLENGTHADDRESS);
+				if(r)  {
+					r = searchbinary(addressTable,digest160,N);
+		      if(r)  {
+						temphex = tohex((char*)&pub,33);
+						printf("\nHit: Publickey found %s\n",temphex);
+						fd = fopen("KEYFOUNDKEYFOUND.txt","a+");
+						if(fd != NULL)	{
+							pthread_mutex_lock(&write_keys);
+							fprintf(fd,"Publickey found %s\n",temphex);
+							fclose(fd);
+							pthread_mutex_unlock(&write_keys);
+						}
+						else	{
+							fprintf(stderr,"\nPublickey found %s\nbut the file can't be open\n",temphex);
+							exit(0);
+						}
+						free(temphex);
+		      }
+		    }
+		    pub.X.data32[7]++;
+		    if(pub.X.data32[7] % DEBUGCOUNT == 0)  {
+					steps[thread_number]++;
+		    }
+		  }	/* End for */
+		}	/* End if */
+	} while(pub2rmd_continue);
+	ends[thread_number] = 1;
+	return NULL;
 }

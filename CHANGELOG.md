@@ -1,11 +1,12 @@
 # Version Last
 - Change N variable type for modes address,rmd160 and xpoint, from uint32_t to uint64_t
+- Added method pub2rmd to search publickeys of the puzzles
 
 # Version 0.1.20210331
 - Small changes to be compiled with mingw on Windows
-- Changed sort funtions and binary search for modes address/rmd160/xpoint, now those modes can load MAX 2^64 items
+- Changed sort functions and binary search for modes address/rmd160/xpoint, now those modes can load MAX 2^64 items
 - xpoint input file now can contains Comments after the line of data
-- from this version all furters developments will be in the branch `development`
+- from this version all furthers developments will be in the branch `development`
 
 # Version 0.1.20210328
 - Added a progress counter (this solve bug https://github.com/albertobsd/keyhunt/issues/18 )
@@ -13,13 +14,13 @@
 - Fixed the code to avoid warnings (this solve the issue https://github.com/albertobsd/keyhunt/issues/19)
 
 # Version 0.1.20210322
-- Added xxhash for bloomfilter it hash better performance than murmurhash2. And it is 64 bits hash :)
+- Added xxhash for bloomfilter this hash have better performance than murmurhash2. And it is 64 bits hash :)
 - We reduce the number of items of the bPtable in ram using a second bloom filter, thanks @iceland2k14
 - The ram saved space is around 80%, so we can use a bigger K value, around 4 or 5 times bigger than previous version
 
 # Version 0.1.20210320 K*BSGS
 - Solved little error with compress and uncompress new param -l. See https://github.com/albertobsd/keyhunt/issues/17
-- funtion bsgs optimized to use a little less RAM (not related with Pfile)
+- function bsgs optimized to use a little less RAM (not related with Pfile)
 - Again removed some compile warnings. See https://github.com/albertobsd/keyhunt/issues/16
 
 # Version 0.1.20210311 K*BSGS
@@ -39,7 +40,6 @@
 # Version 0.1.20210112 BSGS
 - Added mode BSGS this work with a file with uncompressed keys
 - Updated  bloom filter to allow More items
-
 
 # Version 0.1.20201228
 - Change Quicksort to Introsort, this solve some edge cases of quicksort.
@@ -64,5 +64,5 @@
 - Minor bugs fixed.
 
 # Version 0.1.20201217
-- First Realease
+- First Release
 - Thanks to all CryptoHunters to make this code possible

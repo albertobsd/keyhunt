@@ -137,7 +137,7 @@ Total 26214400 keys in 150 seconds: 174762 keys/s
 
 rmd stand for RIPE Message Digest (see https://en.wikipedia.org/wiki/RIPEMD )
 
-mode rmd160 work in the same why than address, but the diference is that file need to have hash rmd160 instead of addresses.
+mode rmd160 work in the same way than address, but the diference is that file need to have hash rmd160 instead of addresses.
 
 This mode is almost two times faster than addres mode
 
@@ -299,6 +299,66 @@ After the hit we need to search the substracted index and make a simple math ope
 The Operation is `800258a2ce` hex (+/-) in this case + `453856235784` decimal equals to `E9AE4933D6`
 
 This is an easy example, I been trying the puzzle 120 with more than 500 millions of substracted keys and no luck.
+
+## pub2rmd mode
+This method is made to try to get the puzzles publickey key it works a little more faster because it skip the EC Operations
+
+The input file need to have the hash RMD160 of the address without publickey leaked:
+
+```
+3ee4133d991f52fdf6a25c9834e0745ac74248a4
+20d45a6a762535700ce9e0b216e31994335db8a5
+739437bb3dd6d1983e66629c5f08c70e52769371
+e0b8a2baee1b77fc703455f39d51477451fc8cfc
+61eb8a50c86b0584bb727dd65bed8d2400d6d5aa
+f6f5431d25bbf7b12e8add9af5e3475c44a0a5b8
+bf7413e8df4e7a34ce9dc13e2f2648783ec54adb
+105b7f253f0ebd7843adaebbd805c944bfb863e4
+9f1adb20baeacc38b3f49f3df6906a0e48f2df3d
+86f9fea5cdecf033161dd2f8f8560768ae0a6d14
+783c138ac81f6a52398564bb17455576e8525b29
+35003c3ef8759c92092f8488fca59a042859018c
+67671d5490c272e3ab7ddd34030d587738df33da
+351e605fac813965951ba433b7c2956bf8ad95ce
+20d28d4e87543947c7e4913bcdceaa16e2f8f061
+24cef184714bbd030833904f5265c9c3e12a95a2
+7c99ce73e19f9fbfcce4825ae88261e2b0b0b040
+c60111ed3d63b49665747b0e31eb382da5193535
+fbc708d671c03e26661b9c08f77598a529858b5e
+38a968fdfb457654c51bcfc4f9174d6ee487bb41
+5c3862203d1e44ab3af441503e22db97b1c5097e
+9978f61b92d16c5f1a463a0995df70da1f7a7d2a
+6534b31208fe6e100d29f9c9c75aac8bf06fbb38
+463013cd41279f2fd0c31d0a16db3972bfffac8d
+c6927a00970d0165327d0a6db7950f05720c295c
+2da63cbd251d23c7b633cb287c09e6cf888b3fe4
+578d94dc6f40fff35f91f6fba9b71c46b361dff2
+7eefddd979a1d6bb6f29757a1f463579770ba566
+c01bf430a97cbcdaedddba87ef4ea21c456cebdb
+```
+
+To target that file you need to do:
+
+`./keyhunt -m pub2rmd -f tests/puzzleswopublickey.txt -q`
+
+Output:
+
+```
+[+] Version 0.1.20210331
+[+] Setting mode pub2rmd
+[+] Set quiet thread output
+[+] Opening file tests/puzzleswopublickey.txt
+[+] Allocating memory for 29 elements: 0.00 MB
+[+] Initializing bloom filter for 29 elements.
+[+] Loading data to the bloomfilter total: 0.00 MB
+[+] Bloomfilter completed
+[+] Sorting data
+[+] 29 values were loaded and sorted
+Total 76546048 keys in 90 seconds: 850511 keys/s
+```
+
+You can let it run for a while together with others scripts, if you get one of those publickeys now you can target it with a better method like bsgs or another tools like kangaroo
+
 
 ## bsgs mode (baby step giant step)
 

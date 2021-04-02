@@ -116,6 +116,42 @@ int bloom_init2(struct bloom * bloom, uint64_t entries, long double error)
   return 0;
 }
 
+int bloom_dummy(struct bloom * bloom, uint64_t entries, long double error)
+{
+  memset(bloom, 0, sizeof(struct bloom));
+  if (entries < 1000 || error <= 0 || error >= 1) {
+    return 1;
+  }
+
+  bloom->entries = entries;
+  bloom->error = error;
+
+  long double num = -log(bloom->error);
+  long double denom = 0.480453013918201; // ln(2)^2
+  bloom->bpe = (num / denom);
+
+  long double dentries = (long double)entries;
+  long double allbits = dentries * bloom->bpe;
+  bloom->bits = (uint64_t)allbits;
+
+  bloom->bytes = (uint64_t) bloom->bits / 8;
+  if (bloom->bits % 8) {
+    bloom->bytes +=1;
+  }
+
+  bloom->hashes = (uint8_t)ceil(0.693147180559945 * bloom->bpe);  // ln(2)
+  /*
+  bloom->bf = (uint8_t *)calloc(bloom->bytes, sizeof(uint8_t));
+  if (bloom->bf == NULL) {                                   // LCOV_EXCL_START
+    return 1;
+  }                                                          // LCOV_EXCL_STOP
+
+  bloom->ready = 1;
+  bloom->major = BLOOM_VERSION_MAJOR;
+  bloom->minor = BLOOM_VERSION_MINOR;
+  */
+  return 0;
+}
 
 int bloom_check(struct bloom * bloom, const void * buffer, int len)
 {
@@ -159,6 +195,75 @@ int bloom_reset(struct bloom * bloom)
 {
   if (!bloom->ready) return 1;
   memset(bloom->bf, 0, bloom->bytes);
+  return 0;
+}
+
+int bloom_loadcustom(struct bloom * bloom, char * filename) {
+  if (filename == NULL || filename[0] == 0) {
+    return 1;
+  }
+  FILE *fd_str,*fd_dat;
+  char filename_str[70],filename_dat[70];
+  memset(filename_str,0,70);
+  memset(filename_dat,0,70);
+  snprintf(filename_str,68,"%s.blm",filename);
+  snprintf(filename_dat,68,"%s.dat",filename);
+  fd_str = fopen(filename_str,"rb");
+  fd_dat = fopen(filename_dat,"rb");
+  if (fd_str == NULL || fd_dat == NULL) {
+    return 1;
+  }
+  if(fread(bloom,1,sizeof(struct bloom),fd_str) != sizeof(struct bloom) ) {
+    fclose(fd_str);
+    fclose(fd_dat);
+    return 1;
+  }
+  bloom->bf = malloc(bloom->bytes);
+  if(bloom->bf == NULL)  {
+    memset(bloom, 0, sizeof(struct bloom));
+    return 1;
+  }
+  if(fread(bloom->bf,1, bloom->bytes,fd_dat) !=bloom->bytes) {
+    free(bloom->bf);
+    memset(bloom, 0, sizeof(struct bloom));
+    fclose(fd_str);
+    fclose(fd_dat);
+    return 1;
+  }
+  fclose(fd_str);
+  fclose(fd_dat);
+  return 0;
+}
+
+int bloom_savecustom(struct bloom * bloom, char * filename) {
+  if (filename == NULL || filename[0] == 0) {
+    return 1;
+  }
+  FILE *fd_str,*fd_dat;
+  char filename_str[70],filename_dat[70];
+  memset(filename_str,0,70);
+  memset(filename_dat,0,70);
+  snprintf(filename_str,68,"%s.blm",filename);
+  snprintf(filename_dat,68,"%s.dat",filename);
+  fd_str = fopen(filename_str,"wb");
+  fd_dat = fopen(filename_dat,"wb");
+  if (fd_str == NULL || fd_dat == NULL) {
+    return 1;
+  }
+
+  if(fwrite(bloom,1,sizeof(struct bloom),fd_str) != sizeof(struct bloom) ) {
+    fclose(fd_str);
+    fclose(fd_dat);
+    return 1;
+  }
+  if(fwrite(bloom->bf,1, bloom->bytes,fd_dat) !=bloom->bytes) {
+    fclose(fd_str);
+    fclose(fd_dat);
+    return 1;
+  }
+
+  fclose(fd_str);
+  fclose(fd_dat);
   return 0;
 }
 

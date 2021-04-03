@@ -25,8 +25,6 @@ char *tohex(char *ptr,int length);
 int hasMoreTokens(Tokenizer *t);
 char *nextToken(Tokenizer *t);
 
-int isValidHex(char *data);
-void freetokenizer(Tokenizer *t);
-void stringtokenizer(char *data,Tokenizer *t);
+
 
 #endif // CUSTOMUTILH

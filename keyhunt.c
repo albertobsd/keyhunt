@@ -18,6 +18,11 @@ email: alberto.bsd@gmail.com
 #include "sha256/sha256.h"
 #include "bloom/bloom.h"
 #include "sha3/sha3.h"
+
+#include "secp256k1/SECP256k1.h"
+#include "secp256k1/Point.h"
+#include "secp256k1/Int.h"
+
 #include "util.h"
 #ifdef WIN32
 	#include <windows.h>
@@ -39,7 +44,7 @@ email: alberto.bsd@gmail.com
 #define SEARCH_BOTH 2
 
 
-struct Point {
+struct strPoint {
 	mpz_t x;
 	mpz_t y;
 };
@@ -88,12 +93,12 @@ const char *EC_constant_N = "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD
 const char *EC_constant_P = "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f";
 const char *EC_constant_Gx = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
 const char *EC_constant_Gy = "483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8";
-struct Point DoublingG[256];
+struct strPoint DoublingG[256];
 
-void Point_Doubling(struct Point *P, struct Point *R);
-void Point_Addition(struct Point *P, struct Point *Q, struct Point *R);
-void Scalar_Multiplication(struct Point P, struct Point *R, mpz_t m);
-void Point_Negation(struct Point *A, struct Point *S);
+void Point_Doubling(struct strPoint *P, struct strPoint *R);
+void Point_Addition(struct strPoint *P, struct strPoint *Q, struct strPoint *R);
+void Scalar_Multiplication(struct strPoint P, struct strPoint *R, mpz_t m);
+void Point_Negation(struct strPoint *A, struct strPoint *S);
 int searchbinary(struct address_value *buffer,char *data,int64_t _N);
 void sleep_ms(int milliseconds);
 
@@ -115,7 +120,7 @@ int64_t bsgs_partition(struct bsgs_xvalue *arr, int64_t n);
 
 
 int bsgs_searchbinary(struct bsgs_xvalue *arr,char *data,int64_t _N,uint64_t *r_value);
-int bsgs_secondcheck(mpz_t start_range,uint32_t a,struct Point *target,mpz_t *private);
+int bsgs_secondcheck(mpz_t start_range,uint32_t a,struct strPoint *target,mpz_t *privatekey);
 
 void *thread_process(void *vargp);
 void *thread_process_bsgs(void *vargp);
@@ -124,7 +129,7 @@ void *thread_bPload(void *vargp);
 void *thread_bPloadFile(void *vargp);
 void *thread_pub2rmd(void *vargp);
 
-void init_doublingG(struct Point *P);
+void init_doublingG(struct strPoint *P);
 char *publickeytohashrmd160(char *pkey,int length);
 char *pubkeytopubaddress(char *pkey,int length);
 //char *pubkeytopubaddress_eth(char *pkey,int length);
@@ -147,7 +152,7 @@ pthread_mutex_t bsgs_thread;
 struct Elliptic_Curve EC;
 struct bloom dummybloom;
 struct bloom bloom;
-struct Point G;
+struct strPoint G;
 
 unsigned int *steps = NULL;
 unsigned int *ends = NULL;
@@ -192,7 +197,7 @@ uint64_t BSGS_BUFFERREGISTERLENGTH = 36;
 BSGS Variables
 */
 int *bsgs_found;
-struct Point *OriginalPointsBSGS;
+struct strPoint *OriginalPointsBSGS;
 struct bsgs_xvalue *bPtable;
 struct address_value *addressTable;
 struct bloom bloom_bP[256];
@@ -212,18 +217,21 @@ mpz_t BSGS_M;					//M is squareroot(N)
 mpz_t BSGS_M2;
 mpz_t TWO;
 mpz_t MPZAUX;
-struct Point BSGS_P;			//Original P is actually G, but this P value change over time for calculations
-struct Point BSGS_MP;			//MP values this is m * P
-struct Point BSGS_MP2;			//MP values this is m2 * P
-struct Point *BSGS_AMP;
-struct Point *BSGS_AMP2;
+struct strPoint BSGS_P;			//Original P is actually G, but this P value change over time for calculations
+struct strPoint BSGS_MP;			//MP values this is m * P
+struct strPoint BSGS_MP2;			//MP values this is m2 * P
+struct strPoint *BSGS_AMP;
+struct strPoint *BSGS_AMP2;
 
-struct Point point_temp,point_temp2;	//Temp value for some process
+struct strPoint point_temp,point_temp2;	//Temp value for some process
 
 mpz_t n_range_start;
 mpz_t n_range_end;
 mpz_t n_range_diff;
 mpz_t n_range_aux;
+
+
+Secp256K1 *secp;
 
 int main(int argc, char **argv)	{
 	char buffer[1024];
@@ -242,8 +250,12 @@ int main(int argc, char **argv)	{
 	struct bPload *temp;
 	int c;
 
+	secp = new Secp256K1();
+	secp->Init();
+
 	gmp_randinit_mt(state);
-	gmp_randseed_ui(state, ((int)clock()) + ((int)time(NULL)) );
+	gmp_randseed_ui(state, ((int)clock()) + ((int)time(NULL)));
+
 	mpz_init_set_str(EC.p, EC_constant_P, 16);
 	mpz_init_set_str(EC.n, EC_constant_N, 16);
 	mpz_init_set_str(G.x , EC_constant_Gx, 16);
@@ -565,7 +577,7 @@ int main(int argc, char **argv)	{
 	}
 	N = 0;
 	if(FLAGMODE != MODE_BSGS)	{
-		aux = malloc(1000);
+		aux =(char*) malloc(1000);
 		if(aux == NULL)	{
 			fprintf(stderr,"[E] error malloc()\n");
 		}
@@ -639,17 +651,17 @@ int main(int argc, char **argv)	{
 		}
 		fseek(fd,0,SEEK_SET);
 
-		printf("[+] Allocating memory for %"PRIu64" elements: %.2f MB\n",N,(double)(((double) sizeof(struct address_value)*N)/(double)1048576));
+		printf("[+] Allocating memory for %" PRIu64 " elements: %.2f MB\n",N,(double)(((double) sizeof(struct address_value)*N)/(double)1048576));
 		i = 0;
 		do {
-			addressTable = malloc(sizeof(struct address_value)*N);
+			addressTable = (struct address_value*) malloc(sizeof(struct address_value)*N);
 			i++;
 		} while(addressTable == NULL && i < 10);
 		if(addressTable == NULL)	{
-			fprintf(stderr,"[E] Can't alloc memory for %"PRIu64" elements\n",N);
+			fprintf(stderr,"[E] Can't alloc memory for %" PRIu64 " elements\n",N);
 			exit(0);
 		}
-		printf("[+] Initializing bloom filter for %"PRIu64" elements.\n",N);
+		printf("[+] Initializing bloom filter for %" PRIu64 " elements.\n",N);
 		if(N <= 1000)	{
 			if(bloom_init2(&bloom,1000,0.00001)	== 1){
 				fprintf(stderr,"[E] error bloom_init for 10000 elements.\n");
@@ -667,7 +679,7 @@ int main(int argc, char **argv)	{
 		i = 0;
 		switch (FLAGMODE) {
 			case MODE_ADDRESS:
-				aux = malloc(2*MAXLENGTHADDRESS);
+				aux =(char*) malloc(2*MAXLENGTHADDRESS);
 				if(aux == NULL)	{
 					fprintf(stderr,"[E] error malloc()\n");
 					exit(0);
@@ -690,7 +702,7 @@ int main(int argc, char **argv)	{
 			break;
 			case MODE_XPOINT:
 				if(FLAGRAWDATA)	{
-					aux = malloc(MAXLENGTHADDRESS);
+					aux = (char*)malloc(MAXLENGTHADDRESS);
 					if(aux == NULL)	{
 						fprintf(stderr,"[E] error malloc()\n");
 						exit(0);
@@ -704,7 +716,7 @@ int main(int argc, char **argv)	{
 					}
 				}
 				else	{
-					aux = malloc(5*MAXLENGTHADDRESS);
+					aux = (char*) malloc(5*MAXLENGTHADDRESS);
 					if(aux == NULL)	{
 						fprintf(stderr,"[E] error malloc()\n");
 						exit(0);
@@ -722,7 +734,7 @@ int main(int argc, char **argv)	{
 							if(isValidHex(hextemp)) {
 								switch(lenaux)	{
 									case 64:	/*X value*/
-										r = hexs2bin(aux,rawvalue);
+										r = hexs2bin(aux,(uint8_t*) rawvalue);
 										if(r)	{
 											memcpy(addressTable[i].value,rawvalue,20);
 											bloom_add(&bloom,rawvalue,MAXLENGTHADDRESS);
@@ -732,7 +744,7 @@ int main(int argc, char **argv)	{
 										}
 									break;
 									case 66:	/*Compress publickey*/
-									r = hexs2bin(aux+2,rawvalue);
+									r = hexs2bin(aux+2, (uint8_t*)rawvalue);
 										if(r)	{
 											memcpy(addressTable[i].value,rawvalue,20);
 											bloom_add(&bloom,rawvalue,MAXLENGTHADDRESS);
@@ -744,7 +756,7 @@ int main(int argc, char **argv)	{
 									case 130:	/* Uncompress publickey length*/
 										memset(temporal,0,65);
 										memcpy(temporal,aux+2,64);
-										r = hexs2bin(temporal,rawvalue);
+										r = hexs2bin(temporal, (uint8_t*) rawvalue);
 										if(r)	{
 												memcpy(addressTable[i].value,rawvalue,20);
 												bloom_add(&bloom,rawvalue,MAXLENGTHADDRESS);
@@ -775,7 +787,7 @@ int main(int argc, char **argv)	{
 			case MODE_PUB2RMD:
 			case MODE_RMD160:
 				if(FLAGRAWDATA)	{
-					aux = malloc(MAXLENGTHADDRESS);
+					aux = (char*) malloc(MAXLENGTHADDRESS);
 					if(aux == NULL)	{
 						fprintf(stderr,"[E] error malloc()\n");
 						exit(0);
@@ -789,7 +801,7 @@ int main(int argc, char **argv)	{
 					}
 				}
 				else	{
-					aux = malloc(3*MAXLENGTHADDRESS);
+					aux = (char*) malloc(3*MAXLENGTHADDRESS);
 					if(aux == NULL)	{
 						fprintf(stderr,"[E] error malloc()\n");
 						exit(0);
@@ -831,18 +843,18 @@ int main(int argc, char **argv)	{
 		printf("[+] Bloomfilter completed\n");
 		if(FLAGALREADYSORTED)	{
 			printf("[+] File mark already sorted, skipping sort proccess\n");
-			printf("[+] %"PRIu64" values were loaded\n",N);
+			printf("[+] %" PRIu64 " values were loaded\n",N);
 			_sort(addressTable,N);
 		}
 		else	{
 			printf("[+] Sorting data\n");
 			_sort(addressTable,N);
-			printf("[+] %"PRIu64" values were loaded and sorted\n",N);
+			printf("[+] %" PRIu64 " values were loaded and sorted\n",N);
 		}
 	}
 	if(FLAGMODE == MODE_BSGS)	{
 		DEBUGCOUNT = N_SECUENTIAL_MAX ;
-		aux = malloc(1024);
+		aux = (char*) malloc(1024);
 		if(aux == NULL)	{
 			fprintf(stderr,"[E] error malloc()\n");
 			exit(0);
@@ -864,10 +876,10 @@ int main(int argc, char **argv)	{
 			fprintf(stderr,"[E] There is no valid data in the file\n");
 			exit(0);
 		}
-		bsgs_found = calloc(N,sizeof(int));
-		OriginalPointsBSGS = malloc(N*sizeof(struct Point));
-		pointx_str = malloc(65);
-		pointy_str = malloc(65);
+		bsgs_found = (int*) calloc(N,sizeof(int));
+		OriginalPointsBSGS = (struct strPoint*) malloc(N*sizeof(struct strPoint));
+		pointx_str = (char*) malloc(65);
+		pointy_str = (char*) malloc(65);
 		if(OriginalPointsBSGS == NULL || pointy_str == NULL || pointx_str == NULL || bsgs_found == NULL)	{
 			fprintf(stderr,"[E] error malloc()\n");
 			exit(0);
@@ -1051,7 +1063,7 @@ int main(int argc, char **argv)	{
 		bsgs_aux = mpz_get_ui(BSGS_AUX);
 		DEBUGCOUNT = (uint64_t)((uint64_t)bsgs_m * (uint64_t)bsgs_aux);
 
-		printf("[+] Setting N up to %"PRIu64".\n",DEBUGCOUNT);
+		printf("[+] Setting N up to %" PRIu64 ".\n",DEBUGCOUNT);
 
 		itemsbloom = ((uint64_t)(bsgs_m/256)) > 1000 ? (uint64_t)(bsgs_m/256) : 1000;
 		itemsbloom2 = bsgs_m2 > 1000 ? bsgs_m : 1000;
@@ -1076,7 +1088,7 @@ int main(int argc, char **argv)	{
 				}
 			}
 			if(continuebloom == 1)	{
-				if(bloom_loadcustom(&bloom_bPx2nd,"bPx2nd")	== 1)	{
+				if(bloom_loadcustom(&bloom_bPx2nd,(char*)"bPx2nd")	== 1)	{
 					continuebloom == 0;
 				}
 				else	{
@@ -1106,7 +1118,7 @@ int main(int argc, char **argv)	{
 */
 		for(i=0; i< 256; i++)	{
 			if(bloom_init2(&bloom_bP[i],itemsbloom,0.000001)	== 1){
-				fprintf(stderr,"[E] error bloom_init [%"PRIu64"]\n",i);
+				fprintf(stderr,"[E] error bloom_init [%" PRIu64 "]\n",i);
 				exit(0);
 			}
 			bloom_bP_totalbytes += bloom_bP[i].bytes;
@@ -1133,16 +1145,16 @@ int main(int argc, char **argv)	{
 		Scalar_Multiplication(G,&BSGS_MP,BSGS_M);
 		Scalar_Multiplication(G,&BSGS_MP2,BSGS_M2);
 
-		printf("[+] Allocating %.1f MB for %"PRIu64" aMP Points\n",(double)(((double)(bsgs_aux*sizeof(struct Point)))/(double)1048576),bsgs_aux);
+		printf("[+] Allocating %.1f MB for %" PRIu64 " aMP Points\n",(double)(((double)(bsgs_aux*sizeof(struct strPoint)))/(double)1048576),bsgs_aux);
 		i = 0;
-		BSGS_AMP = malloc((uint64_t)((uint64_t)bsgs_aux*(uint64_t)sizeof(struct Point)));
+		BSGS_AMP = (struct strPoint*) malloc((uint64_t)((uint64_t)bsgs_aux*(uint64_t)sizeof(struct strPoint)));
 		if(BSGS_AMP == NULL)	{
 			printf("[E] error malloc()\n");
 			exit(0);
 		}
 
-		//printf("[+] Allocating %.1f MB for aMP Points (2nd)\n",(float)(((uint64_t)(bsgs_m2*sizeof(struct Point)))/(uint64_t)1048576));
-		BSGS_AMP2 = malloc((uint64_t)((uint64_t)bsgs_m2*(uint64_t)sizeof(struct Point)));
+		//printf("[+] Allocating %.1f MB for aMP Points (2nd)\n",(float)(((uint64_t)(bsgs_m2*sizeof(struct strPoint)))/(uint64_t)1048576));
+		BSGS_AMP2 = (struct strPoint*) malloc((uint64_t)((uint64_t)bsgs_m2*(uint64_t)sizeof(struct strPoint)));
 		if(BSGS_AMP2 == NULL)	{
 			printf("[E] error malloc()\n");
 			exit(0);
@@ -1185,7 +1197,7 @@ int main(int argc, char **argv)	{
 			}
 		}
 		else	{
-			printf("[+] Precalculating %"PRIu64" aMP points\n",bsgs_aux);
+			printf("[+] Precalculating %" PRIu64 " aMP points\n",bsgs_aux);
 			mpz_set(point_temp.x,BSGS_MP.x);
 			mpz_set(point_temp.y,BSGS_MP.y);
 			for(i = 0; i < bsgs_aux; i++)	{
@@ -1209,9 +1221,9 @@ int main(int argc, char **argv)	{
 			mpz_set(point_temp.x,point_temp2.x);
 			mpz_set(point_temp.y,point_temp2.y);
 		}
-		printf("[+] Allocating %.2f MB for %"PRIu64 " bP Points\n",(double)((double)((uint64_t)bsgs_m2*(uint64_t)sizeof(struct bsgs_xvalue))/(double)1048576),bsgs_m2);
+		printf("[+] Allocating %.2f MB for %" PRIu64  " bP Points\n",(double)((double)((uint64_t)bsgs_m2*(uint64_t)sizeof(struct bsgs_xvalue))/(double)1048576),bsgs_m2);
 		//printf("[+] Allocating %.2f MB for bP Points\n",(float)((uint64_t)((uint64_t)bsgs_m*(uint64_t)sizeof(struct bsgs_xvalue))/(uint64_t)1048576));
-		bPtable = calloc(bsgs_m2,sizeof(struct bsgs_xvalue));
+		bPtable = (struct bsgs_xvalue*) calloc(bsgs_m2,sizeof(struct bsgs_xvalue));
 		if(bPtable == NULL)	{
 			printf("[E] error malloc()\n");
 			exit(0);
@@ -1221,7 +1233,7 @@ int main(int argc, char **argv)	{
 		BASE = 0;
 		PERTHREAD = bsgs_m /NTHREADS;
 		PERTHREAD_R = bsgs_m % NTHREADS;
-		temp = calloc(NTHREADS,sizeof(struct bPload));
+		temp = (struct bPload *) calloc(NTHREADS,sizeof(struct bPload));
 		tid = (pthread_t *) calloc(NTHREADS,sizeof(pthread_t));
 
 		if(FLAGPRECALCUTED_P_FILE)	{
@@ -1284,7 +1296,7 @@ int main(int argc, char **argv)	{
 		tid = (pthread_t *) calloc(NTHREADS,sizeof(pthread_t));
 		DEBUGCOUNT = (uint64_t)((uint64_t)bsgs_m * (uint64_t)bsgs_aux);
 		for(i= 0;i < NTHREADS; i++)	{
-			tt = malloc(sizeof(struct tothread));
+			tt = (tothread*) malloc(sizeof(struct tothread));
 			tt->nt = i;
 			if(FLAGRANDOM)	{
 				s = pthread_create(&tid[i],NULL,thread_process_bsgs_random,(void *)tt);
@@ -1306,7 +1318,7 @@ int main(int argc, char **argv)	{
 		tid = (pthread_t *) calloc(NTHREADS,sizeof(pthread_t));
 
 		for(i= 0;i < NTHREADS; i++)	{
-			tt = malloc(sizeof(struct tothread));
+			tt = (tothread*) malloc(sizeof(struct tothread));
 			tt->nt = i;
 			steps[i] = 0;
 			switch(FLAGMODE)	{
@@ -1329,7 +1341,7 @@ int main(int argc, char **argv)	{
 	mpz_init(total);
 	mpz_init(pretotal);
 	mpz_init(debugcount_mpz);
-	sprintf(temporal,"%"PRIu64,DEBUGCOUNT);
+	sprintf(temporal,"%" PRIu64 ,DEBUGCOUNT);
 	//printf("[I] Debug count : %s\n",temporal);
 	mpz_set_str(debugcount_mpz,temporal,10);
 	seconds = 0;
@@ -1358,10 +1370,10 @@ int main(int argc, char **argv)	{
 					mpz_fdiv_q_ui(pretotal,total,seconds);
 					pthread_mutex_lock(&bsgs_thread);
 					if(THREADOUTPUT == 1)	{
-						gmp_sprintf(buffer,"\nTotal %Zu keys in %"PRIu64 " seconds: %Zu keys/s\r",total,seconds,pretotal);
+						gmp_sprintf(buffer,"\nTotal %Zu keys in %" PRIu64  " seconds: %Zu keys/s\r",total,seconds,pretotal);
 					}
 					else	{
-						gmp_sprintf(buffer,"\rTotal %Zu keys in %"PRIu64" seconds: %Zu keys/s\r",total,seconds,pretotal);
+						gmp_sprintf(buffer,"\rTotal %Zu keys in %" PRIu64 " seconds: %Zu keys/s\r",total,seconds,pretotal);
 					}
 					printf("%s",buffer);
 					fflush(stdout);
@@ -1373,7 +1385,7 @@ int main(int argc, char **argv)	{
 	}while(continue_flag);
 }
 
-void Point_Doubling(struct Point *P, struct Point *R)	{
+void Point_Doubling(struct strPoint *P, struct strPoint *R)	{
 	mpz_t slope, temp;
 	mpz_init(temp);
 	mpz_init(slope);
@@ -1400,7 +1412,7 @@ void Point_Doubling(struct Point *P, struct Point *R)	{
 	mpz_clear(slope);
 }
 
-void Point_Addition(struct Point *P, struct Point *Q, struct Point *R)	{
+void Point_Addition(struct strPoint *P, struct strPoint *Q, struct strPoint *R)	{
 	mpz_t PA_temp,PA_slope;
 	mpz_init(PA_temp);
 	mpz_init(PA_slope);
@@ -1453,8 +1465,8 @@ void Point_Addition(struct Point *P, struct Point *Q, struct Point *R)	{
 	mpz_clear(PA_slope);
 }
 
-void Scalar_Multiplication(struct Point P, struct Point *R, mpz_t m)	{
-	struct Point SM_T,SM_Q;
+void Scalar_Multiplication(struct strPoint P, struct strPoint *R, mpz_t m)	{
+	struct strPoint SM_T,SM_Q;
 	int no_of_bits, i;
 	no_of_bits = mpz_sizeinbase(m, 2);
 	mpz_init_set_ui(SM_Q.x,0);
@@ -1482,7 +1494,7 @@ void Scalar_Multiplication(struct Point P, struct Point *R, mpz_t m)	{
 	mpz_clear(SM_Q.y);
 }
 
-void Point_Negation(struct Point *A, struct Point *S)	{
+void Point_Negation(struct strPoint *A, struct strPoint *S)	{
 	mpz_sub(S->y, EC.p, A->y);
 	mpz_set(S->x, A->x);
 }
@@ -1490,7 +1502,7 @@ void Point_Negation(struct Point *A, struct Point *S)	{
 /*
 	Precalculate G Doublings for Scalar_Multiplication
 */
-void init_doublingG(struct Point *P)	{
+void init_doublingG(struct strPoint *P)	{
 	int i = 0;
 	mpz_init(DoublingG[i].x);
 	mpz_init(DoublingG[i].y);
@@ -1527,8 +1539,8 @@ char *pubkeytopubaddress_eth(char *pkey,int length)	{
 */
 
 char *pubkeytopubaddress(char *pkey,int length)	{
-	char *pubaddress = calloc(MAXLENGTHADDRESS+10,1);
-	char *digest = calloc(60,1);
+	char *pubaddress = (char*) calloc(MAXLENGTHADDRESS+10,1);
+	char *digest = (char*) calloc(60,1);
 	size_t pubaddress_size = MAXLENGTHADDRESS+10;
 	if(pubaddress == NULL || digest == NULL)	{
 		fprintf(stderr,"error malloc()\n");
@@ -1553,8 +1565,8 @@ char *pubkeytopubaddress(char *pkey,int length)	{
 }
 
 char *publickeytohashrmd160(char *pkey,int length)	{
-	char *hash160 = malloc(20);
-	char *digest = malloc(32);
+	char *hash160 = (char*) malloc(20);
+	char *digest = (char*) malloc(32);
 	if(hash160 == NULL || digest == NULL)	{
 		fprintf(stderr,"error malloc()\n");
 		exit(0);
@@ -1597,7 +1609,7 @@ int searchbinary(struct address_value *buffer,char *data,int64_t _N) {
 
 void *thread_process(void *vargp)	{
 	struct tothread *tt;
-	struct Point R,temporal;
+	struct strPoint R,temporal;
 	uint64_t count = 0;
 	int r,thread_number,found,continue_flag = 1;
 	char public_key_compressed[33],public_key_uncompressed[65],hexstrpoint[65];
@@ -1679,7 +1691,7 @@ void *thread_process(void *vargp)	{
 						if(FLAGVANITY)	{
 							if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH){
 								if(strncmp(public_address_uncompressed,vanity,len_vanity) == 0)	{
-									hextemp = malloc(65);
+									hextemp = (char*) malloc(65);
 									gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
 									vanityKeys = fopen("vanitykeys.txt","a+");
 									if(vanityKeys != NULL)	{
@@ -1692,7 +1704,7 @@ void *thread_process(void *vargp)	{
 							}
 							if(FLAGSEARCH == SEARCH_COMPRESS || FLAGSEARCH == SEARCH_BOTH){
 								if(strncmp(public_address_compressed,vanity,len_vanity) == 0)	{
-									hextemp = malloc(65);
+									hextemp = (char*) malloc(65);
 									gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
 									vanityKeys = fopen("vanitykeys.txt","a+");
 									if(vanityKeys != NULL)	{
@@ -1710,7 +1722,7 @@ void *thread_process(void *vargp)	{
 								r = searchbinary(addressTable,public_address_compressed,N);
 								if(r) {
 									found++;
-									hextemp = malloc(65);
+									hextemp = (char*) malloc(65);
 									gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
 									public_key_compressed_hex = tohex(public_key_compressed,33);
 									pthread_mutex_lock(&write_keys);
@@ -1734,7 +1746,7 @@ void *thread_process(void *vargp)	{
 								r = searchbinary(addressTable,public_address_uncompressed,N);
 								if(r) {
 									found++;
-									hextemp = malloc(65);
+									hextemp = (char*) malloc(65);
 									gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
 									public_key_uncompressed_hex = tohex(public_key_uncompressed,65);
 									pthread_mutex_lock(&write_keys);
@@ -1761,7 +1773,7 @@ void *thread_process(void *vargp)	{
 							if(r) {
 								r = searchbinary(addressTable,public_address_uncompressed,N);
 								if(r) {
-									hextemp = malloc(65);
+									hextemp = (char*) malloc(65);
 									mpz_get_str(hextemp,16,key_mpz);
 									public_key_uncompressed_hex = tohex(public_key_uncompressed+1,64);
 									pthread_mutex_lock(&write_keys);
@@ -1800,7 +1812,7 @@ void *thread_process(void *vargp)	{
 								r = searchbinary(addressTable,publickeyhashrmd160_compress,N);
 								if(r) {
 									found++;
-									hextemp = malloc(65);
+									hextemp = (char*) malloc(65);
 									gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
 									public_key_compressed_hex = tohex(public_key_compressed,33);
 									pthread_mutex_lock(&write_keys);
@@ -1823,7 +1835,7 @@ void *thread_process(void *vargp)	{
 								r = searchbinary(addressTable,publickeyhashrmd160_uncompress,N);
 								if(r) {
 									found++;
-									hextemp = malloc(65);
+									hextemp = (char*) malloc(65);
 									gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
 									public_key_uncompressed_hex = tohex(public_key_uncompressed,65);
 									pthread_mutex_lock(&write_keys);
@@ -1847,7 +1859,7 @@ void *thread_process(void *vargp)	{
 							r = searchbinary(addressTable,public_key_compressed+1,N);
 							if(r) {
 								found++;
-								hextemp = malloc(65);
+								hextemp = (char*) malloc(65);
 								gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
 								public_key_compressed_hex = tohex(public_key_compressed,33);
 								pthread_mutex_lock(&write_keys);
@@ -2124,7 +2136,7 @@ void *thread_process_bsgs(void *vargp)	{
 	char *aux_c;
 	mpz_t base_key,keyfound;
 	FILE *filekey;
-	struct Point base_point,point_aux,point_aux2,point_found,BSGS_S,BSGS_Q,BSGS_Q_AMP;
+	struct strPoint base_point,point_aux,point_aux2,point_found,BSGS_S,BSGS_Q,BSGS_Q_AMP;
 	uint32_t i,j,k,r,salir,thread_number,bloom_counter =0;
 	tt = (struct tothread *)vargp;
 	thread_number = tt->nt;
@@ -2245,7 +2257,7 @@ void *thread_process_bsgs(void *vargp)	{
 		mpz_set(base_key,BSGS_CURRENT);
 		mpz_add(BSGS_CURRENT,BSGS_CURRENT,BSGS_N);
 		pthread_mutex_unlock(&bsgs_thread);
-		if(FLAGDEBUG ) printf("%u of %"PRIu64"\n",bloom_counter,(uint64_t)(bsgs_aux*bsgs_point_number));
+		if(FLAGDEBUG ) printf("%u of %" PRIu64 "\n",bloom_counter,(uint64_t)(bsgs_aux*bsgs_point_number));
 		bloom_counter = 0;
 	}
 
@@ -2272,7 +2284,7 @@ void *thread_process_bsgs_random(void *vargp)	{
 	char *aux_c;
 	mpz_t base_key,keyfound;
 	FILE *filekey;
-	struct Point base_point,point_aux,point_aux2,point_found,BSGS_S,BSGS_Q,BSGS_Q_AMP;
+	struct strPoint base_point,point_aux,point_aux2,point_found,BSGS_S,BSGS_Q,BSGS_Q_AMP;
 	mpz_t n_range_random;
 	uint32_t i,j,k,r,salir,thread_number,bloom_counter = 0;
 	tt = (struct tothread *)vargp;
@@ -2392,7 +2404,7 @@ void *thread_process_bsgs_random(void *vargp)	{
 		mpz_urandomm (n_range_random,state,n_range_diff);
 		mpz_add(base_key,n_range_start,n_range_random);
 		pthread_mutex_unlock(&bsgs_thread);
-		if(FLAGDEBUG ) printf("%u of %"PRIu64"\n",bloom_counter,(uint64_t)(bsgs_aux*bsgs_point_number));
+		if(FLAGDEBUG ) printf("%u of %" PRIu64 "\n",bloom_counter,(uint64_t)(bsgs_aux*bsgs_point_number));
 		bloom_counter = 0;
 	}
 	mpz_clear(BSGS_Q.x);
@@ -2418,12 +2430,12 @@ void *thread_process_bsgs_random(void *vargp)	{
 	This funtion is made with the especific purpouse to USE a smaller bPTable in RAM.
 	This new and small bPtable is around ~ squareroot( K *squareroot(N))
 */
-int bsgs_secondcheck(mpz_t start_range,uint32_t a,struct Point *target,mpz_t *private)	{
+int bsgs_secondcheck(mpz_t start_range,uint32_t a,struct strPoint *target,mpz_t *privatekey)	{
 	uint64_t j = 0;
 	int i = 0,found = 0,r = 0;
 	mpz_t base_key;
-	struct Point base_point,point_aux;
-	struct Point BSGS_Q, BSGS_S,BSGS_Q_AMP;
+	struct strPoint base_point,point_aux;
+	struct strPoint BSGS_Q, BSGS_S,BSGS_Q_AMP;
 	char pubkey[131],xpoint_str[65],xpoint_raw[32];
 
 	mpz_init(base_key);
@@ -2461,21 +2473,21 @@ int bsgs_secondcheck(mpz_t start_range,uint32_t a,struct Point *target,mpz_t *pr
 			//printf("bsgs_searchbinary: %s\n",r ? "yes":"no");
 			//printf("Current i: %u j: %llu, m: %llu\n",i,j,bsgs_m2);
 			if(r)	{
-				mpz_set(*private,BSGS_M2);
-				mpz_mul_ui(*private,*private,i);
-				mpz_add_ui(*private,*private,j+1);
-				mpz_add(*private,*private,base_key);
-				Scalar_Multiplication(G,&point_aux,*private);
-				//gmp_printf("private 1: %0.64Zx\n",*private);
+				mpz_set(*privatekey,BSGS_M2);
+				mpz_mul_ui(*privatekey,*privatekey,i);
+				mpz_add_ui(*privatekey,*privatekey,j+1);
+				mpz_add(*privatekey,*privatekey,base_key);
+				Scalar_Multiplication(G,&point_aux,*privatekey);
+				//gmp_printf("privatekey 1: %0.64Zx\n",*privatekey);
 				if(mpz_cmp(point_aux.x,target->x) == 0)	{
 					found = 1;
 				}
 				else	{
-					mpz_set(*private,BSGS_M2);
-					mpz_mul_ui(*private,*private,i);
-					mpz_sub_ui(*private,*private,j+1);
-					mpz_add(*private,*private,base_key);
-					//gmp_printf("private 2: %0.64Zx\n",*private);
+					mpz_set(*privatekey,BSGS_M2);
+					mpz_mul_ui(*privatekey,*privatekey,i);
+					mpz_sub_ui(*privatekey,*privatekey,j+1);
+					mpz_add(*privatekey,*privatekey,base_key);
+					//gmp_printf("privatekey 2: %0.64Zx\n",*privatekey);
 					if(mpz_cmp(point_aux.x,target->x) == 0)	{
 						found = 1;
 					}
@@ -2487,7 +2499,6 @@ int bsgs_secondcheck(mpz_t start_range,uint32_t a,struct Point *target,mpz_t *pr
 		mpz_set(BSGS_S.y,BSGS_Q_AMP.y);
 		i++;
 	}while(i < 20 && !found);
-
 	mpz_clear(base_key);
 	mpz_clear(base_point.x);
 	mpz_clear(base_point.y);
@@ -2503,27 +2514,25 @@ int bsgs_secondcheck(mpz_t start_range,uint32_t a,struct Point *target,mpz_t *pr
 }
 
 void *thread_bPload(void *vargp)	{
+	char *hextemp;
 	char hexvalue[65],rawvalue[32];
 	struct bPload *tt;
-	struct Point P,temp;
-	mpz_t base;
 	uint32_t j;
 	uint64_t i;
+	Int keybase;
+	Point P;
 	tt = (struct bPload *)vargp;
-	mpz_init(base);
-	mpz_init(P.x);
-	mpz_init(P.y);
-	mpz_init(temp.x);
-	mpz_init(temp.y);
-	mpz_set_ui(base,tt->from);
-	Scalar_Multiplication(G,&P,base);
+	keybase.SetInt64(tt->from);
+	P = secp->ComputePublicKey(&keybase);
 	i = tt->from -1;
 	j = tt->from -1;
 	do {
-		mpz_set(temp.x,P.x);
-		mpz_set(temp.y,P.y);
-		gmp_sprintf(hexvalue,"%0.64Zx",P.x);
-		hexs2bin(hexvalue,(unsigned char*) rawvalue );
+		P.x.Get32Bytes((unsigned char*)rawvalue);
+		/*
+		hextemp = tohex(rawvalue,32);
+		printf("%s\n",hextemp);
+		free(hextemp);
+		*/
 		if(i < bsgs_m2)	{
 			memcpy(bPtable[j].value,rawvalue+16,BSGS_XVALUE_RAM);
 			bPtable[j].index = j;
@@ -2531,15 +2540,17 @@ void *thread_bPload(void *vargp)	{
 			j++;
 		}
 		bloom_add(&bloom_bP[((uint8_t)rawvalue[0])], rawvalue ,BSGS_BUFFERXPOINTLENGTH);
-		Point_Addition(&G,&temp,&P);
+		if(secp->G.equals(P))	{
+			//printf("Is G\n");
+			P = secp->DoubleDirect(P);
+		}
+		else	{
+			//printf("Not G\n");
+			P = secp->NextKey(P);
+		}
 		i++;
 		tt->counter++;
 	} while( i < tt->to );
-	mpz_clear(base);
-	mpz_clear(P.x);
-	mpz_clear(P.y);
-	mpz_clear(temp.x);
-	mpz_clear(temp.y);
 	pthread_exit(NULL);
 }
 
@@ -2558,7 +2569,7 @@ void *thread_bPloadFile(void *vargp)	{
 	i = tt->from -1;
 	j = tt->from -1;
 	if(fseek(fd,(uint64_t)(i*32),SEEK_SET) != 0)	{
-		fprintf(stderr,"Can't seek the file at index %"PRIu64", offset %"PRIu64"\n",i,(uint64_t)(i*32));
+		fprintf(stderr,"Can't seek the file at index %" PRIu64 ", offset %" PRIu64 "\n",i,(uint64_t)(i*32));
 		exit(0);
 	}
 	do {
@@ -2628,7 +2639,7 @@ void *thread_pub2rmd(void *vargp)	{
 			}
 		}
 		if(pub2rmd_continue)	{
-			temphex = malloc(65);
+			temphex = (char*) malloc(65);
 			gmp_sprintf(temphex,"%0.64Zx",key_mpz);
 			hexs2bin(temphex,pub.X.data8);
 			free(temphex);

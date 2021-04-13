@@ -18,6 +18,7 @@
 #include <cstdio>
 #include <cstring>
 #include "SECP256k1.h"
+#include "Point.h"
 #include "util.h"
 
 Secp256K1::Secp256K1() {
@@ -25,7 +26,6 @@ Secp256K1::Secp256K1() {
 
 void Secp256K1::Init() {
   // Prime for the finite field
-  Int P;
   P.SetBase16("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F");
 
   // Set up field
@@ -97,6 +97,16 @@ uint8_t Secp256K1::GetByte(char *str, int idx) {
   }
   return (uint8_t)val;
 }
+
+Point Secp256K1::Negation(Point &p) {
+  Point Q;
+  Q.Clear();
+  Q.x.Set(&p.x);
+  Q.y.Set(&this->P);
+  Q.y.Sub(&p.y);
+  return Q;
+}
+
 
 bool Secp256K1::ParsePublicKeyHex(char *str,Point &ret,bool &isCompressed) {
   int len = strlen(str);
@@ -171,6 +181,27 @@ char* Secp256K1::GetPublicKeyHex(bool compressed, Point &pubKey) {
     publicKeyBytes[0] = pubKey.y.IsEven() ? 0x2 : 0x3;
     pubKey.x.Get32Bytes(publicKeyBytes + 1);
     ret = (char*) tohex((char*)publicKeyBytes,33);
+  }
+  return ret;
+}
+
+char* Secp256K1::GetPublicKeyRaw(bool compressed, Point &pubKey) {
+  unsigned char publicKeyBytes[128];
+  char *ret = (char*) malloc(65);
+  if(ret == NULL) {
+    ::fprintf(stderr,"Can't alloc memory\n");
+    exit(0);
+  }
+  if (!compressed) {
+    //Uncompressed public key
+    ret[0] = 0x4;
+    pubKey.x.Get32Bytes((unsigned char*) (ret + 1));
+    pubKey.y.Get32Bytes((unsigned char*) (ret + 33));
+  }
+  else {
+    // Compressed public key
+    ret[0] = pubKey.y.IsEven() ? 0x2 : 0x3;
+    pubKey.x.Get32Bytes((unsigned char*) (ret + 1));
   }
   return ret;
 }

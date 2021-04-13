@@ -32,11 +32,22 @@ Int _ONE((uint64_t)1);
 // ------------------------------------------------
 
 Int::Int() {
+  CLEAR();
 }
 
 Int::Int(Int *a) {
   if(a) Set(a);
   else CLEAR();
+}
+
+Int::Int(uint32_t i32) {
+
+  if (i32 < 0) {
+	  CLEARFF();
+  } else {
+	  CLEAR();
+  }
+  bits[0] = i32;
 }
 
 Int::Int(int64_t i64) {
@@ -47,7 +58,6 @@ Int::Int(int64_t i64) {
 	  CLEAR();
   }
   bits64[0] = i64;
-
 }
 
 Int::Int(uint64_t u64) {
@@ -252,19 +262,15 @@ bool Int::IsZero() {
 // ------------------------------------------------
 
 void Int::SetInt64(uint64_t value) {
-
   CLEAR();
   bits64[0]=value;
-
 }
 
 // ------------------------------------------------
 
 void Int::SetInt32(uint32_t value) {
-
   CLEAR();
   bits[0]=value;
-
 }
 
 // ------------------------------------------------
@@ -272,6 +278,11 @@ void Int::SetInt32(uint32_t value) {
 uint32_t Int::GetInt32() {
   return bits[0];
 }
+
+uint64_t Int::GetInt64() {
+  return bits64[0];
+}
+
 
 // ------------------------------------------------
 
@@ -736,6 +747,19 @@ void Int::Rand(int nbit) {
 
 }
 
+void Int::Rand(Int *min,Int *max) {
+	CLEAR();
+  Int diff;
+  int nbit = 256;
+  uint32_t nb = nbit/32;
+  diff.Set(max);
+  diff.Sub(min);
+	uint32_t i=0;
+	for(;i<nb;i++)
+		bits[i]=rndl();
+  this->Mod(&diff);
+}
+
 // ------------------------------------------------
 
 void Int::Div(Int *a,Int *mod) {
@@ -925,7 +949,7 @@ char* Int::GetBase10() {
 // ------------------------------------------------
 
 char* Int::GetBase16() {
-  return GetBaseN(16,"0123456789ABCDEF");
+  return GetBaseN(16,"0123456789abcdef");
 }
 
 // ------------------------------------------------

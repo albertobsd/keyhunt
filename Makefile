@@ -13,7 +13,7 @@ default:
 	g++ -m64 -mssse3 -Wno-unused-result -Wno-write-strings -O2 -c secp256k1/Random.cpp -o Random.o
 	g++ -m64 -mssse3 -Wno-unused-result -Wno-write-strings -O2 -c secp256k1/IntGroup.cpp -o IntGroup.o
 	g++ -o keyhunt keyhunt.c base58.o rmd160.o sha256.o bloom.o xxhash.o util.o Int.o  Point.o SECP256K1.o  IntMod.o  Random.o IntGroup.o -lgmp -lm -lpthread
-	gcc -O3 hexcharstoraw.c -o hexcharstoraw util.o -lm
-	gcc -o bPfile bPfile.c -lgmp -lm
+	#gcc -O3 hexcharstoraw.c -o hexcharstoraw util.o -lm
+	g++ -o bPfile bPfile.c util.o -lgmp -lm
 clean:
 	rm -r *.o

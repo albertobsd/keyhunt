@@ -42,6 +42,7 @@ class Int {
 public:
 
   Int();
+  Int(uint32_t i32);
   Int(int64_t i64);
   Int(uint64_t u64);
   Int(Int *a);
@@ -146,10 +147,12 @@ public:
   void SetDWord(int n, uint32_t b);
   void SetQWord(int n,uint64_t b);
   void Rand(int nbit);
+  void Rand(Int *min,Int *max);
   void Set32Bytes(unsigned char *bytes);
   void MaskByte(int n);
 
   // Getter
+  uint64_t GetInt64();
   uint32_t GetInt32();
   int GetBit(uint32_t n);
   unsigned char GetByte(int n);

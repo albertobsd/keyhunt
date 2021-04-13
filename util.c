@@ -70,7 +70,7 @@ void stringtokenizer(char *data,Tokenizer *t)	{
 	t->n = 0;
 	t->current = 0;
 	trim(data,"\t\n\r :");
-	token = strtok(data," \t");
+	token = strtok(data," \t:");
 	while(token != NULL)	{
 		t->n++;
 		t->tokens = (char**) realloc(t->tokens,sizeof(char*)*t->n);

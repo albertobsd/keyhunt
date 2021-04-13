@@ -33,6 +33,7 @@ public:
   bool  EC(Point &p);
 
   char* GetPublicKeyHex(bool compressed, Point &p);
+  char* GetPublicKeyRaw(bool compressed, Point &p);
   bool ParsePublicKeyHex(char *str,Point &p,bool &isCompressed);
 
   Point Add(Point &p1, Point &p2);
@@ -40,8 +41,10 @@ public:
   Point AddDirect(Point &p1, Point &p2);
   Point Double(Point &p);
   Point DoubleDirect(Point &p);
+  Point Negation(Point &p);
 
   Point G;                 // Generator
+  Int P;                   //
   Int   order;             // Curve order
 
 private:

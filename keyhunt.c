@@ -842,9 +842,9 @@ int main(int argc, char **argv)	{
 			_sort(addressTable,N);
 		}
 		else	{
-			printf("[+] Sorting data\n");
+			printf("[+] Sorting data ...");
 			_sort(addressTable,N);
-			printf("[+] %" PRIu64 " values were loaded and sorted\n",N);
+			printf(" done! %" PRIu64 " values were loaded and sorted\n",N);
 		}
 	}
 	if(FLAGMODE == MODE_BSGS)	{
@@ -1315,8 +1315,9 @@ int main(int argc, char **argv)	{
 		free(temp);
 		free(tid);
 
-		printf("[+] Sorting %lu elements\n",bsgs_m2);
+		printf("[+] Sorting %lu elements... ",bsgs_m2);
 		bsgs_sort(bPtable,bsgs_m2);
+		printf("Done!\n");
 
 		i = 0;
 
@@ -1507,292 +1508,6 @@ int searchbinary(struct address_value *buffer,char *data,int64_t _N) {
 
 void *thread_process(void *vargp)	{
 	struct tothread *tt;
-	Point R,temporal;
-	uint64_t count = 0;
-	int r,thread_number,found,continue_flag = 1;
-	char *public_key_compressed,*public_key_uncompressed,hexstrpoint[65];
-	char *publickeyhashrmd160_compress,*publickeyhashrmd160_uncompress;
-	char *hextemp,*public_key_compressed_hex,*public_key_uncompressed_hex;
-	char *eth_address;
-	char *public_address_compressed,*public_address_uncompressed;
-	unsigned long longtemp;
-	FILE *keys,*vanityKeys;
-	Int key_mpz,mpz_bit_range_min,mpz_bit_range_max,mpz_bit_range_diff;
-	tt = (struct tothread *)vargp;
-	thread_number = tt->nt;
-	free(tt);
-	found = 0;
-
-	do {
-		if(FLAGRANDOM){
-			key_mpz.Rand(&n_range_start,&n_range_end);
-		}
-		else	{
-			if(n_range_start.IsLower(&n_range_end)){
-				pthread_mutex_lock(&write_random);
-				key_mpz.Set(&n_range_start);
-				n_range_start.Add(N_SECUENTIAL_MAX);
-				pthread_mutex_unlock(&write_random);
-			}
-			else	{
-				continue_flag = 0;
-			}
-		}
-		if(continue_flag)	{
-			if(FLAGQUIET == 0){
-				hextemp = key_mpz.GetBase16();
-				printf("\rBase key: %s     ",hextemp);
-				fflush(stdout);
-				free(hextemp);
-				THREADOUTPUT = 1;
-			}
-			R = secp->ComputePublicKey(&key_mpz);
-			count = 0;
-			do {
-				temporal.Set(R);
-				switch(FLAGSEARCH)	{
-					case SEARCH_UNCOMPRESS:
-						public_key_uncompressed = secp->GetPublicKeyRaw(false,R);
-					break;
-					case SEARCH_COMPRESS:
-						public_key_compressed = secp->GetPublicKeyRaw(true,R);
-					break;
-					case SEARCH_BOTH:
-						public_key_uncompressed = secp->GetPublicKeyRaw(false,R);
-						public_key_compressed = secp->GetPublicKeyRaw(true,R);
-					break;
-				}
-				switch(FLAGMODE)	{
-					case MODE_ADDRESS:
-						switch(FLAGSEARCH)	{
-							case SEARCH_UNCOMPRESS:
-								public_address_uncompressed = pubkeytopubaddress(public_key_uncompressed,65);
-							break;
-							case SEARCH_COMPRESS:
-								public_address_compressed = pubkeytopubaddress(public_key_compressed,33);
-							break;
-							case SEARCH_BOTH:
-								public_address_compressed = pubkeytopubaddress(public_key_compressed,33);
-								public_address_uncompressed = pubkeytopubaddress(public_key_uncompressed,65);
-							break;
-						}
-						if(FLAGVANITY)	{
-							if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH){
-								if(strncmp(public_address_uncompressed,vanity,len_vanity) == 0)	{
-									hextemp = key_mpz.GetBase16();
-									vanityKeys = fopen("vanitykeys.txt","a+");
-									if(vanityKeys != NULL)	{
-										fprintf(vanityKeys,"PrivKey: %s\nAddress uncompressed: %s\n",hextemp,public_address_uncompressed);
-										fclose(vanityKeys);
-									}
-									printf("\nVanity privKey: %s\nAddress uncompressed:	%s\n",hextemp,public_address_uncompressed);
-									free(hextemp);
-								}
-							}
-							if(FLAGSEARCH == SEARCH_COMPRESS || FLAGSEARCH == SEARCH_BOTH){
-								if(strncmp(public_address_compressed,vanity,len_vanity) == 0)	{
-									hextemp = key_mpz.GetBase16();
-									vanityKeys = fopen("vanitykeys.txt","a+");
-									if(vanityKeys != NULL)	{
-										fprintf(vanityKeys,"PrivKey: %s\nAddress compressed:	%s\n",hextemp,public_address_compressed);
-										fclose(vanityKeys);
-									}
-									printf("\nVanity privKey: %s\nAddress compressed: %s\n",hextemp,public_address_compressed);
-									free(hextemp);
-								}
-							}
-						}
-						if(FLAGSEARCH == SEARCH_COMPRESS || FLAGSEARCH == SEARCH_BOTH){
-							r = bloom_check(&bloom,public_address_compressed,MAXLENGTHADDRESS);
-							if(r) {
-								r = searchbinary(addressTable,public_address_compressed,N);
-								if(r) {
-									found++;
-									hextemp = key_mpz.GetBase16();
-									public_key_compressed_hex = tohex(public_key_compressed,33);
-									pthread_mutex_lock(&write_keys);
-									keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
-									if(keys != NULL)	{
-										fprintf(keys,"PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_compressed_hex,public_address_compressed);
-										fclose(keys);
-									}
-									printf("\nHIT!! PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_compressed_hex,public_address_compressed);
-									pthread_mutex_unlock(&write_keys);
-									free(public_key_compressed_hex);
-									free(hextemp);
-								}
-							}
-							free(public_address_compressed);
-						}
-
-						if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH){
-							r = bloom_check(&bloom,public_address_uncompressed,MAXLENGTHADDRESS);
-							if(r) {
-								r = searchbinary(addressTable,public_address_uncompressed,N);
-								if(r) {
-									found++;
-									hextemp = key_mpz.GetBase16();
-									public_key_uncompressed_hex = tohex(public_key_uncompressed,65);
-									pthread_mutex_lock(&write_keys);
-									keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
-									if(keys != NULL)	{
-										fprintf(keys,"PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,public_address_uncompressed);
-										fclose(keys);
-									}
-									printf("\nHIT!! PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,public_address_uncompressed);
-									pthread_mutex_unlock(&write_keys);
-									free(public_key_uncompressed_hex);
-									free(hextemp);
-								}
-							}
-							free(public_address_uncompressed);
-						}
-						if( (FLAGCRYPTO & CRYPTO_ETH) != 0) {
-							/*
-							mpz_export((public_key_uncompressed+1),&longtemp,1,8,1,0,R.x);
-							mpz_export((public_key_uncompressed+33),&longtemp,1,8,1,0,R.y);
-							public_address_uncompressed = pubkeytopubaddress_eth(public_key_uncompressed+1,64);
-							//printf("Testing for %s\n",public_address_uncompressed);
-							r = bloom_check(&bloom,public_address_uncompressed,MAXLENGTHADDRESS);
-							if(r) {
-								r = searchbinary(addressTable,public_address_uncompressed,N);
-								if(r) {
-									hextemp = (char*) malloc(65);
-									mpz_get_str(hextemp,16,key_mpz);
-									public_key_uncompressed_hex = tohex(public_key_uncompressed+1,64);
-									pthread_mutex_lock(&write_keys);
-									keys = fopen("keys.txt","a+");
-									if(keys != NULL)	{
-										fprintf(keys,"PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,public_address_uncompressed);
-										fclose(keys);
-									}
-									printf("HIT!! PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,public_address_uncompressed);
-									pthread_mutex_unlock(&write_keys);
-									free(public_key_uncompressed_hex);
-									free(hextemp);
-								}
-								free(public_address_uncompressed);
-							}
-							*/
-						}
-					break;
-					case MODE_RMD160:
-						switch(FLAGSEARCH)	{
-							case SEARCH_UNCOMPRESS:
-								publickeyhashrmd160_uncompress = publickeytohashrmd160(public_key_uncompressed,65);
-							break;
-							case SEARCH_COMPRESS:
-								publickeyhashrmd160_compress = publickeytohashrmd160(public_key_compressed,33);
-							break;
-							case SEARCH_BOTH:
-								publickeyhashrmd160_compress = publickeytohashrmd160(public_key_compressed,33);
-								publickeyhashrmd160_uncompress = publickeytohashrmd160(public_key_uncompressed,65);
-							break;
-						}
-
-						if(FLAGSEARCH == SEARCH_COMPRESS || FLAGSEARCH == SEARCH_BOTH){
-							r = bloom_check(&bloom,publickeyhashrmd160_compress,MAXLENGTHADDRESS);
-							if(r) {
-								r = searchbinary(addressTable,publickeyhashrmd160_compress,N);
-								if(r) {
-									found++;
-									hextemp = key_mpz.GetBase16();
-									public_key_compressed_hex = tohex(public_key_compressed,33);
-									pthread_mutex_lock(&write_keys);
-									keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
-									if(keys != NULL)	{
-										fprintf(keys,"PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
-										fclose(keys);
-									}
-									printf("\nHIT!! PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
-									pthread_mutex_unlock(&write_keys);
-									free(public_key_compressed_hex);
-									free(hextemp);
-								}
-							}
-							free(publickeyhashrmd160_compress);
-						}
-						if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH){
-							r = bloom_check(&bloom,publickeyhashrmd160_uncompress,MAXLENGTHADDRESS);
-							if(r) {
-								r = searchbinary(addressTable,publickeyhashrmd160_uncompress,N);
-								if(r) {
-									found++;
-									hextemp = key_mpz.GetBase16();
-									public_key_uncompressed_hex = tohex(public_key_uncompressed,65);
-									pthread_mutex_lock(&write_keys);
-									keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
-									if(keys != NULL)	{
-										fprintf(keys,"PrivKey: %s\npubkey: %s\n",hextemp,public_key_uncompressed_hex);
-										fclose(keys);
-									}
-									printf("\nHIT!! PrivKey: %s\npubkey: %s\n",hextemp,public_key_uncompressed_hex);
-									pthread_mutex_unlock(&write_keys);
-									free(public_key_uncompressed_hex);
-									free(hextemp);
-								}
-							}
-							free(publickeyhashrmd160_uncompress);
-						}
-					break;
-					case MODE_XPOINT:
-						r = bloom_check(&bloom,public_key_compressed+1,MAXLENGTHADDRESS);
-						if(r) {
-							r = searchbinary(addressTable,public_key_compressed+1,N);
-							if(r) {
-								found++;
-								hextemp = key_mpz.GetBase16();
-								public_key_compressed_hex = tohex(public_key_compressed,33);
-								pthread_mutex_lock(&write_keys);
-								keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
-								if(keys != NULL)	{
-									fprintf(keys,"PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
-									fclose(keys);
-								}
-								printf("\nHIT!! PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
-								pthread_mutex_unlock(&write_keys);
-								free(public_key_compressed_hex);
-								free(hextemp);
-							}
-						}
-					break;
-				}
-				switch(FLAGSEARCH)	{
-					case SEARCH_UNCOMPRESS:
-						free(public_key_uncompressed);
-					break;
-					case SEARCH_COMPRESS:
-						free(public_key_compressed);
-					break;
-					case SEARCH_BOTH:
-						free(public_key_compressed);
-						free(public_key_uncompressed);
-					break;
-				}
-				count++;
-				if(count %	DEBUGCOUNT == 0)	{
-					steps[thread_number]++;
-				}
-
-				if(key_mpz.IsEqual(&ONE))	{
-					R = secp->DoubleDirect(temporal);
-				}
-				else	{
-					R = secp->AddDirect(temporal,secp->G);
-				}
-				key_mpz.AddOne();
-			}while(count <= N_SECUENTIAL_MAX);
-		}
-	} while(continue_flag);
-	ends[thread_number] = 1;
-	return NULL;
-}
-
-
-
-void *thread_process_new(void *vargp)	{
-	struct tothread *tt;
-
 	Point pts[CPU_GRP_SIZE];
 	Int dx[CPU_GRP_SIZE / 2 + 1];
 	IntGroup *grp = new IntGroup(CPU_GRP_SIZE / 2 + 1);
@@ -1851,7 +1566,7 @@ void *thread_process_new(void *vargp)	{
 				}
 				key_mpz.Add((uint64_t)CPU_GRP_SIZE / 2);
 	 			startP = secp->ComputePublicKey(&key_mpz);
-
+				key_mpz.Sub((uint64_t)CPU_GRP_SIZE / 2);
 
 				for(i = 0; i < hLength; i++) {
 		      dx[i].ModSub(&Gn[i].x,&startP.x);

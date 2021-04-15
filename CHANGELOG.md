@@ -1,6 +1,9 @@
-# Version Last
+# Version 0.1.20210412 secp256k1
+- Full migration from libgmp to secp256k1
+- Change the way for keygeneration for modes xpoint, address, and rmd160
+- Improve performance for xpoint mode, now is ten times faster
 - Change N variable type for modes address,rmd160 and xpoint, from uint32_t to uint64_t
-- Added method pub2rmd to search publickeys of the puzzles
+- Added method pub2rmd to search publickeys of the puzzles and other legacy address (Compress publickeys only)
 
 # Version 0.1.20210331
 - Small changes to be compiled with mingw on Windows

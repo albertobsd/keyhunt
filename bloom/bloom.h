@@ -39,6 +39,13 @@ struct bloom
   double bpe;
   uint8_t *bf;
 };
+/*
+Customs
+*/
+
+int bloom_dummy(struct bloom * bloom, uint64_t entries, long double error);
+int bloom_loadcustom(struct bloom * bloom, char * filename);
+int bloom_savecustom(struct bloom * bloom, char * filename);
 
 
 /** ***************************************************************************

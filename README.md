@@ -7,6 +7,16 @@ Work for btc in this moment, only legacy Addresses that start with '1'
 
 Ethereum addresses is a work in develop
 
+# Download
+
+To clone the repository:
+
+`git clone https://github.com/albertobsd/keyhunt.git`
+
+don't forget change to the keyhunt directory
+
+`cd keyhunt`
+
 # How to build
 First compile:
 
@@ -14,7 +24,7 @@ First compile:
 
 and then execute:
 
-`./keyhunt`
+`./keyhunt -h`
 
 # Modes
 
@@ -137,7 +147,7 @@ Total 26214400 keys in 150 seconds: 174762 keys/s
 
 rmd stand for RIPE Message Digest (see https://en.wikipedia.org/wiki/RIPEMD )
 
-mode rmd160 work in the same why than address, but the diference is that file need to have hash rmd160 instead of addresses.
+mode rmd160 work in the same way than address, but the diference is that file need to have hash rmd160 instead of addresses.
 
 This mode is almost two times faster than addres mode
 
@@ -242,9 +252,8 @@ This method can target the X value of the publickey in the same way that the too
 
 The speed for this method is is better than the speed for address or rmd160
 
-The input file can have per line one of the next values:
+The input file can had one publickey per line compress or uncompress:
 
-- X value (64 hexcharacters)
 - Publickey Compress (66 hexcharacters)
 - Publickey Uncompress (130 hexcharacters)
 
@@ -265,7 +274,7 @@ A few substracted values from puzzle *40*
 ```
 
 
-Now you can use keyhunt againts some thousand values of the puzzle 40:
+Now you can use keyhunt against some thousand values of the puzzle 40:
 
 `./keyhunt -m xpoint -f tests/substracted40.txt -n 65536 -t 4 -b 40`
 
@@ -300,18 +309,78 @@ The Operation is `800258a2ce` hex (+/-) in this case + `453856235784` decimal eq
 
 This is an easy example, I been trying the puzzle 120 with more than 500 millions of substracted keys and no luck.
 
+## pub2rmd mode
+This method is made to try to get the puzzles publickey key it works a little more faster because it skip the EC Operations
+
+The input file need to have the hash RMD160 of the address without publickey leaked:
+
+```
+3ee4133d991f52fdf6a25c9834e0745ac74248a4
+20d45a6a762535700ce9e0b216e31994335db8a5
+739437bb3dd6d1983e66629c5f08c70e52769371
+e0b8a2baee1b77fc703455f39d51477451fc8cfc
+61eb8a50c86b0584bb727dd65bed8d2400d6d5aa
+f6f5431d25bbf7b12e8add9af5e3475c44a0a5b8
+bf7413e8df4e7a34ce9dc13e2f2648783ec54adb
+105b7f253f0ebd7843adaebbd805c944bfb863e4
+9f1adb20baeacc38b3f49f3df6906a0e48f2df3d
+86f9fea5cdecf033161dd2f8f8560768ae0a6d14
+783c138ac81f6a52398564bb17455576e8525b29
+35003c3ef8759c92092f8488fca59a042859018c
+67671d5490c272e3ab7ddd34030d587738df33da
+351e605fac813965951ba433b7c2956bf8ad95ce
+20d28d4e87543947c7e4913bcdceaa16e2f8f061
+24cef184714bbd030833904f5265c9c3e12a95a2
+7c99ce73e19f9fbfcce4825ae88261e2b0b0b040
+c60111ed3d63b49665747b0e31eb382da5193535
+fbc708d671c03e26661b9c08f77598a529858b5e
+38a968fdfb457654c51bcfc4f9174d6ee487bb41
+5c3862203d1e44ab3af441503e22db97b1c5097e
+9978f61b92d16c5f1a463a0995df70da1f7a7d2a
+6534b31208fe6e100d29f9c9c75aac8bf06fbb38
+463013cd41279f2fd0c31d0a16db3972bfffac8d
+c6927a00970d0165327d0a6db7950f05720c295c
+2da63cbd251d23c7b633cb287c09e6cf888b3fe4
+578d94dc6f40fff35f91f6fba9b71c46b361dff2
+7eefddd979a1d6bb6f29757a1f463579770ba566
+c01bf430a97cbcdaedddba87ef4ea21c456cebdb
+```
+
+To target that file you need to do:
+
+`./keyhunt -m pub2rmd -f tests/puzzleswopublickey.txt -q`
+
+Output:
+
+```
+[+] Version 0.1.20210331
+[+] Setting mode pub2rmd
+[+] Set quiet thread output
+[+] Opening file tests/puzzleswopublickey.txt
+[+] Allocating memory for 29 elements: 0.00 MB
+[+] Initializing bloom filter for 29 elements.
+[+] Loading data to the bloomfilter total: 0.00 MB
+[+] Bloomfilter completed
+[+] Sorting data
+[+] 29 values were loaded and sorted
+Total 76546048 keys in 90 seconds: 850511 keys/s
+```
+
+You can let it run for a while together with others scripts, if you get one of those publickeys now you can target it with a better method like bsgs or another tools like kangaroo
+
+
 ## bsgs mode (baby step giant step)
 
 Keyhunt implement the BSGS algorithm to search privatekeys for a knowed publickey.
 
-The address.txt or your input file need to have a 130 hexadecimal characters uncompressed or compressed publickey per line any other word followed by an space is ignored example of the file:
+The input file need to have a list of publickeys compress or uncompress those publickey can be mixed in the same file, one publickey per line and any other word followed by an space is ignored example of the file:
 
 ```
 043ffa1cc011a8d23dec502c7656fb3f93dbe4c61f91fd443ba444b4ec2dd8e6f0406c36edf3d8a0dfaa7b8f309b8f1276a5c04131762c23594f130a023742bdde # 0000000000000000000000000000000000800000000000000000100000000000
 046534b9e9d56624f5850198f6ac462f482fec8a60262728ee79a91cac1d60f8d6a92d5131a20f78e26726a63d212158b20b14c3025ebb9968c890c4bab90bfc69 # 0000000000000000000000000000000000800000000000000000200000000000
 ```
 
-This example contains 2 publickeys followed by his privatekey just to test the correct behaivor of the application
+This example contains 2 publickeys followed by his privatekey just to test the correct behavior of the application
 
 btw any word followed by and space after the publickey is ignored the file can be only the publickeys:
 
@@ -494,7 +563,6 @@ R: In a file called `KEYFOUNDKEYFOUND.txt`
 R: It can be compiled with mingw, It can be executed in the Ubuntu shell for windows 10
 
 ## Dependencies
-- libgmp
 - pthread
 
 Tested under Debian, Termux, Ubuntu Shell for windows 10

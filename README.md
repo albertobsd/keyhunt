@@ -7,6 +7,16 @@ Work for btc in this moment, only legacy Addresses that start with '1'
 
 Ethereum addresses is a work in develop
 
+# Download
+
+To clone the repository:
+
+`git clone https://github.com/albertobsd/keyhunt.git`
+
+don't forget change to the keyhunt directory
+
+`cd keyhunt`
+
 # How to build
 First compile:
 
@@ -14,7 +24,7 @@ First compile:
 
 and then execute:
 
-`./keyhunt`
+`./keyhunt -h`
 
 # Modes
 
@@ -242,9 +252,8 @@ This method can target the X value of the publickey in the same way that the too
 
 The speed for this method is is better than the speed for address or rmd160
 
-The input file can have per line one of the next values:
+The input file can had one publickey per line compress or uncompress:
 
-- X value (64 hexcharacters)
 - Publickey Compress (66 hexcharacters)
 - Publickey Uncompress (130 hexcharacters)
 
@@ -265,7 +274,7 @@ A few substracted values from puzzle *40*
 ```
 
 
-Now you can use keyhunt againts some thousand values of the puzzle 40:
+Now you can use keyhunt against some thousand values of the puzzle 40:
 
 `./keyhunt -m xpoint -f tests/substracted40.txt -n 65536 -t 4 -b 40`
 
@@ -364,14 +373,14 @@ You can let it run for a while together with others scripts, if you get one of t
 
 Keyhunt implement the BSGS algorithm to search privatekeys for a knowed publickey.
 
-The address.txt or your input file need to have a 130 hexadecimal characters uncompressed or compressed publickey per line any other word followed by an space is ignored example of the file:
+The input file need to have a list of publickeys compress or uncompress those publickey can be mixed in the same file, one publickey per line and any other word followed by an space is ignored example of the file:
 
 ```
 043ffa1cc011a8d23dec502c7656fb3f93dbe4c61f91fd443ba444b4ec2dd8e6f0406c36edf3d8a0dfaa7b8f309b8f1276a5c04131762c23594f130a023742bdde # 0000000000000000000000000000000000800000000000000000100000000000
 046534b9e9d56624f5850198f6ac462f482fec8a60262728ee79a91cac1d60f8d6a92d5131a20f78e26726a63d212158b20b14c3025ebb9968c890c4bab90bfc69 # 0000000000000000000000000000000000800000000000000000200000000000
 ```
 
-This example contains 2 publickeys followed by his privatekey just to test the correct behaivor of the application
+This example contains 2 publickeys followed by his privatekey just to test the correct behavior of the application
 
 btw any word followed by and space after the publickey is ignored the file can be only the publickeys:
 
@@ -554,7 +563,6 @@ R: In a file called `KEYFOUNDKEYFOUND.txt`
 R: It can be compiled with mingw, It can be executed in the Ubuntu shell for windows 10
 
 ## Dependencies
-- libgmp
 - pthread
 
 Tested under Debian, Termux, Ubuntu Shell for windows 10

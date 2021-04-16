@@ -6,18 +6,25 @@ email: alberto.bsd@gmail.com
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <gmp.h>
 #include <string.h>
 #include <unistd.h>
 #include <pthread.h>
 #include <math.h>
 #include <time.h>
+#include <vector>
 #include <inttypes.h>
 #include "base58/libbase58.h"
 #include "rmd160/rmd160.h"
 #include "sha256/sha256.h"
 #include "bloom/bloom.h"
 #include "sha3/sha3.h"
+
+#include "secp256k1/SECP256k1.h"
+#include "secp256k1/Point.h"
+#include "secp256k1/Int.h"
+#include "secp256k1/IntGroup.h"
+#include "secp256k1/Random.h"
+
 #include "util.h"
 #ifdef WIN32
 	#include <windows.h>
@@ -39,16 +46,6 @@ email: alberto.bsd@gmail.com
 #define SEARCH_BOTH 2
 
 
-struct Point {
-	mpz_t x;
-	mpz_t y;
-};
-
-struct Elliptic_Curve {
-	mpz_t p;
-	mpz_t n;
-};
-
 struct bsgs_xvalue	{
 	uint8_t value[6];
 	uint64_t index;
@@ -65,6 +62,7 @@ struct tothread {
 };
 
 struct bPload	{
+	int threadid;
 	uint64_t from;
 	uint64_t to;
 	uint64_t counter;
@@ -75,25 +73,28 @@ struct __attribute__((__packed__)) publickey {
 	union	{
 		uint8_t data8[32];
 		uint32_t data32[8];
-		uint64_t data64[4];
+			uint64_t data64[4];
 	} X;
 };
 
+const char *version = "0.1.20210412 secp256k1";
 
 const char *bloomnames[256] = {"bloom_0","bloom_1","bloom_2","bloom_3","bloom_4","bloom_5","bloom_6","bloom_7","bloom_8","bloom_9","bloom_10","bloom_11","bloom_12","bloom_13","bloom_14","bloom_15","bloom_16","bloom_17","bloom_18","bloom_19","bloom_20","bloom_21","bloom_22","bloom_23","bloom_24","bloom_25","bloom_26","bloom_27","bloom_28","bloom_29","bloom_30","bloom_31","bloom_32","bloom_33","bloom_34","bloom_35","bloom_36","bloom_37","bloom_38","bloom_39","bloom_40","bloom_41","bloom_42","bloom_43","bloom_44","bloom_45","bloom_46","bloom_47","bloom_48","bloom_49","bloom_50","bloom_51","bloom_52","bloom_53","bloom_54","bloom_55","bloom_56","bloom_57","bloom_58","bloom_59","bloom_60","bloom_61","bloom_62","bloom_63","bloom_64","bloom_65","bloom_66","bloom_67","bloom_68","bloom_69","bloom_70","bloom_71","bloom_72","bloom_73","bloom_74","bloom_75","bloom_76","bloom_77","bloom_78","bloom_79","bloom_80","bloom_81","bloom_82","bloom_83","bloom_84","bloom_85","bloom_86","bloom_87","bloom_88","bloom_89","bloom_90","bloom_91","bloom_92","bloom_93","bloom_94","bloom_95","bloom_96","bloom_97","bloom_98","bloom_99","bloom_100","bloom_101","bloom_102","bloom_103","bloom_104","bloom_105","bloom_106","bloom_107","bloom_108","bloom_109","bloom_110","bloom_111","bloom_112","bloom_113","bloom_114","bloom_115","bloom_116","bloom_117","bloom_118","bloom_119","bloom_120","bloom_121","bloom_122","bloom_123","bloom_124","bloom_125","bloom_126","bloom_127","bloom_128","bloom_129","bloom_130","bloom_131","bloom_132","bloom_133","bloom_134","bloom_135","bloom_136","bloom_137","bloom_138","bloom_139","bloom_140","bloom_141","bloom_142","bloom_143","bloom_144","bloom_145","bloom_146","bloom_147","bloom_148","bloom_149","bloom_150","bloom_151","bloom_152","bloom_153","bloom_154","bloom_155","bloom_156","bloom_157","bloom_158","bloom_159","bloom_160","bloom_161","bloom_162","bloom_163","bloom_164","bloom_165","bloom_166","bloom_167","bloom_168","bloom_169","bloom_170","bloom_171","bloom_172","bloom_173","bloom_174","bloom_175","bloom_176","bloom_177","bloom_178","bloom_179","bloom_180","bloom_181","bloom_182","bloom_183","bloom_184","bloom_185","bloom_186","bloom_187","bloom_188","bloom_189","bloom_190","bloom_191","bloom_192","bloom_193","bloom_194","bloom_195","bloom_196","bloom_197","bloom_198","bloom_199","bloom_200","bloom_201","bloom_202","bloom_203","bloom_204","bloom_205","bloom_206","bloom_207","bloom_208","bloom_209","bloom_210","bloom_211","bloom_212","bloom_213","bloom_214","bloom_215","bloom_216","bloom_217","bloom_218","bloom_219","bloom_220","bloom_221","bloom_222","bloom_223","bloom_224","bloom_225","bloom_226","bloom_227","bloom_228","bloom_229","bloom_230","bloom_231","bloom_232","bloom_233","bloom_234","bloom_235","bloom_236","bloom_237","bloom_238","bloom_239","bloom_240","bloom_241","bloom_242","bloom_243","bloom_244","bloom_245","bloom_246","bloom_247","bloom_248","bloom_249","bloom_250","bloom_251","bloom_252","bloom_253","bloom_254","bloom_255"};
 
+std::vector<Point> Gn;
+Point _2Gn;
 
-const char *version = "0.1.20210331";
-const char *EC_constant_N = "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141";
-const char *EC_constant_P = "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f";
-const char *EC_constant_Gx = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
-const char *EC_constant_Gy = "483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8";
-struct Point DoublingG[256];
+std::vector<Point> GSn;
+Point _2GSn;
 
-void Point_Doubling(struct Point *P, struct Point *R);
-void Point_Addition(struct Point *P, struct Point *Q, struct Point *R);
-void Scalar_Multiplication(struct Point P, struct Point *R, mpz_t m);
-void Point_Negation(struct Point *A, struct Point *S);
+std::vector<Point> GS2n;
+Point _2GS2n;
+
+int CPU_GRP_SIZE = 1024;
+
+void init_generator();
+
+
 int searchbinary(struct address_value *buffer,char *data,int64_t _N);
 void sleep_ms(int milliseconds);
 
@@ -113,9 +114,8 @@ void bsgs_swap(struct bsgs_xvalue *a,struct bsgs_xvalue *b);
 void bsgs_heapify(struct bsgs_xvalue *arr, int64_t n, int64_t i);
 int64_t bsgs_partition(struct bsgs_xvalue *arr, int64_t n);
 
-
 int bsgs_searchbinary(struct bsgs_xvalue *arr,char *data,int64_t _N,uint64_t *r_value);
-int bsgs_secondcheck(mpz_t start_range,uint32_t a,struct Point *target,mpz_t *private);
+int bsgs_secondcheck(Int *start_range,uint32_t a,uint32_t k_index,Int *privatekey);
 
 void *thread_process(void *vargp);
 void *thread_process_bsgs(void *vargp);
@@ -124,7 +124,6 @@ void *thread_bPload(void *vargp);
 void *thread_bPloadFile(void *vargp);
 void *thread_pub2rmd(void *vargp);
 
-void init_doublingG(struct Point *P);
 char *publickeytohashrmd160(char *pkey,int length);
 char *pubkeytopubaddress(char *pkey,int length);
 //char *pubkeytopubaddress_eth(char *pkey,int length);
@@ -144,25 +143,27 @@ pthread_mutex_t write_random;
 
 pthread_mutex_t bsgs_thread;
 
-struct Elliptic_Curve EC;
 struct bloom dummybloom;
 struct bloom bloom;
-struct Point G;
+
 
 unsigned int *steps = NULL;
 unsigned int *ends = NULL;
 uint64_t N = 0;
-gmp_randstate_t state;
+
 
 uint64_t N_SECUENTIAL_MAX = 0xffffffff;
 uint64_t DEBUGCOUNT = 0x100000;
+
+
+Int OUTPUTSECONDS;
 
 int FLAGDEBUG = 0;
 int FLAGQUIET = 0;
 int KFACTOR = 1;
 int MAXLENGTHADDRESS = -1;
 int NTHREADS = 1;
-int OUTPUTSECONDS = 30;
+
 int FLAGSEARCH = 2;
 int FLAGBITRANGE = 0;
 int FLAGRANGE = 0;
@@ -192,38 +193,51 @@ uint64_t BSGS_BUFFERREGISTERLENGTH = 36;
 BSGS Variables
 */
 int *bsgs_found;
-struct Point *OriginalPointsBSGS;
+std::vector<Point> OriginalPointsBSGS;
+bool *OriginalPointsBSGScompressed;
+
+
 struct bsgs_xvalue *bPtable;
 struct address_value *addressTable;
 struct bloom bloom_bP[256];
 struct bloom bloom_bPx2nd; //Second Bloom filter check
 uint64_t bloom_bP_totalbytes = 0;
 char *precalculated_p_filename;
-uint64_t bsgs_m;
+uint64_t bsgs_m = 4194304;
 uint64_t bsgs_m2;
 
 unsigned long int bsgs_aux;
 uint32_t bsgs_point_number;
-mpz_t BSGS_CURRENT;
-mpz_t BSGS_R;
-mpz_t BSGS_AUX;
-mpz_t BSGS_N;
-mpz_t BSGS_M;					//M is squareroot(N)
-mpz_t BSGS_M2;
-mpz_t TWO;
-mpz_t MPZAUX;
-struct Point BSGS_P;			//Original P is actually G, but this P value change over time for calculations
-struct Point BSGS_MP;			//MP values this is m * P
-struct Point BSGS_MP2;			//MP values this is m2 * P
-struct Point *BSGS_AMP;
-struct Point *BSGS_AMP2;
 
-struct Point point_temp,point_temp2;	//Temp value for some process
 
-mpz_t n_range_start;
-mpz_t n_range_end;
-mpz_t n_range_diff;
-mpz_t n_range_aux;
+Int BSGS_GROUP_SIZE;
+Int BSGS_CURRENT;
+Int BSGS_R;
+Int BSGS_AUX;
+Int BSGS_N;
+Int BSGS_M;					//M is squareroot(N)
+Int BSGS_M2;
+Int ONE;
+Int ZERO;
+Int MPZAUX;
+
+Point BSGS_P;			//Original P is actually G, but this P value change over time for calculations
+Point BSGS_MP;			//MP values this is m * P
+Point BSGS_MP2;			//MP values this is m2 * P
+
+
+std::vector<Point> BSGS_AMP,BSGS_AMP2;
+
+
+Point point_temp,point_temp2;	//Temp value for some process
+
+Int n_range_start;
+Int n_range_end;
+Int n_range_diff;
+Int n_range_aux;
+
+
+Secp256K1 *secp;
 
 int main(int argc, char **argv)	{
 	char buffer[1024];
@@ -231,29 +245,24 @@ int main(int argc, char **argv)	{
 	char rawvalue[32];
 	struct tothread *tt;	//tothread
 	Tokenizer t,tokenizerbsgs,tokenizer_xpoint;	//tokenizer
-	char *filename,*precalculated_mp_filename;
+	char *filename,*precalculated_mp_filename,*hextemp,*aux,*aux2,*pointx_str,*pointy_str,*str_seconds,*str_total,*str_pretotal;
 	FILE *fd;
-	char *hextemp,*aux,*aux2,*pointx_str,*pointy_str;
-	uint64_t j,total_precalculated,i,seconds,PERTHREAD,BASE,PERTHREAD_R;
-	uint64_t itemsbloom,itemsbloom2;
-	int readed,s,continue_flag,check_flag,r,lenaux,lendiff;
-	mpz_t total,pretotal,debugcount_mpz,Ysquared,mpz_aux,mpz_aux2;
-	clock_t c_beging,c_ending, time_spent;
+	uint64_t j,total_precalculated,i,PERTHREAD,BASE,PERTHREAD_R,itemsbloom,itemsbloom2;
+	int readed,s,continue_flag,check_flag,r,lenaux,lendiff,c;
+	Int total,pretotal,debugcount_mpz,seconds;
 	struct bPload *temp;
-	int c;
 
-	gmp_randinit_mt(state);
-	gmp_randseed_ui(state, ((int)clock()) + ((int)time(NULL)) );
-	mpz_init_set_str(EC.p, EC_constant_P, 16);
-	mpz_init_set_str(EC.n, EC_constant_N, 16);
-	mpz_init_set_str(G.x , EC_constant_Gx, 16);
-	mpz_init_set_str(G.y , EC_constant_Gy, 16);
-	init_doublingG(&G);
-	mpz_init_set_ui(TWO,2);
+	secp = new Secp256K1();
+	secp->Init();
+	OUTPUTSECONDS.SetInt32(30);
+	ZERO.SetInt32(0);
+	ONE.SetInt32(1);
+	BSGS_GROUP_SIZE.SetInt32(CPU_GRP_SIZE);
+	rseed(clock() + time(NULL));
 
 	printf("[+] Version %s\n",version);
 
-	while ((c = getopt(argc, argv, "dehqRwzb:c:f:g:k:l:m:n:p:r:s:t:v:-:")) != -1) {
+	while ((c = getopt(argc, argv, "dehqRwzb:c:f:g:k:l:m:n:p:r:s:t:v:G:")) != -1) {
 		switch(c) {
 			case 'h':
 				printf("\nUsage:\n-h\t\tshow this help\n");
@@ -294,12 +303,15 @@ int main(int argc, char **argv)	{
 			case 'b':
 				bitrange = strtol(optarg,NULL,10);
 				if(bitrange > 0 && bitrange <=256 )	{
-					mpz_init(MPZAUX);
-					mpz_pow_ui(MPZAUX,TWO,bitrange-1);
-					bit_range_str_min = mpz_get_str(NULL,16,MPZAUX);
-					mpz_pow_ui(MPZAUX,TWO,bitrange);
-					mpz_sub_ui(MPZAUX,MPZAUX,1);
-					bit_range_str_max = mpz_get_str(NULL,16,MPZAUX);
+					MPZAUX.Set(&ONE);
+					MPZAUX.ShiftL(bitrange-1);
+					bit_range_str_min = MPZAUX.GetBase16();
+					MPZAUX.Set(&ONE);
+					MPZAUX.ShiftL(bitrange);
+					if(MPZAUX.IsGreater(&secp->order))	{
+						MPZAUX.Set(&secp->order);
+					}
+					bit_range_str_max = MPZAUX.GetBase16();
 					if(bit_range_str_min == NULL||bit_range_str_max == NULL)	{
 						fprintf(stderr,"[E] error malloc()\n");
 						exit(0);
@@ -307,7 +319,6 @@ int main(int argc, char **argv)	{
 					printf("[+] Min range: %s\n",bit_range_str_min);
 					printf("[+] Max range: %s\n",bit_range_str_max);
 					FLAGBITRANGE = 1;
-					mpz_clear(MPZAUX);
 				}
 				else	{
 					fprintf(stderr,"[E] invalid bits param: %s.\n",optarg);
@@ -431,7 +442,7 @@ int main(int argc, char **argv)	{
 							range_start = nextToken(&t);
 							if(isValidHex(range_start)) {
 									FLAGRANGE = 1;
-									range_end = (char*) EC_constant_N;
+									range_end = secp->order.GetBase16();
 							}
 							else	{
 								fprintf(stderr,"[E] Invalid hexstring : %s.\n",range_start);
@@ -459,15 +470,17 @@ int main(int argc, char **argv)	{
 				}
 			break;
 			case 's':
-				OUTPUTSECONDS = strtol(optarg,NULL,10);
-				if(OUTPUTSECONDS < 0)	{
-					OUTPUTSECONDS = 30;
+				OUTPUTSECONDS.SetBase10(optarg);
+				if(OUTPUTSECONDS.IsLower(&ZERO))	{
+					OUTPUTSECONDS.SetInt32(30);
 				}
-				if(OUTPUTSECONDS == 0)	{
+				if(OUTPUTSECONDS.IsZero())	{
 					printf("[+] Turn off stats output\n");
 				}
 				else	{
-					printf("[+] Stats output every %u seconds\n",OUTPUTSECONDS);
+					hextemp = OUTPUTSECONDS.GetBase10();
+					printf("[+] Stats output every %s seconds\n",hextemp);
+					free(hextemp);
 				}
 			break;
 			case 't':
@@ -496,7 +509,7 @@ int main(int argc, char **argv)	{
 			break;
 		}
 	}
-
+	init_generator();
 
 	if(DEBUGCOUNT	> N_SECUENTIAL_MAX)	{
 		DEBUGCOUNT = N_SECUENTIAL_MAX - 1;
@@ -515,24 +528,19 @@ int main(int argc, char **argv)	{
 		FLAGCRYPTO = CRYPTO_BTC;
 		printf("[+] Setting search for btc adddress\n");
 	}
-	mpz_init(n_range_start);
-	mpz_init(n_range_end);
-	mpz_init(n_range_diff);
-
 	if(FLAGRANGE) {
-		mpz_set_str(n_range_start,range_start,16);
-		mpz_set_str(n_range_end,range_end,16);
-		if(mpz_cmp(n_range_start,n_range_end) != 0 ) {
-			if(mpz_cmp(n_range_start,EC.n) < 0 && mpz_cmp(n_range_end,EC.n) <= 0)	{
-				if(mpz_cmp(n_range_start,n_range_end) > 0) {
+		n_range_start.SetBase16(range_start);
+		n_range_end.SetBase16(range_end);
+		if(n_range_start.IsEqual(&n_range_end) == false ) {
+			if(  n_range_start.IsLower(&secp->order) &&  n_range_end.IsLowerOrEqual(&secp->order) )	{
+				if( n_range_start.IsGreater(&n_range_end)) {
 					fprintf(stderr,"[W] Opps, start range can't be great than end range. Swapping them\n");
-					mpz_init(n_range_aux);
-					mpz_set(n_range_aux,n_range_start);
-					mpz_set(n_range_start,n_range_end);
-					mpz_set(n_range_end,n_range_aux);
-					mpz_clear(n_range_aux);
+					n_range_aux.Set(&n_range_start);
+					n_range_start.Set(&n_range_end);
+					n_range_end.Set(&n_range_aux);
 				}
-				mpz_sub(n_range_diff,n_range_end,n_range_start);
+				n_range_diff.Set(&n_range_end);
+				n_range_diff.Sub(&n_range_start);
 			}
 			else	{
 				fprintf(stderr,"[E] Start and End range can't be great than N\nFallback to random mode!\n");
@@ -546,15 +554,17 @@ int main(int argc, char **argv)	{
 	}
 	if(FLAGMODE != MODE_BSGS)	{
 		if(FLAGRANGE == 0 && FLAGBITRANGE == 0)	{
-			mpz_set_str(n_range_start,"1",10);
-			mpz_set(n_range_end,EC.n);
-			mpz_sub(n_range_diff,n_range_end,n_range_start);
+			n_range_start.SetInt32(1);
+			n_range_end.Set(&secp->order);
+			n_range_diff.Set(&n_range_end);
+			n_range_diff.Sub(&n_range_start);
 		}
 		else	{
 			if(FLAGBITRANGE)	{
-				mpz_set_str(n_range_start,bit_range_str_min,16);
-				mpz_set_str(n_range_end,bit_range_str_max,16);
-				mpz_sub(n_range_diff,n_range_end,n_range_start);
+				n_range_start.SetBase16(bit_range_str_min);
+				n_range_end.SetBase16(bit_range_str_max);
+				n_range_diff.Set(&n_range_end);
+				n_range_diff.Sub(&n_range_start);
 			}
 			else	{
 				if(FLAGRANGE == 0)	{
@@ -565,7 +575,7 @@ int main(int argc, char **argv)	{
 	}
 	N = 0;
 	if(FLAGMODE != MODE_BSGS)	{
-		aux = malloc(1000);
+		aux =(char*) malloc(1000);
 		if(aux == NULL)	{
 			fprintf(stderr,"[E] error malloc()\n");
 		}
@@ -639,17 +649,14 @@ int main(int argc, char **argv)	{
 		}
 		fseek(fd,0,SEEK_SET);
 
-		printf("[+] Allocating memory for %"PRIu64" elements: %.2f MB\n",N,(double)(((double) sizeof(struct address_value)*N)/(double)1048576));
+		printf("[+] Allocating memory for %" PRIu64 " elements: %.2f MB\n",N,(double)(((double) sizeof(struct address_value)*N)/(double)1048576));
 		i = 0;
-		do {
-			addressTable = malloc(sizeof(struct address_value)*N);
-			i++;
-		} while(addressTable == NULL && i < 10);
+		addressTable = (struct address_value*) malloc(sizeof(struct address_value)*N);
 		if(addressTable == NULL)	{
-			fprintf(stderr,"[E] Can't alloc memory for %"PRIu64" elements\n",N);
+			fprintf(stderr,"[E] Can't alloc memory for %" PRIu64 " elements\n",N);
 			exit(0);
 		}
-		printf("[+] Initializing bloom filter for %"PRIu64" elements.\n",N);
+		printf("[+] Initializing bloom filter for %" PRIu64 " elements.\n",N);
 		if(N <= 1000)	{
 			if(bloom_init2(&bloom,1000,0.00001)	== 1){
 				fprintf(stderr,"[E] error bloom_init for 10000 elements.\n");
@@ -667,7 +674,7 @@ int main(int argc, char **argv)	{
 		i = 0;
 		switch (FLAGMODE) {
 			case MODE_ADDRESS:
-				aux = malloc(2*MAXLENGTHADDRESS);
+				aux =(char*) malloc(2*MAXLENGTHADDRESS);
 				if(aux == NULL)	{
 					fprintf(stderr,"[E] error malloc()\n");
 					exit(0);
@@ -690,7 +697,7 @@ int main(int argc, char **argv)	{
 			break;
 			case MODE_XPOINT:
 				if(FLAGRAWDATA)	{
-					aux = malloc(MAXLENGTHADDRESS);
+					aux = (char*)malloc(MAXLENGTHADDRESS);
 					if(aux == NULL)	{
 						fprintf(stderr,"[E] error malloc()\n");
 						exit(0);
@@ -704,7 +711,7 @@ int main(int argc, char **argv)	{
 					}
 				}
 				else	{
-					aux = malloc(5*MAXLENGTHADDRESS);
+					aux = (char*) malloc(5*MAXLENGTHADDRESS);
 					if(aux == NULL)	{
 						fprintf(stderr,"[E] error malloc()\n");
 						exit(0);
@@ -722,7 +729,7 @@ int main(int argc, char **argv)	{
 							if(isValidHex(hextemp)) {
 								switch(lenaux)	{
 									case 64:	/*X value*/
-										r = hexs2bin(aux,rawvalue);
+										r = hexs2bin(aux,(uint8_t*) rawvalue);
 										if(r)	{
 											memcpy(addressTable[i].value,rawvalue,20);
 											bloom_add(&bloom,rawvalue,MAXLENGTHADDRESS);
@@ -732,7 +739,7 @@ int main(int argc, char **argv)	{
 										}
 									break;
 									case 66:	/*Compress publickey*/
-									r = hexs2bin(aux+2,rawvalue);
+									r = hexs2bin(aux+2, (uint8_t*)rawvalue);
 										if(r)	{
 											memcpy(addressTable[i].value,rawvalue,20);
 											bloom_add(&bloom,rawvalue,MAXLENGTHADDRESS);
@@ -744,7 +751,7 @@ int main(int argc, char **argv)	{
 									case 130:	/* Uncompress publickey length*/
 										memset(temporal,0,65);
 										memcpy(temporal,aux+2,64);
-										r = hexs2bin(temporal,rawvalue);
+										r = hexs2bin(temporal, (uint8_t*) rawvalue);
 										if(r)	{
 												memcpy(addressTable[i].value,rawvalue,20);
 												bloom_add(&bloom,rawvalue,MAXLENGTHADDRESS);
@@ -775,7 +782,7 @@ int main(int argc, char **argv)	{
 			case MODE_PUB2RMD:
 			case MODE_RMD160:
 				if(FLAGRAWDATA)	{
-					aux = malloc(MAXLENGTHADDRESS);
+					aux = (char*) malloc(MAXLENGTHADDRESS);
 					if(aux == NULL)	{
 						fprintf(stderr,"[E] error malloc()\n");
 						exit(0);
@@ -789,7 +796,7 @@ int main(int argc, char **argv)	{
 					}
 				}
 				else	{
-					aux = malloc(3*MAXLENGTHADDRESS);
+					aux = (char*) malloc(3*MAXLENGTHADDRESS);
 					if(aux == NULL)	{
 						fprintf(stderr,"[E] error malloc()\n");
 						exit(0);
@@ -831,18 +838,18 @@ int main(int argc, char **argv)	{
 		printf("[+] Bloomfilter completed\n");
 		if(FLAGALREADYSORTED)	{
 			printf("[+] File mark already sorted, skipping sort proccess\n");
-			printf("[+] %"PRIu64" values were loaded\n",N);
+			printf("[+] %" PRIu64 " values were loaded\n",N);
 			_sort(addressTable,N);
 		}
 		else	{
-			printf("[+] Sorting data\n");
+			printf("[+] Sorting data ...");
 			_sort(addressTable,N);
-			printf("[+] %"PRIu64" values were loaded and sorted\n",N);
+			printf(" done! %" PRIu64 " values were loaded and sorted\n",N);
 		}
 	}
 	if(FLAGMODE == MODE_BSGS)	{
 		DEBUGCOUNT = N_SECUENTIAL_MAX ;
-		aux = malloc(1024);
+		aux = (char*) malloc(1024);
 		if(aux == NULL)	{
 			fprintf(stderr,"[E] error malloc()\n");
 			exit(0);
@@ -857,25 +864,22 @@ int main(int argc, char **argv)	{
 						N++;
 					}
 				}
-
 			}
 		}
 		if(N == 0)	{
 			fprintf(stderr,"[E] There is no valid data in the file\n");
 			exit(0);
 		}
-		bsgs_found = calloc(N,sizeof(int));
-		OriginalPointsBSGS = malloc(N*sizeof(struct Point));
-		pointx_str = malloc(65);
-		pointy_str = malloc(65);
-		if(OriginalPointsBSGS == NULL || pointy_str == NULL || pointx_str == NULL || bsgs_found == NULL)	{
+		bsgs_found = (int*) calloc(N,sizeof(int));
+		OriginalPointsBSGS.reserve(N);
+		OriginalPointsBSGScompressed = (bool*) malloc(N*sizeof(bool));
+		pointx_str = (char*) malloc(65);
+		pointy_str = (char*) malloc(65);
+		if(pointy_str == NULL || pointx_str == NULL || bsgs_found == NULL)	{
 			fprintf(stderr,"[E] error malloc()\n");
 			exit(0);
 		}
 		fseek(fd,0,SEEK_SET);
-		mpz_init(Ysquared);
-		mpz_init(mpz_aux);
-		mpz_init(mpz_aux2);
 		i = 0;
 		while(!feof(fd))	{
 			if(fgets(aux,1022,fd) == aux)	{
@@ -887,41 +891,18 @@ int main(int argc, char **argv)	{
 					memset(pointy_str,0,65);
 					switch(strlen(aux2))	{
 						case 66:	//Compress
-							memcpy(pointx_str,aux2+2,64);
-							if(isValidHex(pointx_str))	{
-								mpz_init_set_str(OriginalPointsBSGS[i].x,pointx_str,16);
-								mpz_init(OriginalPointsBSGS[i].y);
-								mpz_pow_ui(mpz_aux,OriginalPointsBSGS[i].x,3);
-								mpz_add_ui(mpz_aux2,mpz_aux,7);
-								mpz_mod(Ysquared,mpz_aux2,EC.p);
-								mpz_add_ui(mpz_aux,EC.p,1);
-								mpz_fdiv_q_ui(mpz_aux2,mpz_aux,4);
-								mpz_powm(OriginalPointsBSGS[i].y,Ysquared,mpz_aux2,EC.p);
-								mpz_sub(mpz_aux, EC.p,OriginalPointsBSGS[i].y);
-								switch(aux2[1])	{
-									case '2':
-										if(mpz_tstbit(OriginalPointsBSGS[i].y, 0) == 1)	{
-											mpz_set(OriginalPointsBSGS[i].y,mpz_aux);
-										}
-										i++;
-									break;
-									case '3':
-										if(mpz_tstbit(OriginalPointsBSGS[i].y, 0) == 0)	{
-											mpz_set(OriginalPointsBSGS[i].y,mpz_aux);
-										}
-										i++;
-									break;
-									default:
-										fprintf(stderr,"[E] Some invalid bit in the line: %c\n",aux2[1]);
-										N--;
-									break;
-								}
+
+							if(secp->ParsePublicKeyHex(aux2,OriginalPointsBSGS[i],OriginalPointsBSGScompressed[i]))	{
+								i++;
 							}
 							else	{
-								fprintf(stderr,"[E] Some invalid hexdata in the file: %s\n",aux2);
 								N--;
 							}
+
 						break;
+
+						/* Somebody use this? To be removed 5/Nov */
+						/*
 						case 128:	//Without the 04
 							memcpy(pointx_str,aux2,64);
 							memcpy(pointy_str,aux2+64,64);
@@ -936,17 +917,13 @@ int main(int argc, char **argv)	{
 								N--;
 							}
 						break;
+						*/
 						case 130:	//With the 04
-							memcpy(pointx_str,aux2+2,64);
-							memcpy(pointy_str,aux2+2+64,64);
-							if(isValidHex(pointx_str) && isValidHex(pointy_str))	{
-								mpz_init_set_str(OriginalPointsBSGS[i].x,pointx_str,16);
-								mpz_init_set_str(OriginalPointsBSGS[i].y,pointy_str,16);
-								//printf("Adding point ( %s , %s )\n",pointx_str,pointy_str);
+
+							if(secp->ParsePublicKeyHex(aux2,OriginalPointsBSGS[i],OriginalPointsBSGScompressed[i]))	{
 								i++;
 							}
 							else	{
-								fprintf(stderr,"[E] Some invalid hexdata in the file: %s\n",aux2);
 								N--;
 							}
 
@@ -962,99 +939,161 @@ int main(int argc, char **argv)	{
 		}
 		fclose(fd);
 		bsgs_point_number = N;
-		if(N > 0)	{
+		if(bsgs_point_number > 0)	{
 			printf("[+] Added %u points from file\n",bsgs_point_number);
 		}
 		else	{
 			printf("[E] The file don't have any valid publickeys\n");
 			exit(0);
 		}
-		mpz_init(BSGS_N);
-		mpz_init(BSGS_M);
-		mpz_init(point_temp.x);
-		mpz_init(point_temp.y);
-		mpz_init(point_temp2.x);
-		mpz_init(point_temp2.y);
-		mpz_init_set_ui(BSGS_MP.x,0);
-		mpz_init_set_ui(BSGS_MP.y,0);
-		mpz_init_set_ui(BSGS_MP2.x,0);
-		mpz_init_set_ui(BSGS_MP2.y,0);
-
-		mpz_init_set(BSGS_P.x,G.x);
-		mpz_init_set(BSGS_P.y,G.y);
-
-		mpz_set_ui(BSGS_M,bsgs_m);
+		BSGS_N.SetInt32(0);
+		BSGS_M.SetInt32(0);
+		/*
+		hextemp = BSGS_N.GetBase10();
+		printf("[+] BSGS_N: %s\n",hextemp);
+		free(hextemp);
+		hextemp = BSGS_M.GetBase10();
+		printf("[+] BSGS_M: %s\n",hextemp);
+		free(hextemp);
+		*/
+		BSGS_M.SetInt64(bsgs_m);
+		//printf("[+] bsgs_m: %"PRIu64"\n",bsgs_m);
+		/*
+		hextemp = BSGS_N.GetBase10();
+		printf("[+] BSGS_N: %s\n",hextemp);
+		free(hextemp);
+		hextemp = BSGS_M.GetBase10();
+		printf("[+] BSGS_M: %s\n",hextemp);
+		free(hextemp);
+		*/
 
 		if(FLAG_N)	{	//Custom N by the -n param
-			memset(aux,0,100);
-			sprintf(aux,"%llu",(long long unsigned int)N_SECUENTIAL_MAX);
-			mpz_set_str(BSGS_N,aux,10);
+			BSGS_N.SetInt64(N_SECUENTIAL_MAX);
 		}
 		else	{	//Default N
-			mpz_set_str(BSGS_N,"100000000000",16);
+			BSGS_N.SetInt64((uint64_t)0x100000000000);
 		}
-		if(!mpz_root(BSGS_M,BSGS_N,2))	{	//If the root wasn't exact
-			mpz_add_ui(BSGS_M,BSGS_M,1);	//Add an extra integer, This is like a CEIL Funtion
-		}
-		bsgs_m = mpz_get_ui(BSGS_M);
-		mpz_mul(BSGS_N,BSGS_M,BSGS_M);
 
-		DEBUGCOUNT = (uint64_t)((uint64_t)bsgs_m * (uint64_t)bsgs_m);
+		if(BSGS_N.HasSqrt())	{	//If the root is exact
+			BSGS_M.Set(&BSGS_N);
+			BSGS_M.ModSqrt();
+		}
+		else	{
+			fprintf(stderr,"[E] -n param doesn't have exact square root\n");
+			exit(0);
+		}
+		/*
+		hextemp = BSGS_N.GetBase16();
+		printf("[+] BSGS_N: %s\n",hextemp);
+		free(hextemp);
+		hextemp = BSGS_M.GetBase16();
+		printf("[+] BSGS_M: %s\n",hextemp);
+		free(hextemp);
+		*/
+
+		BSGS_AUX.Set(&BSGS_M);
+		BSGS_AUX.Mod(&BSGS_GROUP_SIZE);
+		if(!BSGS_AUX.IsZero()){
+			hextemp = BSGS_GROUP_SIZE.GetBase10();
+			fprintf(stderr,"[E] M value is not divisible by %s\n",hextemp);
+			exit(0);
+		}
+
+		bsgs_m = BSGS_M.GetInt64();
+		BSGS_N.Set(&BSGS_M);
+		BSGS_N.Mult(&BSGS_M);
+
+		DEBUGCOUNT = bsgs_m * bsgs_m;
 
 		if(FLAGRANGE || FLAGBITRANGE)	{
 			if(FLAGBITRANGE)	{	// Bit Range
-				mpz_init_set_str(n_range_start,bit_range_str_min,16);
-				mpz_init_set_str(n_range_end,bit_range_str_max,16);
-				mpz_init(n_range_diff);
-				mpz_sub(n_range_diff,n_range_end,n_range_start);
+				n_range_start.SetBase16(bit_range_str_min);
+				n_range_end.SetBase16(bit_range_str_max);
 
+				n_range_diff.Set(&n_range_end);
+				n_range_diff.Sub(&n_range_start);
 				printf("[+] Bit Range %i\n",bitrange);
 			}
 		}
-		else	{
+		else	{	//Random start
 
-			mpz_init_set_ui(n_range_start,1);
-			mpz_init_set(n_range_end,EC.n);
-
-			mpz_urandomm(n_range_start,state,n_range_end);
-			mpz_init(n_range_diff);
-			mpz_sub(n_range_diff,n_range_end,n_range_start);
+			n_range_start.SetInt32(1);
+			n_range_end.Set(&secp->order);
+			n_range_diff.Rand(&n_range_start,&n_range_end);
+			n_range_start.Set(&n_range_diff);
 		}
-		mpz_init_set(BSGS_CURRENT,n_range_start);
+		BSGS_CURRENT.Set(&n_range_start);
+		/*
+		hextemp = BSGS_N.GetBase16();
+		printf("[+] BSGS_N: %s\n",hextemp);
+		free(hextemp);
+		hextemp = BSGS_M.GetBase16();
+		printf("[+] BSGS_M: %s\n",hextemp);
+		free(hextemp);
+		*/
 
-		if(mpz_cmp(n_range_diff,BSGS_N) < 0 )	{
-			mpz_set(BSGS_N,n_range_diff);
-			if(!mpz_root(BSGS_M,BSGS_N,2))	{	//If the root wasn't exact
-				mpz_add_ui(BSGS_M,BSGS_M,1);	//Add an extra integer, This is CEIL Funtion
+		if(n_range_diff.IsLower(&BSGS_N) )	{
+			BSGS_N.Set(&n_range_diff);
+
+			if(BSGS_N.HasSqrt())	{	//If the root is exact
+				BSGS_M.Set(&BSGS_N);
+				BSGS_M.ModSqrt();
+				/*
+				hextemp = BSGS_N.GetBase16();
+				printf("[+] BSGS_N: %s\n",hextemp);
+				free(hextemp);
+				hextemp = BSGS_M.GetBase16();
+				printf("[+] BSGS_M: %s\n",hextemp);
+				free(hextemp);
+				*/
 			}
-			bsgs_m = mpz_get_ui(BSGS_M);
-			mpz_mul(BSGS_N,BSGS_M,BSGS_M);
+			else	{
+				fprintf(stderr,"[E] the range is small and doesn't have exact square root\n");
+				exit(0);
+			}
+
+			bsgs_m = BSGS_M.GetInt64();
+			BSGS_N.Set(&BSGS_M);
+			BSGS_N.Mult(&BSGS_M);
+
+
+			DEBUGCOUNT = bsgs_m * bsgs_m;
+			bsgs_m = BSGS_M.GetInt64();
 			DEBUGCOUNT = (uint64_t)((uint64_t)bsgs_m * (uint64_t)bsgs_m);
 		}
-		mpz_init(BSGS_R);
-		mpz_init(BSGS_AUX);
-		mpz_init(BSGS_M2);
 
-		mpz_mul_ui(BSGS_M,BSGS_M,KFACTOR);
+		BSGS_M.Mult((uint64_t)KFACTOR);
+		BSGS_AUX.SetInt32(20);
+		BSGS_R.Set(&BSGS_M);
+		BSGS_R.Mod(&BSGS_AUX);
+		BSGS_M2.Set(&BSGS_M);
+		BSGS_M2.Div(&BSGS_AUX);
 
+		if(!BSGS_R.IsZero())	{
 
-		mpz_cdiv_q_ui(BSGS_M2,BSGS_M,20);
-		bsgs_m2 =  mpz_get_ui(BSGS_M2);
-
-
-		mpz_cdiv_q(BSGS_AUX,BSGS_N,BSGS_M);
-		mpz_cdiv_r(BSGS_R,BSGS_N,BSGS_M);
-		if(mpz_cmp_ui(BSGS_R,0) != 0 ) {
-			mpz_mul(BSGS_N,BSGS_M,BSGS_AUX);
+			BSGS_M2.AddOne();
 		}
+
+
+		bsgs_m2 =  BSGS_M2.GetInt64();
+		BSGS_AUX.Set(&BSGS_N);
+		BSGS_AUX.Div(&BSGS_M);
+		BSGS_R.Set(&BSGS_N);
+		BSGS_R.Mod(&BSGS_M);
+
+		if(!BSGS_R.IsZero())	{
+			BSGS_N.Set(&BSGS_M);
+			BSGS_N.Mult(&BSGS_AUX);
+		}
+
 		bsgs_m = (uint64_t)((uint64_t) bsgs_m * (uint64_t)KFACTOR);
-		bsgs_aux = mpz_get_ui(BSGS_AUX);
+		bsgs_aux = BSGS_AUX.GetInt64();
 		DEBUGCOUNT = (uint64_t)((uint64_t)bsgs_m * (uint64_t)bsgs_aux);
 
-		printf("[+] Setting N up to %"PRIu64".\n",DEBUGCOUNT);
+		printf("[+] Setting N up to %" PRIu64 ".\n",DEBUGCOUNT);
 
-		itemsbloom = ((uint64_t)(bsgs_m/256)) > 1000 ? (uint64_t)(bsgs_m/256) : 1000;
-		itemsbloom2 = bsgs_m2 > 1000 ? bsgs_m : 1000;
+		itemsbloom = ((uint64_t)(bsgs_m/256)) > 10000 ? (uint64_t)(bsgs_m/256) : 10000;
+		itemsbloom2 = bsgs_m2 > 1000 ? bsgs_m : 10000;
 
 		if( FLAGBLOOMFILTER == 1	)	{
 			int continuebloom = 1;
@@ -1076,7 +1115,7 @@ int main(int argc, char **argv)	{
 				}
 			}
 			if(continuebloom == 1)	{
-				if(bloom_loadcustom(&bloom_bPx2nd,"bPx2nd")	== 1)	{
+				if(bloom_loadcustom(&bloom_bPx2nd,(char*)"bPx2nd")	== 1)	{
 					continuebloom == 0;
 				}
 				else	{
@@ -1106,7 +1145,7 @@ int main(int argc, char **argv)	{
 */
 		for(i=0; i< 256; i++)	{
 			if(bloom_init2(&bloom_bP[i],itemsbloom,0.000001)	== 1){
-				fprintf(stderr,"[E] error bloom_init [%"PRIu64"]\n",i);
+				fprintf(stderr,"[E] error bloom_init [%" PRIu64 "]\n",i);
 				exit(0);
 			}
 			bloom_bP_totalbytes += bloom_bP[i].bytes;
@@ -1129,24 +1168,24 @@ int main(int argc, char **argv)	{
 		if(FLAGDEBUG) bloom_print(&bloom_bPx2nd);
 		printf("[+] Init 2nd bloom filter for %lu elements : %.2f MB\n",bsgs_m2,(double)((double)bloom_bPx2nd.bytes/(double)1048576));
 		//bloom_print(&bloom_bPx2nd);
+		/*
+		hextemp = BSGS_M.GetBase16();
+		printf("[+] BSGS_M: %s\n",hextemp);
+		free(hextemp);
+		hextemp = BSGS_M2.GetBase16();
+		printf("[+] BSGS_M2: %s\n",hextemp);
+		free(hextemp);
+		*/
 
-		Scalar_Multiplication(G,&BSGS_MP,BSGS_M);
-		Scalar_Multiplication(G,&BSGS_MP2,BSGS_M2);
+		BSGS_MP = secp->ComputePublicKey(&BSGS_M);
+		BSGS_MP2 = secp->ComputePublicKey(&BSGS_M2);
 
-		printf("[+] Allocating %.1f MB for %"PRIu64" aMP Points\n",(double)(((double)(bsgs_aux*sizeof(struct Point)))/(double)1048576),bsgs_aux);
+
+		printf("[+] Allocating %.1f MB for %" PRIu64 " aMP Points\n",(double)(((double)(bsgs_aux*sizeof(Point)))/(double)1048576),bsgs_aux);
 		i = 0;
-		BSGS_AMP = malloc((uint64_t)((uint64_t)bsgs_aux*(uint64_t)sizeof(struct Point)));
-		if(BSGS_AMP == NULL)	{
-			printf("[E] error malloc()\n");
-			exit(0);
-		}
-
-		//printf("[+] Allocating %.1f MB for aMP Points (2nd)\n",(float)(((uint64_t)(bsgs_m2*sizeof(struct Point)))/(uint64_t)1048576));
-		BSGS_AMP2 = malloc((uint64_t)((uint64_t)bsgs_m2*(uint64_t)sizeof(struct Point)));
-		if(BSGS_AMP2 == NULL)	{
-			printf("[E] error malloc()\n");
-			exit(0);
-		}
+		BSGS_AMP.reserve(bsgs_aux);
+		//printf("[+] Allocating %.1f MB for aMP Points (2nd)\n",(float)(((uint64_t)(bsgs_m2*sizeof(struct strPoint)))/(uint64_t)1048576));
+		BSGS_AMP2.reserve(bsgs_m2);
 
 		i= 0;
 		if(FLAGPRECALCUTED_MP_FILE)	{
@@ -1155,12 +1194,8 @@ int main(int argc, char **argv)	{
 			if(fd != NULL)	{
 				while(!feof(fd) && i < bsgs_aux )	{
 					if(fread(temporal,1,64,fd) == 64)	{
-						hextemp = tohex(temporal,32);
-						mpz_init_set_str(BSGS_AMP[i].x,hextemp,16);
-						free(hextemp);
-						hextemp = tohex(temporal+32,32);
-						mpz_init_set_str(BSGS_AMP[i].y,hextemp,16);
-						free(hextemp);
+						BSGS_AMP[i].x.Set32Bytes((unsigned char*)temporal);
+						BSGS_AMP[i].x.Set32Bytes((unsigned char*)(temporal+32));
 						i++;
 					}
 				}
@@ -1172,46 +1207,51 @@ int main(int argc, char **argv)	{
 			else	{
 				fprintf(stderr,"[E] Can't open file %s falling back to the calculation mode\n",filename);
 				printf("[+] Precalculating %lu aMP points\n",bsgs_aux);
-				mpz_set(point_temp.x,BSGS_MP.x);
-				mpz_set(point_temp.y,BSGS_MP.y);
+				point_temp.Set(BSGS_MP);
 				for(i = 0; i < bsgs_aux; i++)	{
-					mpz_init(BSGS_AMP[i].x);
-					mpz_init(BSGS_AMP[i].y);
-					Point_Negation(&point_temp,&BSGS_AMP[i]);
-					Point_Addition(&point_temp,&BSGS_MP,&point_temp2);
-					mpz_set(point_temp.x,point_temp2.x);
-					mpz_set(point_temp.y,point_temp2.y);
+					BSGS_AMP[i] = secp->Negation(point_temp);
+					if(i == 0)	{
+						printf("\n[+] point_temp vs BSGS_MP %s\n",point_temp.equals(BSGS_MP) ? "Si iguales":"No, diferentes");
+					}
+					if(point_temp.equals(BSGS_MP))	{
+						point_temp2 = secp->DoubleDirect(BSGS_MP);
+					}
+					else	{
+						point_temp2 = secp->AddDirect(point_temp,BSGS_MP);
+					}
+					point_temp.Set(point_temp2);
 				}
 			}
 		}
 		else	{
-			printf("[+] Precalculating %"PRIu64" aMP points\n",bsgs_aux);
-			mpz_set(point_temp.x,BSGS_MP.x);
-			mpz_set(point_temp.y,BSGS_MP.y);
+			printf("[+] Precalculating %" PRIu64 " aMP points\n",bsgs_aux);
+			point_temp.Set(BSGS_MP);
 			for(i = 0; i < bsgs_aux; i++)	{
-				mpz_init(BSGS_AMP[i].x);
-				mpz_init(BSGS_AMP[i].y);
-				Point_Negation(&point_temp,&BSGS_AMP[i]);
-				Point_Addition(&point_temp,&BSGS_MP,&point_temp2);
-				mpz_set(point_temp.x,point_temp2.x);
-				mpz_set(point_temp.y,point_temp2.y);
+				BSGS_AMP[i] = secp->Negation(point_temp);
+				if(i == 0)	{
+					point_temp2 = secp->DoubleDirect(BSGS_MP);
+				}
+				else	{
+					point_temp2 = secp->AddDirect(point_temp,BSGS_MP);
+				}
+				point_temp.Set(point_temp2);
 			}
 		}
 
-
-		mpz_set(point_temp.x,BSGS_MP2.x);
-		mpz_set(point_temp.y,BSGS_MP2.y);
+		point_temp.Set(BSGS_MP2);
 		for(i = 0; i < 20; i++)	{
-			mpz_init(BSGS_AMP2[i].x);
-			mpz_init(BSGS_AMP2[i].y);
-			Point_Negation(&point_temp,&BSGS_AMP2[i]);
-			Point_Addition(&point_temp,&BSGS_MP2,&point_temp2);
-			mpz_set(point_temp.x,point_temp2.x);
-			mpz_set(point_temp.y,point_temp2.y);
+			BSGS_AMP2[i] = secp->Negation(point_temp);
+			if(i == 0)	{
+				point_temp2 = secp->DoubleDirect(BSGS_MP2);
+			}
+			else	{
+				point_temp2 = secp->AddDirect(point_temp,BSGS_MP2);
+			}
+			point_temp.Set(point_temp2);
 		}
-		printf("[+] Allocating %.2f MB for %"PRIu64 " bP Points\n",(double)((double)((uint64_t)bsgs_m2*(uint64_t)sizeof(struct bsgs_xvalue))/(double)1048576),bsgs_m2);
+		printf("[+] Allocating %.2f MB for %" PRIu64  " bP Points\n",(double)((double)((uint64_t)bsgs_m2*(uint64_t)sizeof(struct bsgs_xvalue))/(double)1048576),bsgs_m2);
 		//printf("[+] Allocating %.2f MB for bP Points\n",(float)((uint64_t)((uint64_t)bsgs_m*(uint64_t)sizeof(struct bsgs_xvalue))/(uint64_t)1048576));
-		bPtable = calloc(bsgs_m2,sizeof(struct bsgs_xvalue));
+		bPtable = (struct bsgs_xvalue*) calloc(bsgs_m2,sizeof(struct bsgs_xvalue));
 		if(bPtable == NULL)	{
 			printf("[E] error malloc()\n");
 			exit(0);
@@ -1221,12 +1261,13 @@ int main(int argc, char **argv)	{
 		BASE = 0;
 		PERTHREAD = bsgs_m /NTHREADS;
 		PERTHREAD_R = bsgs_m % NTHREADS;
-		temp = calloc(NTHREADS,sizeof(struct bPload));
+		temp = (struct bPload *) calloc(NTHREADS,sizeof(struct bPload));
 		tid = (pthread_t *) calloc(NTHREADS,sizeof(pthread_t));
 
 		if(FLAGPRECALCUTED_P_FILE)	{
 			printf("[+] Reading %lu bP points from file %s\n",bsgs_m,precalculated_p_filename);
 			for(i = 0; i < NTHREADS; i++)	{
+				temp[i].threadid = i;
 				temp[i].counter = 0;
 				if(i < NTHREADS -1)	{
 					temp[i].from = BASE +1;
@@ -1274,8 +1315,9 @@ int main(int argc, char **argv)	{
 		free(temp);
 		free(tid);
 
-		printf("[+] Sorting %lu elements\n",bsgs_m2);
+		printf("[+] Sorting %lu elements... ",bsgs_m2);
 		bsgs_sort(bPtable,bsgs_m2);
+		printf("Done!\n");
 
 		i = 0;
 
@@ -1284,7 +1326,7 @@ int main(int argc, char **argv)	{
 		tid = (pthread_t *) calloc(NTHREADS,sizeof(pthread_t));
 		DEBUGCOUNT = (uint64_t)((uint64_t)bsgs_m * (uint64_t)bsgs_aux);
 		for(i= 0;i < NTHREADS; i++)	{
-			tt = malloc(sizeof(struct tothread));
+			tt = (tothread*) malloc(sizeof(struct tothread));
 			tt->nt = i;
 			if(FLAGRANDOM)	{
 				s = pthread_create(&tid[i],NULL,thread_process_bsgs_random,(void *)tt);
@@ -1306,7 +1348,7 @@ int main(int argc, char **argv)	{
 		tid = (pthread_t *) calloc(NTHREADS,sizeof(pthread_t));
 
 		for(i= 0;i < NTHREADS; i++)	{
-			tt = malloc(sizeof(struct tothread));
+			tt = (tothread*) malloc(sizeof(struct tothread));
 			tt->nt = i;
 			steps[i] = 0;
 			switch(FLAGMODE)	{
@@ -1326,17 +1368,13 @@ int main(int argc, char **argv)	{
 		}
 	}
 	continue_flag = 1;
-	mpz_init(total);
-	mpz_init(pretotal);
-	mpz_init(debugcount_mpz);
-	sprintf(temporal,"%"PRIu64,DEBUGCOUNT);
-	//printf("[I] Debug count : %s\n",temporal);
-	mpz_set_str(debugcount_mpz,temporal,10);
-	seconds = 0;
+	total.SetInt32(0);
+	pretotal.SetInt32(0);
+	debugcount_mpz.SetInt64(DEBUGCOUNT);
+	seconds.SetInt32(0);
 	do	{
 		sleep(1);
-		//c_beging = clock();
-		seconds+=1;
+		seconds.AddOne();
 		check_flag = 1;
 		for(i = 0; i <NTHREADS && check_flag; i++) {
 			check_flag &= ends[i];
@@ -1344,168 +1382,42 @@ int main(int argc, char **argv)	{
 		if(check_flag)	{
 			continue_flag = 0;
 		}
-		if(OUTPUTSECONDS > 0){
-			if(seconds % OUTPUTSECONDS == 0) {
-				mpz_set_ui(total,0);
-				mpz_set_ui(pretotal,0);
+		if(OUTPUTSECONDS.IsGreater(&ZERO) ){
+			MPZAUX.Set(&seconds);
+			MPZAUX.Mod(&OUTPUTSECONDS);
+			if(MPZAUX.IsZero()) {
+				total.SetInt32(0);
 				i = 0;
 				while(i < NTHREADS) {
-					mpz_mul_ui(pretotal,debugcount_mpz,steps[i]);
-					mpz_add(total,total,pretotal);
+					pretotal.Set(&debugcount_mpz);
+					pretotal.Mult(steps[i]);
+					total.Add(&pretotal);
 					i++;
 				}
-				if(mpz_cmp_ui(total,0) > 0)	{
-					mpz_fdiv_q_ui(pretotal,total,seconds);
-					pthread_mutex_lock(&bsgs_thread);
-					if(THREADOUTPUT == 1)	{
-						gmp_sprintf(buffer,"\nTotal %Zu keys in %"PRIu64 " seconds: %Zu keys/s\r",total,seconds,pretotal);
-					}
-					else	{
-						gmp_sprintf(buffer,"\rTotal %Zu keys in %"PRIu64" seconds: %Zu keys/s\r",total,seconds,pretotal);
-					}
-					printf("%s",buffer);
-					fflush(stdout);
-					THREADOUTPUT = 0;
-					pthread_mutex_unlock(&bsgs_thread);
+				pretotal.Set(&total);
+				pretotal.Div(&seconds);
+				str_seconds = seconds.GetBase10();
+				str_pretotal = pretotal.GetBase10();
+				str_total = total.GetBase10();
+				pthread_mutex_lock(&bsgs_thread);
+				if(THREADOUTPUT == 1)	{
+					sprintf(buffer,"\nTotal %s keys in %s seconds: %s keys/s\r",str_total,str_seconds,str_pretotal);
 				}
+				else	{
+					sprintf(buffer,"\rTotal %s keys in %s seconds: %s keys/s\r",str_total,str_seconds,str_pretotal);
+				}
+				printf("%s",buffer);
+				fflush(stdout);
+				THREADOUTPUT = 0;
+				pthread_mutex_unlock(&bsgs_thread);
+				free(str_seconds);
+				free(str_pretotal);
+				free(str_total);
 			}
 		}
 	}while(continue_flag);
 }
 
-void Point_Doubling(struct Point *P, struct Point *R)	{
-	mpz_t slope, temp;
-	mpz_init(temp);
-	mpz_init(slope);
-	if(mpz_cmp_ui(P->y, 0) != 0) {
-		mpz_mul_ui(temp, P->y, 2);
-		mpz_invert(temp, temp, EC.p);
-		mpz_mul(slope, P->x, P->x);
-		mpz_mul_ui(slope, slope, 3);
-		mpz_mul(slope, slope, temp);
-		mpz_mod(slope, slope, EC.p);
-		mpz_mul(R->x, slope, slope);
-		mpz_sub(R->x, R->x, P->x);
-		mpz_sub(R->x, R->x, P->x);
-		mpz_mod(R->x, R->x, EC.p);
-		mpz_sub(temp, P->x, R->x);
-		mpz_mul(R->y, slope, temp);
-		mpz_sub(R->y, R->y, P->y);
-		mpz_mod(R->y, R->y, EC.p);
-	} else {
-		mpz_set_ui(R->x, 0);
-		mpz_set_ui(R->y, 0);
-	}
-	mpz_clear(temp);
-	mpz_clear(slope);
-}
-
-void Point_Addition(struct Point *P, struct Point *Q, struct Point *R)	{
-	mpz_t PA_temp,PA_slope;
-	mpz_init(PA_temp);
-	mpz_init(PA_slope);
-	if(mpz_cmp_ui(P->x, 0) == 0 && mpz_cmp_ui(P->y, 0) == 0) {
-		mpz_set(R->x, Q->x);
-		mpz_set(R->y, Q->y);
-	}
-	else	{
-		if(mpz_cmp_ui(Q->x, 0) == 0 && mpz_cmp_ui(Q->y, 0) == 0) {
-			mpz_set(R->x, P->x);
-			mpz_set(R->y, P->y);
-		}
-		else	{
-			if(mpz_cmp_ui(Q->y, 0) != 0) {
-				mpz_sub(PA_temp, EC.p, Q->y);
-				mpz_mod(PA_temp, PA_temp, EC.p);
-			}
-			else	{
-				mpz_set_ui(PA_temp, 0);
-			}
-			if(mpz_cmp(P->y, PA_temp) == 0 && mpz_cmp(P->x, Q->x) == 0) {
-				mpz_set_ui(R->x, 0);
-				mpz_set_ui(R->y, 0);
-			}
-			else	{
-				if(mpz_cmp(P->x, Q->x) == 0 && mpz_cmp(P->y, Q->y) == 0)	{
-					Point_Doubling(P, R);
-				}
-				else {
-					mpz_set_ui(PA_slope, 0);
-					mpz_sub(PA_temp, P->x, Q->x);	//dx = B.x - A.x
-					mpz_mod(PA_temp, PA_temp, EC.p);		///dx = dx % p
-					mpz_invert(PA_temp, PA_temp, EC.p);	//gmpy2.invert(dx, p) % p
-					mpz_sub(PA_slope, P->y, Q->y);
-					mpz_mul(PA_slope, PA_slope, PA_temp);
-					mpz_mod(PA_slope, PA_slope, EC.p);
-					mpz_mul(R->x, PA_slope, PA_slope);	//c*c
-					mpz_sub(R->x, R->x, P->x);	//	c*c - A.x
-					mpz_sub(R->x, R->x, Q->x);	//(c*c - A.x) -	B.x
-					mpz_mod(R->x, R->x, EC.p);	// Rx % p
-					mpz_sub(PA_temp, P->x, R->x);
-					mpz_mul(R->y, PA_slope, PA_temp);
-					mpz_sub(R->y, R->y, P->y);
-					mpz_mod(R->y, R->y, EC.p);
-				}
-			}
-		}
-	}
-	mpz_clear(PA_temp);
-	mpz_clear(PA_slope);
-}
-
-void Scalar_Multiplication(struct Point P, struct Point *R, mpz_t m)	{
-	struct Point SM_T,SM_Q;
-	int no_of_bits, i;
-	no_of_bits = mpz_sizeinbase(m, 2);
-	mpz_init_set_ui(SM_Q.x,0);
-	mpz_init_set_ui(SM_Q.y,0);
-	mpz_init_set_ui(SM_T.x,0);
-	mpz_init_set_ui(SM_T.y,0);
-	mpz_set_ui(R->x, 0);
-	mpz_set_ui(R->y, 0);
-	if(mpz_cmp_ui(m, 0) != 0)	{
-		mpz_set(SM_Q.x, P.x);
-		mpz_set(SM_Q.y, P.y);
-		for(i = 0; i < no_of_bits; i++) {
-			if(mpz_tstbit(m, i))	{
-				mpz_set(SM_T.x, R->x);
-				mpz_set(SM_T.y, R->y);
-				mpz_set(SM_Q.x,DoublingG[i].x);
-				mpz_set(SM_Q.y,DoublingG[i].y);
-				Point_Addition(&SM_T, &SM_Q, R);
-			}
-		}
-	}
-	mpz_clear(SM_T.x);
-	mpz_clear(SM_T.y);
-	mpz_clear(SM_Q.x);
-	mpz_clear(SM_Q.y);
-}
-
-void Point_Negation(struct Point *A, struct Point *S)	{
-	mpz_sub(S->y, EC.p, A->y);
-	mpz_set(S->x, A->x);
-}
-
-/*
-	Precalculate G Doublings for Scalar_Multiplication
-*/
-void init_doublingG(struct Point *P)	{
-	int i = 0;
-	mpz_init(DoublingG[i].x);
-	mpz_init(DoublingG[i].y);
-	mpz_set(DoublingG[i].x,P->x);
-	mpz_set(DoublingG[i].y,P->y);
-	i = 1;
-	while(i < 256){
-		mpz_init(DoublingG[i].x);
-		mpz_init(DoublingG[i].y);
-		Point_Doubling(&DoublingG[i-1] ,&DoublingG[i]);
-		mpz_mod(DoublingG[i].x, DoublingG[i].x, EC.p);
-		mpz_mod(DoublingG[i].y, DoublingG[i].y, EC.p);
-		i++;
-	}
-}
 
 /*
 char *pubkeytopubaddress_eth(char *pkey,int length)	{
@@ -1527,8 +1439,8 @@ char *pubkeytopubaddress_eth(char *pkey,int length)	{
 */
 
 char *pubkeytopubaddress(char *pkey,int length)	{
-	char *pubaddress = calloc(MAXLENGTHADDRESS+10,1);
-	char *digest = calloc(60,1);
+	char *pubaddress = (char*) calloc(MAXLENGTHADDRESS+10,1);
+	char *digest = (char*) calloc(60,1);
 	size_t pubaddress_size = MAXLENGTHADDRESS+10;
 	if(pubaddress == NULL || digest == NULL)	{
 		fprintf(stderr,"error malloc()\n");
@@ -1553,8 +1465,8 @@ char *pubkeytopubaddress(char *pkey,int length)	{
 }
 
 char *publickeytohashrmd160(char *pkey,int length)	{
-	char *hash160 = malloc(20);
-	char *digest = malloc(32);
+	char *hash160 = (char*) malloc(20);
+	char *digest = (char*) malloc(32);
 	if(hash160 == NULL || digest == NULL)	{
 		fprintf(stderr,"error malloc()\n");
 		exit(0);
@@ -1567,7 +1479,6 @@ char *publickeytohashrmd160(char *pkey,int length)	{
 	free(digest);
 	return hash160;	// hash160 need to be free by te caller funtion
 }
-
 
 int searchbinary(struct address_value *buffer,char *data,int64_t _N) {
 	int64_t half,min,max,current;
@@ -1597,37 +1508,45 @@ int searchbinary(struct address_value *buffer,char *data,int64_t _N) {
 
 void *thread_process(void *vargp)	{
 	struct tothread *tt;
-	struct Point R,temporal;
+	Point pts[CPU_GRP_SIZE];
+	Int dx[CPU_GRP_SIZE / 2 + 1];
+	IntGroup *grp = new IntGroup(CPU_GRP_SIZE / 2 + 1);
+	Point startP;
+	Int dy;
+	Int dyn;
+	Int _s;
+	Int _p;
+	Point pp;
+	Point pn;
+	int hLength = (CPU_GRP_SIZE / 2 - 1);
+	uint64_t i,j;
+	Point R,temporal;
 	uint64_t count = 0;
 	int r,thread_number,found,continue_flag = 1;
-	char public_key_compressed[33],public_key_uncompressed[65],hexstrpoint[65];
+	char *public_key_compressed,*public_key_uncompressed,hexstrpoint[65],rawvalue[32];
 	char *publickeyhashrmd160_compress,*publickeyhashrmd160_uncompress;
 	char *hextemp,*public_key_compressed_hex,*public_key_uncompressed_hex;
 	char *eth_address;
 	char *public_address_compressed,*public_address_uncompressed;
 	unsigned long longtemp;
 	FILE *keys,*vanityKeys;
-	mpz_t key_mpz,mpz_bit_range_min,mpz_bit_range_max,mpz_bit_range_diff;
-	mpz_init(key_mpz);
-	mpz_init(R.x);
-	mpz_init(R.y);
-	mpz_init(temporal.x);
-	mpz_init(temporal.y);
+	Int key_mpz,mpz_bit_range_min,mpz_bit_range_max,mpz_bit_range_diff;
 	tt = (struct tothread *)vargp;
 	thread_number = tt->nt;
 	free(tt);
-
 	found = 0;
+	grp->Set(dx);
+
+
 	do {
 		if(FLAGRANDOM){
-			mpz_urandomm(key_mpz,state,n_range_diff);
-			mpz_add(key_mpz,key_mpz,n_range_start);
+			key_mpz.Rand(&n_range_start,&n_range_end);
 		}
 		else	{
-			if(mpz_cmp(n_range_start,n_range_end) <= 0)	{
+			if(n_range_start.IsLower(&n_range_end)){
 				pthread_mutex_lock(&write_random);
-				mpz_set(key_mpz,n_range_start);
-				mpz_add_ui(n_range_start,n_range_start,N_SECUENTIAL_MAX);
+				key_mpz.Set(&n_range_start);
+				n_range_start.Add(N_SECUENTIAL_MAX);
 				pthread_mutex_unlock(&write_random);
 			}
 			else	{
@@ -1635,245 +1554,348 @@ void *thread_process(void *vargp)	{
 			}
 		}
 		if(continue_flag)	{
-			if(FLAGQUIET == 0){
-				gmp_sprintf(hexstrpoint,"%0.64Zx",key_mpz);
-				printf("\rThread %i : Setting up base key: %s",thread_number,hexstrpoint);
-				fflush(stdout);
-				THREADOUTPUT = 1;
-			}
-			Scalar_Multiplication(G, &R, key_mpz);
 			count = 0;
-			public_key_uncompressed[0] = 0x04;
-
 			do {
-				mpz_set(temporal.x,R.x);
-				mpz_set(temporal.y,R.y);
 
-				gmp_sprintf(hexstrpoint,"%0.64Zx",R.x);
-				hexs2bin(hexstrpoint,(unsigned char*)(public_key_compressed+1));
-
-				if(mpz_tstbit(R.y, 0) == 0)	{	// Even
-					public_key_compressed[0] = 0x02;
+				if(FLAGQUIET == 0){
+					hextemp = key_mpz.GetBase16();
+					printf("\rBase key: %s     ",hextemp);
+					fflush(stdout);
+					free(hextemp);
+					THREADOUTPUT = 1;
 				}
-				else	{	//Odd
-					public_key_compressed[0] = 0x03;
-				}
-				memcpy(public_key_uncompressed+1,public_key_compressed+1,32);
-				gmp_sprintf(hexstrpoint,"%0.64Zx",R.y);
-				hexs2bin(hexstrpoint,(unsigned char*)(public_key_uncompressed+33));
+				key_mpz.Add((uint64_t)CPU_GRP_SIZE / 2);
+	 			startP = secp->ComputePublicKey(&key_mpz);
+				key_mpz.Sub((uint64_t)CPU_GRP_SIZE / 2);
 
-				switch(FLAGMODE)	{
-					case MODE_ADDRESS:
-						switch(FLAGSEARCH)	{
-							case SEARCH_UNCOMPRESS:
-								public_address_uncompressed = pubkeytopubaddress(public_key_uncompressed,65);
-							break;
-							case SEARCH_COMPRESS:
-								public_address_compressed = pubkeytopubaddress(public_key_compressed,33);
-							break;
-							case SEARCH_BOTH:
-								public_address_compressed = pubkeytopubaddress(public_key_compressed,33);
-								public_address_uncompressed = pubkeytopubaddress(public_key_uncompressed,65);
-							break;
-						}
-						if(FLAGVANITY)	{
-							if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH){
-								if(strncmp(public_address_uncompressed,vanity,len_vanity) == 0)	{
-									hextemp = malloc(65);
-									gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
-									vanityKeys = fopen("vanitykeys.txt","a+");
-									if(vanityKeys != NULL)	{
-										fprintf(vanityKeys,"PrivKey: %s\nAddress uncompressed: %s\n",hextemp,public_address_uncompressed);
-										fclose(vanityKeys);
+				for(i = 0; i < hLength; i++) {
+		      dx[i].ModSub(&Gn[i].x,&startP.x);
+		    }
+		    dx[i].ModSub(&Gn[i].x,&startP.x);  // For the first point
+		    dx[i + 1].ModSub(&_2Gn.x,&startP.x); // For the next center point
+				grp->ModInv();
+
+				pts[CPU_GRP_SIZE / 2] = startP;
+
+				for(i = 0; i<hLength; i++) {
+					pp = startP;
+		      pn = startP;
+
+		      // P = startP + i*G
+		      dy.ModSub(&Gn[i].y,&pp.y);
+
+		      _s.ModMulK1(&dy,&dx[i]);        // s = (p2.y-p1.y)*inverse(p2.x-p1.x);
+		      _p.ModSquareK1(&_s);            // _p = pow2(s)
+
+		      pp.x.ModNeg();
+		      pp.x.ModAdd(&_p);
+		      pp.x.ModSub(&Gn[i].x);           // rx = pow2(s) - p1.x - p2.x;
+
+					if(FLAGMODE != MODE_XPOINT  )	{
+			      pp.y.ModSub(&Gn[i].x,&pp.x);
+			      pp.y.ModMulK1(&_s);
+			      pp.y.ModSub(&Gn[i].y);           // ry = - p2.y - s*(ret.x-p2.x);
+					}
+
+		      // P = startP - i*G  , if (x,y) = i*G then (x,-y) = -i*G
+		      dyn.Set(&Gn[i].y);
+		      dyn.ModNeg();
+		      dyn.ModSub(&pn.y);
+
+		      _s.ModMulK1(&dyn,&dx[i]);      // s = (p2.y-p1.y)*inverse(p2.x-p1.x);
+		      _p.ModSquareK1(&_s);            // _p = pow2(s)
+		      pn.x.ModNeg();
+		      pn.x.ModAdd(&_p);
+		      pn.x.ModSub(&Gn[i].x);          // rx = pow2(s) - p1.x - p2.x;
+
+					if(FLAGMODE != MODE_XPOINT  )	{
+			      pn.y.ModSub(&Gn[i].x,&pn.x);
+			      pn.y.ModMulK1(&_s);
+		      	pn.y.ModAdd(&Gn[i].y);          // ry = - p2.y - s*(ret.x-p2.x);
+					}
+
+		      pts[CPU_GRP_SIZE / 2 + (i + 1)] = pp;
+		      pts[CPU_GRP_SIZE / 2 - (i + 1)] = pn;
+				}
+
+				// First point (startP - (GRP_SZIE/2)*G)
+		    pn = startP;
+		    dyn.Set(&Gn[i].y);
+		    dyn.ModNeg();
+		    dyn.ModSub(&pn.y);
+
+		    _s.ModMulK1(&dyn,&dx[i]);
+		    _p.ModSquareK1(&_s);
+
+		    pn.x.ModNeg();
+		    pn.x.ModAdd(&_p);
+		    pn.x.ModSub(&Gn[i].x);
+				if(FLAGMODE != MODE_XPOINT  )	{
+			    pn.y.ModSub(&Gn[i].x,&pn.x);
+			    pn.y.ModMulK1(&_s);
+			    pn.y.ModAdd(&Gn[i].y);
+				}
+
+		    pts[0] = pn;
+
+
+				for(j = 0; j < CPU_GRP_SIZE;j++){
+					//temporal.Set(R);
+					switch(FLAGMODE)	{
+						case MODE_ADDRESS:
+						case MODE_RMD160:
+							switch(FLAGSEARCH)	{
+								case SEARCH_UNCOMPRESS:
+									public_key_uncompressed = secp->GetPublicKeyRaw(false,pts[j]);
+								break;
+								case SEARCH_COMPRESS:
+									public_key_compressed = secp->GetPublicKeyRaw(true,pts[j]);
+								break;
+								case SEARCH_BOTH:
+									public_key_uncompressed = secp->GetPublicKeyRaw(false,pts[j]);
+									public_key_compressed = secp->GetPublicKeyRaw(true,pts[j]);
+								break;
+							}
+						break;
+					}
+					switch(FLAGMODE)	{
+						case MODE_ADDRESS:
+							switch(FLAGSEARCH)	{
+								case SEARCH_UNCOMPRESS:
+									public_address_uncompressed = pubkeytopubaddress(public_key_uncompressed,65);
+								break;
+								case SEARCH_COMPRESS:
+									public_address_compressed = pubkeytopubaddress(public_key_compressed,33);
+								break;
+								case SEARCH_BOTH:
+									public_address_compressed = pubkeytopubaddress(public_key_compressed,33);
+									public_address_uncompressed = pubkeytopubaddress(public_key_uncompressed,65);
+								break;
+							}
+							if(FLAGVANITY)	{
+								if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH){
+									if(strncmp(public_address_uncompressed,vanity,len_vanity) == 0)	{
+										hextemp = key_mpz.GetBase16();
+										vanityKeys = fopen("vanitykeys.txt","a+");
+										if(vanityKeys != NULL)	{
+											fprintf(vanityKeys,"PrivKey: %s\nAddress uncompressed: %s\n",hextemp,public_address_uncompressed);
+											fclose(vanityKeys);
+										}
+										printf("\nVanity privKey: %s\nAddress uncompressed:	%s\n",hextemp,public_address_uncompressed);
+										free(hextemp);
 									}
-									printf("\nVanity privKey: %s\nAddress uncompressed:	%s\n",hextemp,public_address_uncompressed);
-									free(hextemp);
+								}
+								if(FLAGSEARCH == SEARCH_COMPRESS || FLAGSEARCH == SEARCH_BOTH){
+									if(strncmp(public_address_compressed,vanity,len_vanity) == 0)	{
+										hextemp = key_mpz.GetBase16();
+										vanityKeys = fopen("vanitykeys.txt","a+");
+										if(vanityKeys != NULL)	{
+											fprintf(vanityKeys,"PrivKey: %s\nAddress compressed:	%s\n",hextemp,public_address_compressed);
+											fclose(vanityKeys);
+										}
+										printf("\nVanity privKey: %s\nAddress compressed: %s\n",hextemp,public_address_compressed);
+										free(hextemp);
+									}
 								}
 							}
 							if(FLAGSEARCH == SEARCH_COMPRESS || FLAGSEARCH == SEARCH_BOTH){
-								if(strncmp(public_address_compressed,vanity,len_vanity) == 0)	{
-									hextemp = malloc(65);
-									gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
-									vanityKeys = fopen("vanitykeys.txt","a+");
-									if(vanityKeys != NULL)	{
-										fprintf(vanityKeys,"PrivKey: %s\nAddress compressed:	%s\n",hextemp,public_address_compressed);
-										fclose(vanityKeys);
-									}
-									printf("\nVanity privKey: %s\nAddress compressed: %s\n",hextemp,public_address_compressed);
-									free(hextemp);
-								}
-							}
-						}
-						if(FLAGSEARCH == SEARCH_COMPRESS || FLAGSEARCH == SEARCH_BOTH){
-							r = bloom_check(&bloom,public_address_compressed,MAXLENGTHADDRESS);
-							if(r) {
-								r = searchbinary(addressTable,public_address_compressed,N);
+								r = bloom_check(&bloom,public_address_compressed,MAXLENGTHADDRESS);
 								if(r) {
-									found++;
-									hextemp = malloc(65);
-									gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
-									public_key_compressed_hex = tohex(public_key_compressed,33);
-									pthread_mutex_lock(&write_keys);
-									keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
-									if(keys != NULL)	{
-										fprintf(keys,"PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_compressed_hex,public_address_compressed);
-										fclose(keys);
+									r = searchbinary(addressTable,public_address_compressed,N);
+									if(r) {
+										found++;
+										hextemp = key_mpz.GetBase16();
+										public_key_compressed_hex = tohex(public_key_compressed,33);
+										pthread_mutex_lock(&write_keys);
+										keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
+										if(keys != NULL)	{
+											fprintf(keys,"PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_compressed_hex,public_address_compressed);
+											fclose(keys);
+										}
+										printf("\nHIT!! PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_compressed_hex,public_address_compressed);
+										pthread_mutex_unlock(&write_keys);
+										free(public_key_compressed_hex);
+										free(hextemp);
 									}
-									printf("\nHIT!! PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_compressed_hex,public_address_compressed);
-									pthread_mutex_unlock(&write_keys);
-									free(public_key_compressed_hex);
-									free(hextemp);
 								}
+								free(public_address_compressed);
 							}
-							free(public_address_compressed);
-						}
 
-						if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH){
-							r = bloom_check(&bloom,public_address_uncompressed,MAXLENGTHADDRESS);
-							if(r) {
-								r = searchbinary(addressTable,public_address_uncompressed,N);
+							if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH){
+								r = bloom_check(&bloom,public_address_uncompressed,MAXLENGTHADDRESS);
 								if(r) {
-									found++;
-									hextemp = malloc(65);
-									gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
-									public_key_uncompressed_hex = tohex(public_key_uncompressed,65);
-									pthread_mutex_lock(&write_keys);
-									keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
-									if(keys != NULL)	{
-										fprintf(keys,"PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,public_address_uncompressed);
-										fclose(keys);
+									r = searchbinary(addressTable,public_address_uncompressed,N);
+									if(r) {
+										found++;
+										hextemp = key_mpz.GetBase16();
+										public_key_uncompressed_hex = tohex(public_key_uncompressed,65);
+										pthread_mutex_lock(&write_keys);
+										keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
+										if(keys != NULL)	{
+											fprintf(keys,"PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,public_address_uncompressed);
+											fclose(keys);
+										}
+										printf("\nHIT!! PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,public_address_uncompressed);
+										pthread_mutex_unlock(&write_keys);
+										free(public_key_uncompressed_hex);
+										free(hextemp);
 									}
-									printf("\nHIT!! PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,public_address_uncompressed);
-									pthread_mutex_unlock(&write_keys);
-									free(public_key_uncompressed_hex);
-									free(hextemp);
-								}
-							}
-							free(public_address_uncompressed);
-						}
-						if( (FLAGCRYPTO & CRYPTO_ETH) != 0) {
-							/*
-							mpz_export((public_key_uncompressed+1),&longtemp,1,8,1,0,R.x);
-							mpz_export((public_key_uncompressed+33),&longtemp,1,8,1,0,R.y);
-							public_address_uncompressed = pubkeytopubaddress_eth(public_key_uncompressed+1,64);
-							//printf("Testing for %s\n",public_address_uncompressed);
-							r = bloom_check(&bloom,public_address_uncompressed,MAXLENGTHADDRESS);
-							if(r) {
-								r = searchbinary(addressTable,public_address_uncompressed,N);
-								if(r) {
-									hextemp = malloc(65);
-									mpz_get_str(hextemp,16,key_mpz);
-									public_key_uncompressed_hex = tohex(public_key_uncompressed+1,64);
-									pthread_mutex_lock(&write_keys);
-									keys = fopen("keys.txt","a+");
-									if(keys != NULL)	{
-										fprintf(keys,"PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,public_address_uncompressed);
-										fclose(keys);
-									}
-									printf("HIT!! PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,public_address_uncompressed);
-									pthread_mutex_unlock(&write_keys);
-									free(public_key_uncompressed_hex);
-									free(hextemp);
 								}
 								free(public_address_uncompressed);
 							}
-							*/
-						}
-					break;
-					case MODE_RMD160:
+							if( (FLAGCRYPTO & CRYPTO_ETH) != 0) {
+								/*
+								mpz_export((public_key_uncompressed+1),&longtemp,1,8,1,0,R.x);
+								mpz_export((public_key_uncompressed+33),&longtemp,1,8,1,0,R.y);
+								public_address_uncompressed = pubkeytopubaddress_eth(public_key_uncompressed+1,64);
+								//printf("Testing for %s\n",public_address_uncompressed);
+								r = bloom_check(&bloom,public_address_uncompressed,MAXLENGTHADDRESS);
+								if(r) {
+									r = searchbinary(addressTable,public_address_uncompressed,N);
+									if(r) {
+										hextemp = (char*) malloc(65);
+										mpz_get_str(hextemp,16,key_mpz);
+										public_key_uncompressed_hex = tohex(public_key_uncompressed+1,64);
+										pthread_mutex_lock(&write_keys);
+										keys = fopen("keys.txt","a+");
+										if(keys != NULL)	{
+											fprintf(keys,"PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,public_address_uncompressed);
+											fclose(keys);
+										}
+										printf("HIT!! PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,public_address_uncompressed);
+										pthread_mutex_unlock(&write_keys);
+										free(public_key_uncompressed_hex);
+										free(hextemp);
+									}
+									free(public_address_uncompressed);
+								}
+								*/
+							}
+						break;
+						case MODE_RMD160:
+							switch(FLAGSEARCH)	{
+								case SEARCH_UNCOMPRESS:
+									publickeyhashrmd160_uncompress = publickeytohashrmd160(public_key_uncompressed,65);
+								break;
+								case SEARCH_COMPRESS:
+									publickeyhashrmd160_compress = publickeytohashrmd160(public_key_compressed,33);
+								break;
+								case SEARCH_BOTH:
+									publickeyhashrmd160_compress = publickeytohashrmd160(public_key_compressed,33);
+									publickeyhashrmd160_uncompress = publickeytohashrmd160(public_key_uncompressed,65);
+								break;
+							}
+
+							if(FLAGSEARCH == SEARCH_COMPRESS || FLAGSEARCH == SEARCH_BOTH){
+								r = bloom_check(&bloom,publickeyhashrmd160_compress,MAXLENGTHADDRESS);
+								if(r) {
+									r = searchbinary(addressTable,publickeyhashrmd160_compress,N);
+									if(r) {
+										found++;
+										hextemp = key_mpz.GetBase16();
+										public_key_compressed_hex = tohex(public_key_compressed,33);
+										pthread_mutex_lock(&write_keys);
+										keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
+										if(keys != NULL)	{
+											fprintf(keys,"PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
+											fclose(keys);
+										}
+										printf("\nHIT!! PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
+										pthread_mutex_unlock(&write_keys);
+										free(public_key_compressed_hex);
+										free(hextemp);
+									}
+								}
+								free(publickeyhashrmd160_compress);
+							}
+							if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH){
+								r = bloom_check(&bloom,publickeyhashrmd160_uncompress,MAXLENGTHADDRESS);
+								if(r) {
+									r = searchbinary(addressTable,publickeyhashrmd160_uncompress,N);
+									if(r) {
+										found++;
+										hextemp = key_mpz.GetBase16();
+										public_key_uncompressed_hex = tohex(public_key_uncompressed,65);
+										pthread_mutex_lock(&write_keys);
+										keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
+										if(keys != NULL)	{
+											fprintf(keys,"PrivKey: %s\npubkey: %s\n",hextemp,public_key_uncompressed_hex);
+											fclose(keys);
+										}
+										printf("\nHIT!! PrivKey: %s\npubkey: %s\n",hextemp,public_key_uncompressed_hex);
+										pthread_mutex_unlock(&write_keys);
+										free(public_key_uncompressed_hex);
+										free(hextemp);
+									}
+								}
+								free(publickeyhashrmd160_uncompress);
+							}
+						break;
+						case MODE_XPOINT:
+							pts[j].x.Get32Bytes((unsigned char *)rawvalue);
+							r = bloom_check(&bloom,rawvalue,MAXLENGTHADDRESS);
+							if(r) {
+								r = searchbinary(addressTable,rawvalue,N);
+								if(r) {
+									found++;
+									hextemp = key_mpz.GetBase16();
+									R = secp->ComputePublicKey(&key_mpz);
+									public_key_compressed = secp->GetPublicKeyHex(true,R);
+									printf("\nHIT!! PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed);
+									pthread_mutex_lock(&write_keys);
+									keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
+									if(keys != NULL)	{
+										fprintf(keys,"PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed);
+										fclose(keys);
+									}
+									pthread_mutex_unlock(&write_keys);
+									free(public_key_compressed);
+									free(hextemp);
+								}
+							}
+						break;
+					}
+					if(FLAGMODE == MODE_ADDRESS || FLAGMODE == MODE_RMD160)	{
 						switch(FLAGSEARCH)	{
 							case SEARCH_UNCOMPRESS:
-								publickeyhashrmd160_uncompress = publickeytohashrmd160(public_key_uncompressed,65);
+								free(public_key_uncompressed);
 							break;
 							case SEARCH_COMPRESS:
-								publickeyhashrmd160_compress = publickeytohashrmd160(public_key_compressed,33);
+								free(public_key_compressed);
 							break;
 							case SEARCH_BOTH:
-								publickeyhashrmd160_compress = publickeytohashrmd160(public_key_compressed,33);
-								publickeyhashrmd160_uncompress = publickeytohashrmd160(public_key_uncompressed,65);
+								free(public_key_compressed);
+								free(public_key_uncompressed);
 							break;
 						}
+					}
+					count++;
+					if(count %	DEBUGCOUNT == 0)	{
+						steps[thread_number]++;
+					}
+					key_mpz.AddOne();
+				}
 
-						if(FLAGSEARCH == SEARCH_COMPRESS || FLAGSEARCH == SEARCH_BOTH){
-							r = bloom_check(&bloom,publickeyhashrmd160_compress,MAXLENGTHADDRESS);
-							if(r) {
-								r = searchbinary(addressTable,publickeyhashrmd160_compress,N);
-								if(r) {
-									found++;
-									hextemp = malloc(65);
-									gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
-									public_key_compressed_hex = tohex(public_key_compressed,33);
-									pthread_mutex_lock(&write_keys);
-									keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
-									if(keys != NULL)	{
-										fprintf(keys,"PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
-										fclose(keys);
-									}
-									printf("\nHIT!! PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
-									pthread_mutex_unlock(&write_keys);
-									free(public_key_compressed_hex);
-									free(hextemp);
-								}
-							}
-							free(publickeyhashrmd160_compress);
-						}
-						if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH){
-							r = bloom_check(&bloom,publickeyhashrmd160_uncompress,MAXLENGTHADDRESS);
-							if(r) {
-								r = searchbinary(addressTable,publickeyhashrmd160_uncompress,N);
-								if(r) {
-									found++;
-									hextemp = malloc(65);
-									gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
-									public_key_uncompressed_hex = tohex(public_key_uncompressed,65);
-									pthread_mutex_lock(&write_keys);
-									keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
-									if(keys != NULL)	{
-										fprintf(keys,"PrivKey: %s\npubkey: %s\n",hextemp,public_key_uncompressed_hex);
-										fclose(keys);
-									}
-									printf("\nHIT!! PrivKey: %s\npubkey: %s\n",hextemp,public_key_uncompressed_hex);
-									pthread_mutex_unlock(&write_keys);
-									free(public_key_uncompressed_hex);
-									free(hextemp);
-								}
-							}
-							free(publickeyhashrmd160_uncompress);
-						}
-					break;
-					case MODE_XPOINT:
-						r = bloom_check(&bloom,public_key_compressed+1,MAXLENGTHADDRESS);
-						if(r) {
-							r = searchbinary(addressTable,public_key_compressed+1,N);
-							if(r) {
-								found++;
-								hextemp = malloc(65);
-								gmp_sprintf(hextemp,"%0.64Zx",key_mpz);
-								public_key_compressed_hex = tohex(public_key_compressed,33);
-								pthread_mutex_lock(&write_keys);
-								keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
-								if(keys != NULL)	{
-									fprintf(keys,"PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
-									fclose(keys);
-								}
-								printf("\nHIT!! PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
-								pthread_mutex_unlock(&write_keys);
-								free(public_key_compressed_hex);
-								free(hextemp);
-							}
-						}
-					break;
-				}
-				count++;
-				if(count %	DEBUGCOUNT == 0)	{
-					steps[thread_number]++;
-				}
-				mpz_add_ui(key_mpz,key_mpz,1);
-				Point_Addition(&temporal,&G,&R);
-			}while(count <= N_SECUENTIAL_MAX);
+
+
+				// Next start point (startP + GRP_SIZE*G)
+		    pp = startP;
+		    dy.ModSub(&_2Gn.y,&pp.y);
+
+		    _s.ModMulK1(&dy,&dx[i + 1]);
+		    _p.ModSquareK1(&_s);
+
+		    pp.x.ModNeg();
+		    pp.x.ModAdd(&_p);
+		    pp.x.ModSub(&_2Gn.x);
+
+		    pp.y.ModSub(&_2Gn.x,&pp.x);
+		    pp.y.ModMulK1(&_s);
+		    pp.y.ModSub(&_2Gn.y);
+		    startP = pp;
+			}while(count <= N_SECUENTIAL_MAX && continue_flag);
 		}
 	} while(continue_flag);
-	printf("Found %i\n",found);
 	ends[thread_number] = 1;
 	return NULL;
 }
@@ -2119,41 +2141,21 @@ int bsgs_searchbinary(struct bsgs_xvalue *buffer,char *data,int64_t _N,uint64_t 
 }
 
 void *thread_process_bsgs(void *vargp)	{
-	struct tothread *tt;
-	char pubkey[131],xpoint_str[65],xpoint_raw[32];
-	char *aux_c;
-	mpz_t base_key,keyfound;
 	FILE *filekey;
-	struct Point base_point,point_aux,point_aux2,point_found,BSGS_S,BSGS_Q,BSGS_Q_AMP;
+	struct tothread *tt;
+	char xpoint_raw[32],*aux_c,*hextemp;
+	Int base_key,keyfound;
+	Point base_point,point_aux,point_aux2,point_found,BSGS_S,BSGS_Q,BSGS_Q_AMP;
 	uint32_t i,j,k,r,salir,thread_number,bloom_counter =0;
 	tt = (struct tothread *)vargp;
 	thread_number = tt->nt;
 	free(tt);
-	mpz_init(base_key);
-	mpz_init(keyfound);
-	mpz_init(base_point.x);
-	mpz_init(base_point.y);
-	mpz_init(point_aux.x);
-	mpz_init(point_aux.y);
-	mpz_init(point_aux2.x);
-	mpz_init(point_aux2.y);
-	mpz_init(point_found.x);
-	mpz_init(point_found.y);
-	mpz_init(BSGS_Q_AMP.x);
-	mpz_init(BSGS_Q_AMP.y);
-
-	mpz_init(BSGS_S.x);
-	mpz_init(BSGS_S.y);
-	mpz_init(BSGS_Q.x);
-	mpz_init(BSGS_Q.y);
-
-
 
 	pthread_mutex_lock(&bsgs_thread);
 	/* we need to set our base_key to the current BSGS_CURRENT value*/
-	mpz_set(base_key,BSGS_CURRENT);
+	base_key.Set(&BSGS_CURRENT);
+	BSGS_CURRENT.Add(&BSGS_N);
 	/*Then add BSGS_N to BSGS_CURRENT*/
-	mpz_add(BSGS_CURRENT,BSGS_CURRENT,BSGS_N);
 	/*
 		We do this in an atomic pthread_mutex operation to not affect others threads
 		so BSGS_CURRENT is never the same between threads
@@ -2162,24 +2164,34 @@ void *thread_process_bsgs(void *vargp)	{
 	/*
 		while base_key is less than n_range_end then:
 	*/
-	while(mpz_cmp(base_key,n_range_end) < 0)	{
+	while(base_key.IsLower(&n_range_end) )	{
 		//gmp_printf("While cycle: base_key : %Zd < n_range_end: %Zd\n",base_key,n_range_end);
 		if(FLAGQUIET == 0){
-			gmp_sprintf(xpoint_str,"%0.64Zx",base_key);
-			printf("\r[+] Thread  %s   ",xpoint_str);
+			aux_c = base_key.GetBase16();
+			printf("\r[+] Thread  %s   ",aux_c);
 			fflush(stdout);
+			free(aux_c);
 			THREADOUTPUT = 1;
 		}
 		/*
 			Set base_point in to base_key * G
 			base_point = base_key * G
 		*/
-		Scalar_Multiplication(G,&base_point,base_key);	//Scalar_Multiplication(G, &R, K1);
+	//	printf("[D] bsgs_point_number %u\n",bsgs_point_number);
+		base_point = secp->ComputePublicKey(&base_key);
 		/*
 			We are going to need -( base_point * G)
 			point_aux = -( base_point * G)
 		*/
-		Point_Negation(&base_point,&point_aux);		//Point_Negation(&R,&S);
+		point_aux = secp->Negation(base_point);
+		/*
+		hextemp = secp->GetPublicKeyHex(false,point_aux);
+		printf("point_aux %s\n",hextemp);
+		free(hextemp);
+		hextemp = secp->GetPublicKeyHex(false,base_point);
+		printf("base_point %s\n",hextemp);
+		free(hextemp);
+		*/
 
 		for(k = 0; k < bsgs_point_number ; k++)	{
 			if(bsgs_found[k] == 0)	{
@@ -2189,17 +2201,24 @@ void *thread_process_bsgs(void *vargp)	{
 				*/
 				salir = 0;
 				i = 0;
-				Point_Addition(&OriginalPointsBSGS[k],&point_aux,&BSGS_Q);
-				mpz_set(BSGS_S.x,BSGS_Q.x);
-				mpz_set(BSGS_S.y,BSGS_Q.y);
+				BSGS_Q = secp->AddDirect(OriginalPointsBSGS[k],point_aux);
+				BSGS_S.Set(BSGS_Q);
 
 				do {
+					/*
+					if(i ==  52428 || i == 0 || i == 1)	{
+						aux_c = secp->GetPublicKeyHex(false,BSGS_S);
+						hextemp = secp->GetPublicKeyHex(false,BSGS_AMP[i]);
+						printf("\r[d] Debug: %s : %u\n",aux_c,i);
+						printf("[d] Debug: BSGS_AMP %s : %u\n",hextemp,i);
+						free(aux_c);
+						free(hextemp);
+					}
+					*/
 					/* We need to test individually every point in BSGS_Q */
-					/*Extract BSGS_S.x into xpoint_str*/
-					gmp_sprintf(xpoint_str,"%0.64Zx",BSGS_S.x);
-					/*xpoint_str -> binary*/
-					hexs2bin(xpoint_str,(unsigned char*)xpoint_raw);
-					//printf("Looking X : %s\n",xpoint_str);
+					/*Extract BSGS_S.x into xpoint_raw*/
+					BSGS_S.x.Get32Bytes((unsigned char*)xpoint_raw);
+
 					/* Lookup for the xpoint_raw into the bloom filter*/
 
 					r = bloom_check(&bloom_bP[((unsigned char)xpoint_raw[0])],xpoint_raw,32);
@@ -2207,21 +2226,24 @@ void *thread_process_bsgs(void *vargp)	{
 						bloom_counter++;
 						/* Lookup for the xpoint_raw into the full sorted list*/
 						//r = bsgs_searchbinary(bPtable,xpoint_raw,bsgs_m,&j);
-						r = bsgs_secondcheck(base_key,i,&OriginalPointsBSGS[k],&keyfound);
+						r = bsgs_secondcheck(&base_key,i,k,&keyfound);
 
 						if(r)	{
-							gmp_sprintf(xpoint_str,"%0.64Zx",keyfound);
-							printf("\n[+] Thread Key found privkey %s\n",xpoint_str);
-							Scalar_Multiplication(G,&point_aux2,keyfound);
-							gmp_sprintf(pubkey,"04%0.64Zx%0.64Zx",point_aux2.x,point_aux2.y);
-							printf("[+] Publickey %s\n",pubkey);
+							hextemp = keyfound.GetBase16();
+							printf("\n[+] Thread Key found privkey %s\n",hextemp);
+							point_aux2 = secp->ComputePublicKey(&keyfound);
+							aux_c = secp->GetPublicKeyHex(OriginalPointsBSGScompressed[k],point_aux2);
+
+							printf("[+] Publickey %s\n",aux_c);
 							pthread_mutex_lock(&write_keys);
 							filekey = fopen("KEYFOUNDKEYFOUND.txt","a");
 							if(filekey != NULL)	{
-								fprintf(filekey,"Key found privkey %s\nPublickey %s\n",xpoint_str,pubkey);
+								fprintf(filekey,"Key found privkey %s\nPublickey %s\n",hextemp,aux_c);
 								fclose(filekey);
 							}
 							pthread_mutex_unlock(&write_keys);
+							free(hextemp);
+							free(aux_c);
 							bsgs_found[k] = 1;
 							salir = 1;
 							for(j = 0; j < bsgs_point_number && salir; j++)	{
@@ -2233,73 +2255,35 @@ void *thread_process_bsgs(void *vargp)	{
 							}
 						}
 					}
-					Point_Addition(&BSGS_Q,&BSGS_AMP[i],&BSGS_Q_AMP);
-					mpz_set(BSGS_S.x,BSGS_Q_AMP.x);
-					mpz_set(BSGS_S.y,BSGS_Q_AMP.y);
+					BSGS_Q_AMP = secp->AddDirect(BSGS_Q,BSGS_AMP[i]);
+					BSGS_S.Set(BSGS_Q_AMP);
 					i++;
 				}while( i < bsgs_aux && !bsgs_found[k]);
 			} //end if
 		}// End for
 		steps[thread_number]++;
 		pthread_mutex_lock(&bsgs_thread);
-		mpz_set(base_key,BSGS_CURRENT);
-		mpz_add(BSGS_CURRENT,BSGS_CURRENT,BSGS_N);
+		base_key.Set(&BSGS_CURRENT);
+		BSGS_CURRENT.Add(&BSGS_N);
 		pthread_mutex_unlock(&bsgs_thread);
-		if(FLAGDEBUG ) printf("%u of %"PRIu64"\n",bloom_counter,(uint64_t)(bsgs_aux*bsgs_point_number));
+
+		if(FLAGDEBUG ) printf("%u of %" PRIu64 "\n",bloom_counter,(uint64_t)(bsgs_aux*bsgs_point_number));
 		bloom_counter = 0;
 	}
-
-	mpz_clear(BSGS_Q.x);
-	mpz_clear(BSGS_Q.y);
-	mpz_clear(BSGS_S.x);
-	mpz_clear(BSGS_S.y);
-
-	mpz_clear(base_key);
-	mpz_clear(keyfound);
-	mpz_clear(base_point.x);
-	mpz_clear(base_point.y);
-	mpz_clear(point_aux.x);
-	mpz_clear(point_aux.y);
-	mpz_clear(point_aux2.x);
-	mpz_clear(point_aux2.y);
 	ends[thread_number] = 1;
 	return NULL;
 }
 
 void *thread_process_bsgs_random(void *vargp)	{
-	struct tothread *tt;
-	char pubkey[131],xpoint_str[65],xpoint_raw[32];
-	char *aux_c;
-	mpz_t base_key,keyfound;
 	FILE *filekey;
-	struct Point base_point,point_aux,point_aux2,point_found,BSGS_S,BSGS_Q,BSGS_Q_AMP;
-	mpz_t n_range_random;
+	struct tothread *tt;
+	char xpoint_raw[32],*aux_c,*hextemp;
+	Int base_key,keyfound,n_range_random;
+	Point base_point,point_aux,point_aux2,point_found,BSGS_S,BSGS_Q,BSGS_Q_AMP;
 	uint32_t i,j,k,r,salir,thread_number,bloom_counter = 0;
 	tt = (struct tothread *)vargp;
 	thread_number = tt->nt;
 	free(tt);
-	mpz_init(n_range_random);
-	mpz_init(base_key);
-	mpz_init(keyfound);
-	mpz_init(base_point.x);
-	mpz_init(base_point.y);
-	mpz_init(point_aux.x);
-	mpz_init(point_aux.y);
-	mpz_init(point_aux2.x);
-	mpz_init(point_aux2.y);
-
-	mpz_init(point_found.x);
-	mpz_init(point_found.y);
-
-
-	mpz_init(BSGS_Q_AMP.x);
-	mpz_init(BSGS_Q_AMP.y);
-
-
-	mpz_init(BSGS_S.x);
-	mpz_init(BSGS_S.y);
-	mpz_init(BSGS_Q.x);
-	mpz_init(BSGS_Q.y);
 
 	pthread_mutex_lock(&bsgs_thread);
 	/*			| Start Range	 | End Range		|
@@ -2307,67 +2291,65 @@ void *thread_process_bsgs_random(void *vargp)	{
 -b	bit		| Min bit value |Max bit value |
 -r	A:B	 | A						 | B 					 |
 	*/
-	// set n_range_random = random(end_range - start range)
-	mpz_urandomm (n_range_random,state,n_range_diff);
-
-	// base key =	start + random value
-	mpz_add(base_key,n_range_start,n_range_random);
+	// set base_key = random(end_range - start range)
+	base_key.Rand(&n_range_start,&n_range_end);
 	pthread_mutex_unlock(&bsgs_thread);
 	/*
 		while base_key is less than n_range_end then:
 	*/
-	while(mpz_cmp(base_key,n_range_end) < 0)	{
+	while(base_key.IsLower(&n_range_end))	{
 		//gmp_printf("While cycle: base_key : %Zd < n_range_end: %Zd\n",base_key,n_range_end);
 		if(FLAGQUIET == 0){
-			gmp_sprintf(xpoint_str,"%0.64Zx",base_key);
-			printf("\r[+] Thread %s",xpoint_str);
+			aux_c = base_key.GetBase16();
+			printf("\r[+] Thread %s",aux_c);
 			fflush(stdout);
+			free(aux_c);
 			THREADOUTPUT = 1;
 		}
 		/*
 			Set base_point in to base_key * G
 			base_point = base_key * G
 		*/
-		Scalar_Multiplication(G,&base_point,base_key);	//Scalar_Multiplication(G, &R, K1);
+		base_point = secp->ComputePublicKey(&base_key);
 		/*
 			We are going to need -( base_point * G)
 			point_aux = -( base_point * G)
 		*/
-		Point_Negation(&base_point,&point_aux);		//Point_Negation(&R,&S);
+		point_aux = secp->Negation(base_point);
+
 
 
 		/* We need to test individually every point in BSGS_Q */
 		for(k = 0; k < bsgs_point_number ; k++)	{
 			if(bsgs_found[k] == 0)	{
-			/*reset main variabler before the do-while cicle*/
+			/*reset main variables before the do-while cicle*/
 			salir = 0;
 			i = 0;
 			/* Main cycle for every a in 0 to bsgs_aux
 			*/
-			Point_Addition(&OriginalPointsBSGS[k],&point_aux,&BSGS_Q);
-			mpz_set(BSGS_S.x,BSGS_Q.x);
-			mpz_set(BSGS_S.y,BSGS_Q.y);
+			BSGS_Q = secp->AddDirect(OriginalPointsBSGS[k],point_aux);
+			BSGS_S.Set(BSGS_Q);
 			do {
-					gmp_sprintf(xpoint_str,"%0.64Zx",BSGS_S.x);
-					hexs2bin(xpoint_str,(unsigned char*)xpoint_raw);
-
+					BSGS_S.x.Get32Bytes((unsigned char*)xpoint_raw);
 					r = bloom_check(&bloom_bP[((unsigned char)xpoint_raw[0])],xpoint_raw,32);
 					if(r) {
 						bloom_counter++;
 						/* Lookup for the xpoint_raw into the full sorted list*/
-						r = bsgs_secondcheck(base_key,i,&OriginalPointsBSGS[k],&keyfound);
+						r = bsgs_secondcheck(&base_key,i,k,&keyfound);
 						if(r)	{
-							gmp_sprintf(xpoint_str,"%0.64Zx",keyfound);
-							printf("\n[+] Thread Key found privkey %s\n",xpoint_str);
-							Scalar_Multiplication(G,&point_aux2,keyfound);
-							gmp_sprintf(pubkey,"04%0.64Zx%0.64Zx",point_aux2.x,point_aux2.y);
-							printf("[+] Publickey %s\n",pubkey);
+							hextemp = keyfound.GetBase16();
+							printf("\n[+] Thread Key found privkey %s\n",hextemp);
+							point_aux2 = secp->ComputePublicKey(&keyfound);
+							aux_c = secp->GetPublicKeyHex(OriginalPointsBSGScompressed[k],point_aux2);
+							printf("[+] Publickey %s\n",aux_c);
 							pthread_mutex_lock(&write_keys);
 							filekey = fopen("KEYFOUNDKEYFOUND.txt","a");
 							if(filekey != NULL)	{
-								fprintf(filekey,"Key found privkey %s\nPublickey %s\n",xpoint_str,pubkey);
+								fprintf(filekey,"Key found privkey %s\nPublickey %s\n",hextemp,aux_c);
 								fclose(filekey);
 							}
+							free(hextemp);
+							free(aux_c);
 							pthread_mutex_unlock(&write_keys);
 							bsgs_found[k] = 1;
 							salir = 1;
@@ -2380,172 +2362,83 @@ void *thread_process_bsgs_random(void *vargp)	{
 							}
 						}
 					}
-					Point_Addition(&BSGS_Q,&BSGS_AMP[i],&BSGS_Q_AMP);
-					mpz_set(BSGS_S.x,BSGS_Q_AMP.x);
-					mpz_set(BSGS_S.y,BSGS_Q_AMP.y);
+					BSGS_Q_AMP = secp->AddDirect(BSGS_AMP[i],BSGS_Q);
+					BSGS_S.Set(BSGS_Q_AMP);
 					i++;
 				} while( i < bsgs_aux && !bsgs_found[k]);
 			}	//End if
 		} // End for with k bsgs_point_number
 		steps[thread_number]++;
 		pthread_mutex_lock(&bsgs_thread);
-		mpz_urandomm (n_range_random,state,n_range_diff);
-		mpz_add(base_key,n_range_start,n_range_random);
+		base_key.Rand(&n_range_start,&n_range_end);
 		pthread_mutex_unlock(&bsgs_thread);
-		if(FLAGDEBUG ) printf("%u of %"PRIu64"\n",bloom_counter,(uint64_t)(bsgs_aux*bsgs_point_number));
+		if(FLAGDEBUG ) printf("%u of %" PRIu64 "\n",bloom_counter,(uint64_t)(bsgs_aux*bsgs_point_number));
 		bloom_counter = 0;
 	}
-	mpz_clear(BSGS_Q.x);
-	mpz_clear(BSGS_Q.y);
-	mpz_clear(BSGS_S.x);
-	mpz_clear(BSGS_S.y);
-
-	mpz_clear(base_key);
-	mpz_clear(keyfound);
-	mpz_clear(base_point.x);
-	mpz_clear(base_point.y);
-	mpz_clear(point_aux.x);
-	mpz_clear(point_aux.y);
-	mpz_clear(point_aux2.x);
-	mpz_clear(point_aux2.y);
 	ends[thread_number] = 1;
 	return NULL;
 }
-
 
 /*
 	The bsgs_secondcheck function is made to perform a second BSGS search in a Range of less size.
 	This funtion is made with the especific purpouse to USE a smaller bPTable in RAM.
 	This new and small bPtable is around ~ squareroot( K *squareroot(N))
 */
-int bsgs_secondcheck(mpz_t start_range,uint32_t a,struct Point *target,mpz_t *private)	{
+int bsgs_secondcheck(Int *start_range,uint32_t a,uint32_t k_index,Int *privatekey)	{
 	uint64_t j = 0;
 	int i = 0,found = 0,r = 0;
-	mpz_t base_key;
-	struct Point base_point,point_aux;
-	struct Point BSGS_Q, BSGS_S,BSGS_Q_AMP;
-	char pubkey[131],xpoint_str[65],xpoint_raw[32];
+	Int base_key;
+	Point base_point,point_aux;
+	Point BSGS_Q, BSGS_S,BSGS_Q_AMP;
+	char pubkey[131],xpoint_str[65],xpoint_raw[32],*hexvalue;
 
-	mpz_init(base_key);
-	mpz_init(base_point.x);
-	mpz_init(base_point.y);
-	mpz_init(BSGS_Q.x);
-	mpz_init(BSGS_Q.y);
-	mpz_init(BSGS_S.x);
-	mpz_init(BSGS_S.y);
-	mpz_init(BSGS_Q_AMP.y);
-	mpz_init(BSGS_Q_AMP.x);
-	mpz_init(point_aux.y);
-	mpz_init(point_aux.x);
+	base_key.Set(&BSGS_M);
+	base_key.Mult((uint64_t) a);
+	base_key.Add(start_range);
 
+	base_point = secp->ComputePublicKey(&base_key);
+	point_aux = secp->Negation(base_point);
 
-	mpz_mul_ui(base_key,BSGS_M,a);
-	mpz_add(base_key,base_key,start_range);
+	BSGS_S = secp->AddDirect(OriginalPointsBSGS[k_index],point_aux);
 
-	Scalar_Multiplication(G,&base_point,base_key);
-	Point_Negation(&base_point,&point_aux);
-	Point_Addition(target,&point_aux,&BSGS_S);
+	BSGS_Q.Set(BSGS_S);
 
-	mpz_set(BSGS_Q.x,BSGS_S.x);
-	mpz_set(BSGS_Q.y,BSGS_S.y);
-
-	//gmp_printf("bsgs_secondcheck\nBase key %0.64Zx\nM2 %Zu\n",base_key,BSGS_M2);
 	do {
-		gmp_sprintf(xpoint_str,"%0.64Zx",BSGS_S.x);
-		hexs2bin(xpoint_str,(unsigned char*)xpoint_raw);
+		BSGS_S.x.Get32Bytes((unsigned char *)xpoint_raw);
 		r = bloom_check(&bloom_bPx2nd,xpoint_raw,32);
 		if(r)	{
-			//printf("bloom_bPx2nd MAYBE!!\n");
-			/* Lookup for the xpoint_raw into the full sorted list*/
 			r = bsgs_searchbinary(bPtable,xpoint_raw,bsgs_m2,&j);
-			//printf("bsgs_searchbinary: %s\n",r ? "yes":"no");
-			//printf("Current i: %u j: %llu, m: %llu\n",i,j,bsgs_m2);
 			if(r)	{
-				mpz_set(*private,BSGS_M2);
-				mpz_mul_ui(*private,*private,i);
-				mpz_add_ui(*private,*private,j+1);
-				mpz_add(*private,*private,base_key);
-				Scalar_Multiplication(G,&point_aux,*private);
-				//gmp_printf("private 1: %0.64Zx\n",*private);
-				if(mpz_cmp(point_aux.x,target->x) == 0)	{
+				privatekey->Set(&BSGS_M2);
+				privatekey->Mult((uint64_t)i);
+				privatekey->Add((uint64_t)(j+1));
+				privatekey->Add(&base_key);
+				point_aux = secp->ComputePublicKey(privatekey);
+				if(point_aux.x.IsEqual(&OriginalPointsBSGS[k_index].x))	{
 					found = 1;
 				}
 				else	{
-					mpz_set(*private,BSGS_M2);
-					mpz_mul_ui(*private,*private,i);
-					mpz_sub_ui(*private,*private,j+1);
-					mpz_add(*private,*private,base_key);
-					//gmp_printf("private 2: %0.64Zx\n",*private);
-					if(mpz_cmp(point_aux.x,target->x) == 0)	{
+					privatekey->Set(&BSGS_M2);
+					privatekey->Mult((uint64_t)i);
+					privatekey->Sub((uint64_t)(j+1));
+					privatekey->Add(&base_key);
+					point_aux = secp->ComputePublicKey(privatekey);
+					if(point_aux.x.IsEqual(&OriginalPointsBSGS[k_index].x))	{
 						found = 1;
 					}
 				}
 			}
 		}
-		Point_Addition(&BSGS_Q,&BSGS_AMP2[i],&BSGS_Q_AMP);
-		mpz_set(BSGS_S.x,BSGS_Q_AMP.x);
-		mpz_set(BSGS_S.y,BSGS_Q_AMP.y);
+		BSGS_Q_AMP = secp->AddDirect(BSGS_Q,BSGS_AMP2[i]);
+		BSGS_S.Set(BSGS_Q_AMP);
 		i++;
 	}while(i < 20 && !found);
-
-	mpz_clear(base_key);
-	mpz_clear(base_point.x);
-	mpz_clear(base_point.y);
-	mpz_clear(BSGS_Q.x);
-	mpz_clear(BSGS_Q.y);
-	mpz_clear(BSGS_S.x);
-	mpz_clear(BSGS_S.y);
-	mpz_clear(BSGS_Q_AMP.y);
-	mpz_clear(BSGS_Q_AMP.x);
-	mpz_clear(point_aux.y);
-	mpz_clear(point_aux.x);
 	return found;
-}
-
-void *thread_bPload(void *vargp)	{
-	char hexvalue[65],rawvalue[32];
-	struct bPload *tt;
-	struct Point P,temp;
-	mpz_t base;
-	uint32_t j;
-	uint64_t i;
-	tt = (struct bPload *)vargp;
-	mpz_init(base);
-	mpz_init(P.x);
-	mpz_init(P.y);
-	mpz_init(temp.x);
-	mpz_init(temp.y);
-	mpz_set_ui(base,tt->from);
-	Scalar_Multiplication(G,&P,base);
-	i = tt->from -1;
-	j = tt->from -1;
-	do {
-		mpz_set(temp.x,P.x);
-		mpz_set(temp.y,P.y);
-		gmp_sprintf(hexvalue,"%0.64Zx",P.x);
-		hexs2bin(hexvalue,(unsigned char*) rawvalue );
-		if(i < bsgs_m2)	{
-			memcpy(bPtable[j].value,rawvalue+16,BSGS_XVALUE_RAM);
-			bPtable[j].index = j;
-			bloom_add(&bloom_bPx2nd, rawvalue, BSGS_BUFFERXPOINTLENGTH);
-			j++;
-		}
-		bloom_add(&bloom_bP[((uint8_t)rawvalue[0])], rawvalue ,BSGS_BUFFERXPOINTLENGTH);
-		Point_Addition(&G,&temp,&P);
-		i++;
-		tt->counter++;
-	} while( i < tt->to );
-	mpz_clear(base);
-	mpz_clear(P.x);
-	mpz_clear(P.y);
-	mpz_clear(temp.x);
-	mpz_clear(temp.y);
-	pthread_exit(NULL);
 }
 
 void *thread_bPloadFile(void *vargp)	{
 	FILE *fd;
-	char rawvalue[32];
+	char rawvalue[32],*hextemp;
 	struct bPload *tt;
 	uint32_t j;
 	uint64_t i;
@@ -2558,11 +2451,12 @@ void *thread_bPloadFile(void *vargp)	{
 	i = tt->from -1;
 	j = tt->from -1;
 	if(fseek(fd,(uint64_t)(i*32),SEEK_SET) != 0)	{
-		fprintf(stderr,"Can't seek the file at index %"PRIu64", offset %"PRIu64"\n",i,(uint64_t)(i*32));
+		fprintf(stderr,"Can't seek the file at index %" PRIu64 ", offset %" PRIu64 "\n",i,(uint64_t)(i*32));
 		exit(0);
 	}
 	do {
 		if(fread(rawvalue,1,32,fd) == 32)	{
+
 			if(i < bsgs_m2)	{
 				memcpy(bPtable[j].value,rawvalue+16,BSGS_XVALUE_RAM);
 				bPtable[j].index = j;
@@ -2598,7 +2492,7 @@ void sleep_ms(int milliseconds)	{ // cross-platform sleep function
 
 void *thread_pub2rmd(void *vargp)	{
 	FILE *fd;
-	mpz_t key_mpz;
+	Int key_mpz;
 	struct tothread *tt;
 	uint64_t i,limit,j;
 	char digest160[20];
@@ -2610,17 +2504,15 @@ void *thread_pub2rmd(void *vargp)	{
 	limit = 0xFFFFFFFF;
 	tt = (struct tothread *)vargp;
 	thread_number = tt->nt;
-	mpz_init(key_mpz);
 	do {
 		if(FLAGRANDOM){
-			mpz_urandomm(key_mpz,state,n_range_diff);
-			mpz_add(key_mpz,key_mpz,n_range_start);
+			key_mpz.Rand(&n_range_start,&n_range_diff);
 		}
 		else	{
-			if(mpz_cmp(n_range_start,n_range_end) <= 0)	{
+			if(n_range_start.IsLower(&n_range_end))	{
 				pthread_mutex_lock(&write_random);
-				mpz_set(key_mpz,n_range_start);
-				mpz_add_ui(n_range_start,n_range_start,N_SECUENTIAL_MAX);
+				key_mpz.Set(&n_range_start);
+				n_range_start.Add(N_SECUENTIAL_MAX);
 				pthread_mutex_unlock(&write_random);
 			}
 			else	{
@@ -2628,10 +2520,7 @@ void *thread_pub2rmd(void *vargp)	{
 			}
 		}
 		if(pub2rmd_continue)	{
-			temphex = malloc(65);
-			gmp_sprintf(temphex,"%0.64Zx",key_mpz);
-			hexs2bin(temphex,pub.X.data8);
-			free(temphex);
+			key_mpz.Get32Bytes(pub.X.data8);
 			pub.parity = 0x02;
 			pub.X.data32[7] = 0;
 			if(FLAGQUIET == 0)	{
@@ -2696,4 +2585,158 @@ void *thread_pub2rmd(void *vargp)	{
 	} while(pub2rmd_continue);
 	ends[thread_number] = 1;
 	return NULL;
+}
+
+void init_generator()	{
+	Point g = secp->G;
+	Gn.reserve(CPU_GRP_SIZE / 2);
+	Gn[0] = g;
+	g = secp->DoubleDirect(g);
+	Gn[1] = g;
+	for(int i = 2; i < CPU_GRP_SIZE / 2; i++) {
+    g = secp->AddDirect(g,secp->G);
+    Gn[i] = g;
+  }
+	_2Gn = secp->DoubleDirect(Gn[CPU_GRP_SIZE / 2 - 1]);
+}
+
+void *thread_bPload(void *vargp)	{
+	char *hextemp,rawvalue[32];
+	struct bPload *tt;
+	uint64_t j_counter,i_counter;
+	uint64_t i,j,nbStep;
+	IntGroup *grp = new IntGroup(CPU_GRP_SIZE / 2 + 1);
+	Point startP;
+	Int dx[CPU_GRP_SIZE / 2 + 1];
+	Point pts[CPU_GRP_SIZE];
+	Int dy;
+  Int dyn;
+  Int _s;
+  Int _p;
+  Point pp;
+  Point pn;
+	int hLength = (CPU_GRP_SIZE / 2 - 1);
+
+	tt = (struct bPload *)vargp;
+	Int km(tt->from);
+	if(FLAGDEBUG) printf("[D] thread %i from %" PRIu64 " to %" PRIu64 "\n",tt->threadid,tt->from,tt->to);
+	i_counter = tt->from -1;
+	j_counter = tt->from -1;
+
+	nbStep = (tt->to - (tt->from-1)) / CPU_GRP_SIZE;
+	km.Add((uint64_t)(CPU_GRP_SIZE / 2));
+	startP = secp->ComputePublicKey(&km);
+	grp->Set(dx);
+
+	for(uint64_t s=0;s<nbStep;s++) {
+		for(i = 0; i < hLength; i++) {
+      dx[i].ModSub(&Gn[i].x,&startP.x);
+    }
+		dx[i].ModSub(&Gn[i].x,&startP.x); // For the first point
+    dx[i + 1].ModSub(&_2Gn.x,&startP.x);// For the next center point
+		// Grouped ModInv
+		grp->ModInv();
+
+		// We use the fact that P + i*G and P - i*G has the same deltax, so the same inverse
+    // We compute key in the positive and negative way from the center of the group
+
+    // center point
+		pts[CPU_GRP_SIZE / 2] = startP;	//Center point
+
+		for(i = 0; i<hLength; i++) {
+			pp = startP;
+      pn = startP;
+
+			// P = startP + i*G
+			dy.ModSub(&Gn[i].y,&pp.y);
+
+      _s.ModMulK1(&dy,&dx[i]);        // s = (p2.y-p1.y)*inverse(p2.x-p1.x);
+      _p.ModSquareK1(&_s);            // _p = pow2(s)
+
+      pp.x.ModNeg();
+      pp.x.ModAdd(&_p);
+      pp.x.ModSub(&Gn[i].x);           // rx = pow2(s) - p1.x - p2.x;
+
+#if 0
+      pp.y.ModSub(&Gn[i].x,&pp.x);
+      pp.y.ModMulK1(&_s);
+      pp.y.ModSub(&Gn[i].y);           // ry = - p2.y - s*(ret.x-p2.x);
+#endif
+
+      // P = startP - i*G  , if (x,y) = i*G then (x,-y) = -i*G
+      dyn.Set(&Gn[i].y);
+      dyn.ModNeg();
+      dyn.ModSub(&pn.y);
+
+      _s.ModMulK1(&dyn,&dx[i]);      // s = (p2.y-p1.y)*inverse(p2.x-p1.x);
+      _p.ModSquareK1(&_s);            // _p = pow2(s)
+
+      pn.x.ModNeg();
+      pn.x.ModAdd(&_p);
+      pn.x.ModSub(&Gn[i].x);          // rx = pow2(s) - p1.x - p2.x;
+
+#if 0
+      pn.y.ModSub(&Gn[i].x,&pn.x);
+      pn.y.ModMulK1(&_s);
+      pn.y.ModAdd(&Gn[i].y);          // ry = - p2.y - s*(ret.x-p2.x);
+#endif
+
+      pts[CPU_GRP_SIZE / 2 + (i + 1)] = pp;
+      pts[CPU_GRP_SIZE / 2 - (i + 1)] = pn;
+		}
+
+		// First point (startP - (GRP_SZIE/2)*G)
+    pn = startP;
+    dyn.Set(&Gn[i].y);
+    dyn.ModNeg();
+    dyn.ModSub(&pn.y);
+
+    _s.ModMulK1(&dyn,&dx[i]);
+    _p.ModSquareK1(&_s);
+
+    pn.x.ModNeg();
+    pn.x.ModAdd(&_p);
+    pn.x.ModSub(&Gn[i].x);
+
+#if 0
+    pn.y.ModSub(&Gn[i].x,&pn.x);
+    pn.y.ModMulK1(&_s);
+    pn.y.ModAdd(&Gn[i].y);
+#endif
+
+    pts[0] = pn;
+		for(j=0;j<CPU_GRP_SIZE;j++)	{
+			pts[j].x.Get32Bytes((unsigned char*)rawvalue);
+
+			if(i_counter < bsgs_m2)	{
+				memcpy(bPtable[j_counter].value,rawvalue+16,BSGS_XVALUE_RAM);
+				bPtable[j_counter].index = j_counter;
+				bloom_add(&bloom_bPx2nd, rawvalue, BSGS_BUFFERXPOINTLENGTH);
+				j_counter++;
+			}
+			if(i_counter < tt->to)	{
+				bloom_add(&bloom_bP[((uint8_t)rawvalue[0])], rawvalue ,BSGS_BUFFERXPOINTLENGTH);
+				tt->counter++;
+			}
+			i_counter++;
+		}
+		// Next start point (startP + GRP_SIZE*G)
+    pp = startP;
+    dy.ModSub(&_2Gn.y,&pp.y);
+
+    _s.ModMulK1(&dy,&dx[i + 1]);
+    _p.ModSquareK1(&_s);
+
+    pp.x.ModNeg();
+    pp.x.ModAdd(&_p);
+    pp.x.ModSub(&_2Gn.x);
+
+    pp.y.ModSub(&_2Gn.x,&pp.x);
+    pp.y.ModMulK1(&_s);
+    pp.y.ModSub(&_2Gn.y);
+    startP = pp;
+
+	}
+	delete grp;
+	pthread_exit(NULL);
 }

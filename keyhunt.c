@@ -1839,18 +1839,16 @@ void *thread_process(void *vargp)	{
 								if(r) {
 									found++;
 									hextemp = key_mpz.GetBase16();
-									pts[j] = secp->ComputePublicKey(&key_mpz);
-									public_key_compressed = secp->GetPublicKeyHex(true,pts[j]);
-									public_key_compressed_hex = tohex(public_key_compressed,33);
+									R = secp->ComputePublicKey(&key_mpz);
+									public_key_compressed = secp->GetPublicKeyHex(true,R);
+									printf("\nHIT!! PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed);
 									pthread_mutex_lock(&write_keys);
 									keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
 									if(keys != NULL)	{
-										fprintf(keys,"PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
+										fprintf(keys,"PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed);
 										fclose(keys);
 									}
-									printf("\nHIT!! PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
 									pthread_mutex_unlock(&write_keys);
-									free(public_key_compressed_hex);
 									free(public_key_compressed);
 									free(hextemp);
 								}

@@ -665,7 +665,7 @@ int main(int argc, char **argv)	{
 		}
 		else	{
 			if(bloom_init2(&bloom,N,0.00001)	== 1){
-				fprintf(stderr,"[E] error bloom_init for %u elements.\n",N);
+				fprintf(stderr,"[E] error bloom_init for %" PRIu64 " elements.\n",N);
 				fprintf(stderr,"[+] man enough is enough stop it\n");
 				exit(0);
 			}
@@ -1536,8 +1536,6 @@ void *thread_process(void *vargp)	{
 	free(tt);
 	found = 0;
 	grp->Set(dx);
-
-
 	do {
 		if(FLAGRANDOM){
 			key_mpz.Rand(&n_range_start,&n_range_end);

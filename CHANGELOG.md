@@ -1,3 +1,12 @@
+# Version 0.1.20210420 secp256k1
+- Solved Issues 49, 50 51
+  See:
+  https://github.com/albertobsd/keyhunt/issues/51
+  https://github.com/albertobsd/keyhunt/issues/50
+  https://github.com/albertobsd/keyhunt/issues/49
+- Solved Issues 56 https://github.com/albertobsd/keyhunt/issues/56
+- Added mutex to the bloom filter for multithread writing
+
 # Version 0.1.20210412 secp256k1
 - Full migration from libgmp to secp256k1
 - Change the way for keygeneration for modes xpoint, address, and rmd160

@@ -62,7 +62,7 @@ struct tothread {
 };
 
 struct bPload	{
-	int threadid;
+	uint32_t threadid;
 	uint64_t from;
 	uint64_t to;
 	uint64_t counter;
@@ -287,7 +287,7 @@ int main(int argc, char **argv)	{
 				printf("-t tn\t\tThreads number, must be positive integer\n");
 				printf("-v va\t\tSearch for vanity Address, only with -m address\n");
 				printf("-w\t\tMark the input file as RAW data xpoint fixed 32 byte each point. Valid only with -m xpoint\n");
-				printf("-z\t\tSave and load bloom bloomfilter from File\n");
+				//printf("-z\t\tSave and load bloom bloomfilter from File\n");
 				printf("\t\tUse the hexcharstoraw tool to create a raw file from your current hexadecimal file\n");
 				printf("\nExample\n\n");
 				printf("%s -t 16 -r 00000001:FFFFFFFF -s 0\n\n",argv[0]);
@@ -530,6 +530,9 @@ int main(int argc, char **argv)	{
 	}
 	if(FLAGRANGE) {
 		n_range_start.SetBase16(range_start);
+		if(n_range_start.IsZero())	{
+			n_range_start.AddOne();
+		}
 		n_range_end.SetBase16(range_end);
 		if(n_range_start.IsEqual(&n_range_end) == false ) {
 			if(  n_range_start.IsLower(&secp->order) &&  n_range_end.IsLowerOrEqual(&secp->order) )	{
@@ -665,7 +668,7 @@ int main(int argc, char **argv)	{
 		}
 		else	{
 			if(bloom_init2(&bloom,N,0.00001)	== 1){
-				fprintf(stderr,"[E] error bloom_init for %u elements.\n",N);
+				fprintf(stderr,"[E] error bloom_init for %" PRIu64 " elements.\n",N);
 				fprintf(stderr,"[+] man enough is enough stop it\n");
 				exit(0);
 			}
@@ -1288,24 +1291,26 @@ int main(int argc, char **argv)	{
 				if(i < NTHREADS -1)	{
 					temp[i].from = BASE +1;
 					temp[i].to = BASE + PERTHREAD;
+					BASE+=PERTHREAD;
 				}
 				else	{
 					temp[i].from = BASE + 1;
 					temp[i].to = BASE + PERTHREAD + PERTHREAD_R;
+					BASE+=(PERTHREAD + PERTHREAD_R);
 				}
 				if(FLAGDEBUG) printf("[I] %lu to %lu\n",temp[i].from,temp[i].to);
 				s = pthread_create(&tid[i],NULL,thread_bPload,(void *)&temp[i]);
-				BASE+=PERTHREAD;
 			}
 		}
 		total_precalculated = 0;
 		do {
-				sleep_ms(100);
+				sleep(1);
 				total_precalculated = 0;
 				for(i = 0; i < NTHREADS; i++)	{
 					total_precalculated+=temp[i].counter;
 				}
 				printf("\r[+] processing %lu/%lu bP points : %i%%",total_precalculated,bsgs_m,(int) (((double)total_precalculated/(double)bsgs_m)*100));
+				fflush(stdout);
 		} while(total_precalculated < bsgs_m);
 
 		for(i = 0; i < NTHREADS; i++)	{
@@ -1536,8 +1541,6 @@ void *thread_process(void *vargp)	{
 	free(tt);
 	found = 0;
 	grp->Set(dx);
-
-
 	do {
 		if(FLAGRANDOM){
 			key_mpz.Rand(&n_range_start,&n_range_end);
@@ -2624,6 +2627,9 @@ void *thread_bPload(void *vargp)	{
 	j_counter = tt->from -1;
 
 	nbStep = (tt->to - (tt->from-1)) / CPU_GRP_SIZE;
+	if( ((tt->to - (tt->from-1)) % CPU_GRP_SIZE )  != 0)	{
+		nbStep++;
+	}
 	km.Add((uint64_t)(CPU_GRP_SIZE / 2));
 	startP = secp->ComputePublicKey(&km);
 	grp->Set(dx);
@@ -2717,8 +2723,8 @@ void *thread_bPload(void *vargp)	{
 			if(i_counter < tt->to)	{
 				bloom_add(&bloom_bP[((uint8_t)rawvalue[0])], rawvalue ,BSGS_BUFFERXPOINTLENGTH);
 				tt->counter++;
+				i_counter++;
 			}
-			i_counter++;
 		}
 		// Next start point (startP + GRP_SIZE*G)
     pp = startP;

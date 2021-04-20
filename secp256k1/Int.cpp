@@ -758,6 +758,7 @@ void Int::Rand(Int *min,Int *max) {
 	for(;i<nb;i++)
 		bits[i]=rndl();
   this->Mod(&diff);
+  this->Add(min);
 }
 
 // ------------------------------------------------

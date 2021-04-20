@@ -20,6 +20,7 @@
 #include <inttypes.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <pthread.h>
 
 #include "bloom.h"
 #include "../xxhash/xxhash.h"
@@ -161,7 +162,11 @@ int bloom_check(struct bloom * bloom, const void * buffer, int len)
 
 int bloom_add(struct bloom * bloom, const void * buffer, int len)
 {
-  return bloom_check_add(bloom, buffer, len, 1);
+  int r;
+  pthread_mutex_lock(&bloom->mutex);
+  r =bloom_check_add(bloom, buffer, len, 1);
+  pthread_mutex_unlock(&bloom->mutex);
+  return r;
 }
 
 
@@ -254,14 +259,17 @@ int bloom_savecustom(struct bloom * bloom, char * filename) {
   if(fwrite(bloom,1,sizeof(struct bloom),fd_str) != sizeof(struct bloom) ) {
     fclose(fd_str);
     fclose(fd_dat);
+    fprintf(stderr,"fwrite bloom\n");
+    exit(0);
     return 1;
   }
   if(fwrite(bloom->bf,1, bloom->bytes,fd_dat) !=bloom->bytes) {
     fclose(fd_str);
     fclose(fd_dat);
+    fprintf(stderr,"fwrite bloom->bf\n");
+    exit(0);
     return 1;
   }
-
   fclose(fd_str);
   fclose(fd_dat);
   return 0;

@@ -186,7 +186,6 @@ char* Secp256K1::GetPublicKeyHex(bool compressed, Point &pubKey) {
 }
 
 char* Secp256K1::GetPublicKeyRaw(bool compressed, Point &pubKey) {
-  unsigned char publicKeyBytes[128];
   char *ret = (char*) malloc(65);
   if(ret == NULL) {
     ::fprintf(stderr,"Can't alloc memory\n");
@@ -204,6 +203,20 @@ char* Secp256K1::GetPublicKeyRaw(bool compressed, Point &pubKey) {
     pubKey.x.Get32Bytes((unsigned char*) (ret + 1));
   }
   return ret;
+}
+
+void Secp256K1::GetPublicKeyRaw(bool compressed, Point &pubKey,char *dst) {
+  if (!compressed) {
+    //Uncompressed public key
+    dst[0] = 0x4;
+    pubKey.x.Get32Bytes((unsigned char*) (dst + 1));
+    pubKey.y.Get32Bytes((unsigned char*) (dst + 33));
+  }
+  else {
+    // Compressed public key
+    dst[0] = pubKey.y.IsEven() ? 0x2 : 0x3;
+    pubKey.x.Get32Bytes((unsigned char*) (dst + 1));
+  }
 }
 
 Point Secp256K1::AddDirect(Point &p1,Point &p2) {

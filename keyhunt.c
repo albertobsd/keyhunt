@@ -77,7 +77,7 @@ struct __attribute__((__packed__)) publickey {
 	} X;
 };
 
-const char *version = "0.1.20210423 secp256k1";
+const char *version = "0.1.20210412 secp256k1";
 
 const char *bloomnames[256] = {"bloom_0","bloom_1","bloom_2","bloom_3","bloom_4","bloom_5","bloom_6","bloom_7","bloom_8","bloom_9","bloom_10","bloom_11","bloom_12","bloom_13","bloom_14","bloom_15","bloom_16","bloom_17","bloom_18","bloom_19","bloom_20","bloom_21","bloom_22","bloom_23","bloom_24","bloom_25","bloom_26","bloom_27","bloom_28","bloom_29","bloom_30","bloom_31","bloom_32","bloom_33","bloom_34","bloom_35","bloom_36","bloom_37","bloom_38","bloom_39","bloom_40","bloom_41","bloom_42","bloom_43","bloom_44","bloom_45","bloom_46","bloom_47","bloom_48","bloom_49","bloom_50","bloom_51","bloom_52","bloom_53","bloom_54","bloom_55","bloom_56","bloom_57","bloom_58","bloom_59","bloom_60","bloom_61","bloom_62","bloom_63","bloom_64","bloom_65","bloom_66","bloom_67","bloom_68","bloom_69","bloom_70","bloom_71","bloom_72","bloom_73","bloom_74","bloom_75","bloom_76","bloom_77","bloom_78","bloom_79","bloom_80","bloom_81","bloom_82","bloom_83","bloom_84","bloom_85","bloom_86","bloom_87","bloom_88","bloom_89","bloom_90","bloom_91","bloom_92","bloom_93","bloom_94","bloom_95","bloom_96","bloom_97","bloom_98","bloom_99","bloom_100","bloom_101","bloom_102","bloom_103","bloom_104","bloom_105","bloom_106","bloom_107","bloom_108","bloom_109","bloom_110","bloom_111","bloom_112","bloom_113","bloom_114","bloom_115","bloom_116","bloom_117","bloom_118","bloom_119","bloom_120","bloom_121","bloom_122","bloom_123","bloom_124","bloom_125","bloom_126","bloom_127","bloom_128","bloom_129","bloom_130","bloom_131","bloom_132","bloom_133","bloom_134","bloom_135","bloom_136","bloom_137","bloom_138","bloom_139","bloom_140","bloom_141","bloom_142","bloom_143","bloom_144","bloom_145","bloom_146","bloom_147","bloom_148","bloom_149","bloom_150","bloom_151","bloom_152","bloom_153","bloom_154","bloom_155","bloom_156","bloom_157","bloom_158","bloom_159","bloom_160","bloom_161","bloom_162","bloom_163","bloom_164","bloom_165","bloom_166","bloom_167","bloom_168","bloom_169","bloom_170","bloom_171","bloom_172","bloom_173","bloom_174","bloom_175","bloom_176","bloom_177","bloom_178","bloom_179","bloom_180","bloom_181","bloom_182","bloom_183","bloom_184","bloom_185","bloom_186","bloom_187","bloom_188","bloom_189","bloom_190","bloom_191","bloom_192","bloom_193","bloom_194","bloom_195","bloom_196","bloom_197","bloom_198","bloom_199","bloom_200","bloom_201","bloom_202","bloom_203","bloom_204","bloom_205","bloom_206","bloom_207","bloom_208","bloom_209","bloom_210","bloom_211","bloom_212","bloom_213","bloom_214","bloom_215","bloom_216","bloom_217","bloom_218","bloom_219","bloom_220","bloom_221","bloom_222","bloom_223","bloom_224","bloom_225","bloom_226","bloom_227","bloom_228","bloom_229","bloom_230","bloom_231","bloom_232","bloom_233","bloom_234","bloom_235","bloom_236","bloom_237","bloom_238","bloom_239","bloom_240","bloom_241","bloom_242","bloom_243","bloom_244","bloom_245","bloom_246","bloom_247","bloom_248","bloom_249","bloom_250","bloom_251","bloom_252","bloom_253","bloom_254","bloom_255"};
 
@@ -118,15 +118,11 @@ int bsgs_searchbinary(struct bsgs_xvalue *arr,char *data,int64_t _N,uint64_t *r_
 int bsgs_secondcheck(Int *start_range,uint32_t a,uint32_t k_index,Int *privatekey);
 
 void *thread_process(void *vargp);
-void *thread_process_address(void *vargp);
-void *thread_process_rmd160(void *vargp);
-void *thread_process_xpoint(void *vargp);
-void *thread_process_pub2rmd(void *vargp);
 void *thread_process_bsgs(void *vargp);
 void *thread_process_bsgs_random(void *vargp);
 void *thread_bPload(void *vargp);
 void *thread_bPloadFile(void *vargp);
-
+void *thread_pub2rmd(void *vargp);
 
 char *publickeytohashrmd160(char *pkey,int length);
 char *pubkeytopubaddress(char *pkey,int length);
@@ -162,8 +158,6 @@ uint64_t DEBUGCOUNT = 0x100000;
 
 Int OUTPUTSECONDS;
 
-
-double bloom_error = 0.000001;
 int FLAGDEBUG = 0;
 int FLAGQUIET = 0;
 int KFACTOR = 1;
@@ -177,6 +171,7 @@ int FLAGFILE = 0;
 int FLAGVANITY = 0;
 int FLAGMODE = MODE_ADDRESS;
 int FLAGCRYPTO = 0;
+int FLAGALREADYSORTED = 0;
 int FLAGRAWDATA	= 0;
 int FLAGRANDOM = 0;
 int FLAG_N = 0;
@@ -267,7 +262,7 @@ int main(int argc, char **argv)	{
 
 	printf("[+] Version %s\n",version);
 
-	while ((c = getopt(argc, argv, "dhqRwzb:c:e:f:g:k:l:m:n:p:r:s:t:v:G:")) != -1) {
+	while ((c = getopt(argc, argv, "dehqRwzb:c:f:g:k:l:m:n:p:r:s:t:v:G:")) != -1) {
 		switch(c) {
 			case 'h':
 				printf("\nUsage:\n-h\t\tshow this help\n");
@@ -275,7 +270,8 @@ int main(int argc, char **argv)	{
 				printf("-b bits\t\tFor some puzzles you only need some numbers of bits in the test keys.\n");
 				printf("\t\tThis option only is valid with the Random option -R\n");
 				printf("-c crypto\tSearch for specific crypo. < btc, eth, all > valid only w/ -m address \n");
-				printf("-e error\t\tSet the error rate for the bloom filter default 0.000001\n");
+				printf("-e\t\tThe file is already Sorted descendent. This skip the sorting process.\n");
+				printf("\t\tYour file MUST be sordted if no you are going to lose collisions\n");
 				printf("-f file\t\tSpecify filename with addresses or xpoints or uncompressed public keys\n");
 				printf("-g count\tJust for the stats, mark as counted every debugcount keys	\n");
 				printf("-k value\tUse this only with bsgs mode, k value is factor for M, more speed but more RAM use wisely\n");
@@ -353,8 +349,7 @@ int main(int argc, char **argv)	{
 			break;
 
 			case 'e':
-				bloom_error = strtod(optarg,NULL);
-				printf("[+] Setting bloom filter error rate to %f\n",bloom_error);
+				FLAGALREADYSORTED = 1;
 			break;
 			case 'f':
 				FLAGFILE = 1;
@@ -666,19 +661,18 @@ int main(int argc, char **argv)	{
 		}
 		printf("[+] Initializing bloom filter for %" PRIu64 " elements.\n",N);
 		if(N <= 1000)	{
-			if(bloom_init2(&bloom,1000,bloom_error)	== 1){
+			if(bloom_init2(&bloom,1000,0.00001)	== 1){
 				fprintf(stderr,"[E] error bloom_init for 10000 elements.\n");
 				exit(0);
 			}
 		}
 		else	{
-			if(bloom_init2(&bloom,(int64_t)(N*KFACTOR),bloom_error)	== 1){
+			if(bloom_init2(&bloom,N,0.00001)	== 1){
 				fprintf(stderr,"[E] error bloom_init for %" PRIu64 " elements.\n",N);
 				fprintf(stderr,"[+] man enough is enough stop it\n");
 				exit(0);
 			}
 		}
-		if(FLAGDEBUG) bloom_print(&bloom);
 		printf("[+] Loading data to the bloomfilter total: %.2f MB\n",(double)(((double) bloom.bytes)/(double)1048576));
 		i = 0;
 		switch (FLAGMODE) {
@@ -845,9 +839,16 @@ int main(int argc, char **argv)	{
 		free(aux);
 		fclose(fd);
 		printf("[+] Bloomfilter completed\n");
-		printf("[+] Sorting data ...");
-		_sort(addressTable,N);
-		printf(" done! %" PRIu64 " values were loaded and sorted\n",N);
+		if(FLAGALREADYSORTED)	{
+			printf("[+] File mark already sorted, skipping sort proccess\n");
+			printf("[+] %" PRIu64 " values were loaded\n",N);
+			_sort(addressTable,N);
+		}
+		else	{
+			printf("[+] Sorting data ...");
+			_sort(addressTable,N);
+			printf(" done! %" PRIu64 " values were loaded and sorted\n",N);
+		}
 	}
 	if(FLAGMODE == MODE_BSGS)	{
 		DEBUGCOUNT = N_SECUENTIAL_MAX ;
@@ -950,7 +951,25 @@ int main(int argc, char **argv)	{
 		}
 		BSGS_N.SetInt32(0);
 		BSGS_M.SetInt32(0);
+		/*
+		hextemp = BSGS_N.GetBase10();
+		printf("[+] BSGS_N: %s\n",hextemp);
+		free(hextemp);
+		hextemp = BSGS_M.GetBase10();
+		printf("[+] BSGS_M: %s\n",hextemp);
+		free(hextemp);
+		*/
 		BSGS_M.SetInt64(bsgs_m);
+		//printf("[+] bsgs_m: %"PRIu64"\n",bsgs_m);
+		/*
+		hextemp = BSGS_N.GetBase10();
+		printf("[+] BSGS_N: %s\n",hextemp);
+		free(hextemp);
+		hextemp = BSGS_M.GetBase10();
+		printf("[+] BSGS_M: %s\n",hextemp);
+		free(hextemp);
+		*/
+
 		if(FLAG_N)	{	//Custom N by the -n param
 			BSGS_N.SetInt64(N_SECUENTIAL_MAX);
 		}
@@ -966,7 +985,14 @@ int main(int argc, char **argv)	{
 			fprintf(stderr,"[E] -n param doesn't have exact square root\n");
 			exit(0);
 		}
-
+		/*
+		hextemp = BSGS_N.GetBase16();
+		printf("[+] BSGS_N: %s\n",hextemp);
+		free(hextemp);
+		hextemp = BSGS_M.GetBase16();
+		printf("[+] BSGS_M: %s\n",hextemp);
+		free(hextemp);
+		*/
 
 		BSGS_AUX.Set(&BSGS_M);
 		BSGS_AUX.Mod(&BSGS_GROUP_SIZE);
@@ -1000,7 +1026,14 @@ int main(int argc, char **argv)	{
 			n_range_start.Set(&n_range_diff);
 		}
 		BSGS_CURRENT.Set(&n_range_start);
-
+		/*
+		hextemp = BSGS_N.GetBase16();
+		printf("[+] BSGS_N: %s\n",hextemp);
+		free(hextemp);
+		hextemp = BSGS_M.GetBase16();
+		printf("[+] BSGS_M: %s\n",hextemp);
+		free(hextemp);
+		*/
 
 		if(n_range_diff.IsLower(&BSGS_N) )	{
 			BSGS_N.Set(&n_range_diff);
@@ -1008,7 +1041,14 @@ int main(int argc, char **argv)	{
 			if(BSGS_N.HasSqrt())	{	//If the root is exact
 				BSGS_M.Set(&BSGS_N);
 				BSGS_M.ModSqrt();
-
+				/*
+				hextemp = BSGS_N.GetBase16();
+				printf("[+] BSGS_N: %s\n",hextemp);
+				free(hextemp);
+				hextemp = BSGS_M.GetBase16();
+				printf("[+] BSGS_M: %s\n",hextemp);
+				free(hextemp);
+				*/
 			}
 			else	{
 				fprintf(stderr,"[E] the range is small and doesn't have exact square root\n");
@@ -1066,7 +1106,7 @@ int main(int argc, char **argv)	{
 					continuebloom = 0;
 				}
 				else	{
-					if(bloom_dummy(&dummybloom,itemsbloom,bloom_error)	== 0){
+					if(bloom_dummy(&dummybloom,itemsbloom,0.000001)	== 0){
 						numberbloom++;
 						if(dummybloom.bytes != bloom_bP[i].bytes)	{
 							continuebloom = 0;
@@ -1082,7 +1122,7 @@ int main(int argc, char **argv)	{
 					continuebloom == 0;
 				}
 				else	{
-					if(bloom_dummy(&dummybloom,itemsbloom2,bloom_error)	== 0){
+					if(bloom_dummy(&dummybloom,itemsbloom2,0.000001)	== 0){
 						if(dummybloom.bytes != bloom_bPx2nd.bytes)	{
 							continuebloom = 0;
 						}
@@ -1107,7 +1147,7 @@ int main(int argc, char **argv)	{
 		if( FLAGBLOOMFILTER == 0)	{
 */
 		for(i=0; i< 256; i++)	{
-			if(bloom_init2(&bloom_bP[i],itemsbloom,bloom_error)	== 1){
+			if(bloom_init2(&bloom_bP[i],itemsbloom,0.000001)	== 1){
 				fprintf(stderr,"[E] error bloom_init [%" PRIu64 "]\n",i);
 				exit(0);
 			}
@@ -1117,20 +1157,28 @@ int main(int argc, char **argv)	{
 		printf("[+] Init 1st bloom filter for %lu elements : %.2f MB\n",bsgs_m,(float)((uint64_t)bloom_bP_totalbytes/(uint64_t)1048576));
 
 		if(bsgs_m2 > 1000)	{
-			if(bloom_init2(&bloom_bPx2nd,bsgs_m2,bloom_error)	== 1){
+			if(bloom_init2(&bloom_bPx2nd,bsgs_m2,0.000001)	== 1){
 				fprintf(stderr,"[E] error bloom_init for %lu elements\n",bsgs_m2);
 				exit(0);
 			}
 		}
 		else	{
-			if(bloom_init2(&bloom_bPx2nd,1000,bloom_error)	== 1){
+			if(bloom_init2(&bloom_bPx2nd,1000,0.000001)	== 1){
 				fprintf(stderr,"[E] error bloom_init for 1000 elements\n");
 				exit(0);
 			}
 		}
 		if(FLAGDEBUG) bloom_print(&bloom_bPx2nd);
 		printf("[+] Init 2nd bloom filter for %lu elements : %.2f MB\n",bsgs_m2,(double)((double)bloom_bPx2nd.bytes/(double)1048576));
-
+		//bloom_print(&bloom_bPx2nd);
+		/*
+		hextemp = BSGS_M.GetBase16();
+		printf("[+] BSGS_M: %s\n",hextemp);
+		free(hextemp);
+		hextemp = BSGS_M2.GetBase16();
+		printf("[+] BSGS_M2: %s\n",hextemp);
+		free(hextemp);
+		*/
 
 		BSGS_MP = secp->ComputePublicKey(&BSGS_M);
 		BSGS_MP2 = secp->ComputePublicKey(&BSGS_M2);
@@ -1310,16 +1358,12 @@ int main(int argc, char **argv)	{
 			steps[i] = 0;
 			switch(FLAGMODE)	{
 				case MODE_ADDRESS:
-					s = pthread_create(&tid[i],NULL,thread_process_address,(void *)tt);
-				break;
 				case MODE_XPOINT:
-					s = pthread_create(&tid[i],NULL,thread_process_xpoint,(void *)tt);
-				break;
 				case MODE_RMD160:
-					s = pthread_create(&tid[i],NULL,thread_process_rmd160,(void *)tt);
+					s = pthread_create(&tid[i],NULL,thread_process,(void *)tt);
 				break;
 				case MODE_PUB2RMD:
-					s = pthread_create(&tid[i],NULL,thread_process_pub2rmd,(void *)tt);
+					s = pthread_create(&tid[i],NULL,thread_pub2rmd,(void *)tt);
 				break;
 			}
 			if(s != 0)	{
@@ -1484,7 +1528,7 @@ void *thread_process(void *vargp)	{
 	Point R,temporal;
 	uint64_t count = 0;
 	int r,thread_number,found,continue_flag = 1;
-	char *public_key_compressed,*public_key_uncompressed,rawvalue[32];
+	char *public_key_compressed,*public_key_uncompressed,hexstrpoint[65],rawvalue[32];
 	char *publickeyhashrmd160_compress,*publickeyhashrmd160_uncompress;
 	char *hextemp,*public_key_compressed_hex,*public_key_uncompressed_hex;
 	char *eth_address;
@@ -1836,688 +1880,6 @@ void *thread_process(void *vargp)	{
 				}
 
 
-
-				// Next start point (startP + GRP_SIZE*G)
-		    pp = startP;
-		    dy.ModSub(&_2Gn.y,&pp.y);
-
-		    _s.ModMulK1(&dy,&dx[i + 1]);
-		    _p.ModSquareK1(&_s);
-
-		    pp.x.ModNeg();
-		    pp.x.ModAdd(&_p);
-		    pp.x.ModSub(&_2Gn.x);
-
-		    pp.y.ModSub(&_2Gn.x,&pp.x);
-		    pp.y.ModMulK1(&_s);
-		    pp.y.ModSub(&_2Gn.y);
-		    startP = pp;
-			}while(count <= N_SECUENTIAL_MAX && continue_flag);
-		}
-	} while(continue_flag);
-	ends[thread_number] = 1;
-	return NULL;
-}
-
-void *thread_process_address(void *vargp)	{
-	struct tothread *tt;
-	Point pts[CPU_GRP_SIZE];
-	Int dx[CPU_GRP_SIZE / 2 + 1];
-	IntGroup *grp = new IntGroup(CPU_GRP_SIZE / 2 + 1);
-	Point startP;
-	Int dy;
-	Int dyn;
-	Int _s;
-	Int _p;
-	Point pp;
-	Point pn;
-	int hLength = (CPU_GRP_SIZE / 2 - 1);
-	uint64_t i,j;
-	Point R,temporal;
-	uint64_t count = 0;
-	int r,thread_number,found,continue_flag = 1;
-	char public_key_compressed[33],public_key_uncompressed[65],rawvalue[32];
-	char *hextemp,*public_key_compressed_hex,*public_key_uncompressed_hex;
-	char *eth_address;
-	char *public_address_compressed,*public_address_uncompressed;
-	unsigned long longtemp;
-	FILE *keys,*vanityKeys;
-	Int key_mpz,mpz_bit_range_min,mpz_bit_range_max,mpz_bit_range_diff;
-	tt = (struct tothread *)vargp;
-	thread_number = tt->nt;
-	free(tt);
-	found = 0;
-	grp->Set(dx);
-	do {
-		if(FLAGRANDOM){
-			key_mpz.Rand(&n_range_start,&n_range_end);
-		}
-		else	{
-			if(n_range_start.IsLower(&n_range_end)){
-				pthread_mutex_lock(&write_random);
-				key_mpz.Set(&n_range_start);
-				n_range_start.Add(N_SECUENTIAL_MAX);
-				pthread_mutex_unlock(&write_random);
-			}
-			else	{
-				continue_flag = 0;
-			}
-		}
-		if(continue_flag)	{
-			count = 0;
-			do {
-
-				if(FLAGQUIET == 0){
-					hextemp = key_mpz.GetBase16();
-					printf("\rBase key: %s     ",hextemp);
-					fflush(stdout);
-					free(hextemp);
-					THREADOUTPUT = 1;
-				}
-				key_mpz.Add((uint64_t)CPU_GRP_SIZE / 2);
-	 			startP = secp->ComputePublicKey(&key_mpz);
-				key_mpz.Sub((uint64_t)CPU_GRP_SIZE / 2);
-
-				for(i = 0; i < hLength; i++) {
-		      dx[i].ModSub(&Gn[i].x,&startP.x);
-		    }
-		    dx[i].ModSub(&Gn[i].x,&startP.x);  // For the first point
-		    dx[i + 1].ModSub(&_2Gn.x,&startP.x); // For the next center point
-				grp->ModInv();
-
-				pts[CPU_GRP_SIZE / 2] = startP;
-
-				for(i = 0; i<hLength; i++) {
-					pp = startP;
-		      pn = startP;
-
-		      // P = startP + i*G
-		      dy.ModSub(&Gn[i].y,&pp.y);
-
-		      _s.ModMulK1(&dy,&dx[i]);        // s = (p2.y-p1.y)*inverse(p2.x-p1.x);
-		      _p.ModSquareK1(&_s);            // _p = pow2(s)
-
-		      pp.x.ModNeg();
-		      pp.x.ModAdd(&_p);
-		      pp.x.ModSub(&Gn[i].x);           // rx = pow2(s) - p1.x - p2.x;
-
-		      pp.y.ModSub(&Gn[i].x,&pp.x);
-		      pp.y.ModMulK1(&_s);
-		      pp.y.ModSub(&Gn[i].y);           // ry = - p2.y - s*(ret.x-p2.x);
-
-		      // P = startP - i*G  , if (x,y) = i*G then (x,-y) = -i*G
-		      dyn.Set(&Gn[i].y);
-		      dyn.ModNeg();
-		      dyn.ModSub(&pn.y);
-
-		      _s.ModMulK1(&dyn,&dx[i]);      // s = (p2.y-p1.y)*inverse(p2.x-p1.x);
-		      _p.ModSquareK1(&_s);            // _p = pow2(s)
-		      pn.x.ModNeg();
-		      pn.x.ModAdd(&_p);
-		      pn.x.ModSub(&Gn[i].x);          // rx = pow2(s) - p1.x - p2.x;
-
-		      pn.y.ModSub(&Gn[i].x,&pn.x);
-		      pn.y.ModMulK1(&_s);
-	      	pn.y.ModAdd(&Gn[i].y);          // ry = - p2.y - s*(ret.x-p2.x);
-
-		      pts[CPU_GRP_SIZE / 2 + (i + 1)] = pp;
-		      pts[CPU_GRP_SIZE / 2 - (i + 1)] = pn;
-				}
-
-				// First point (startP - (GRP_SZIE/2)*G)
-		    pn = startP;
-		    dyn.Set(&Gn[i].y);
-		    dyn.ModNeg();
-		    dyn.ModSub(&pn.y);
-
-		    _s.ModMulK1(&dyn,&dx[i]);
-		    _p.ModSquareK1(&_s);
-
-		    pn.x.ModNeg();
-		    pn.x.ModAdd(&_p);
-		    pn.x.ModSub(&Gn[i].x);
-		    pn.y.ModSub(&Gn[i].x,&pn.x);
-		    pn.y.ModMulK1(&_s);
-		    pn.y.ModAdd(&Gn[i].y);
-
-		    pts[0] = pn;
-
-
-				for(j = 0; j < CPU_GRP_SIZE;j++){
-					switch(FLAGSEARCH)	{
-						case SEARCH_UNCOMPRESS:
-							 secp->GetPublicKeyRaw(false,pts[j],public_key_uncompressed);
-						break;
-						case SEARCH_COMPRESS:
-							 secp->GetPublicKeyRaw(true,pts[j],public_key_compressed);
-						break;
-						case SEARCH_BOTH:
-							secp->GetPublicKeyRaw(false,pts[j],public_key_uncompressed);
-							secp->GetPublicKeyRaw(true,pts[j],public_key_compressed);
-						break;
-					}
-					switch(FLAGSEARCH)	{
-						case SEARCH_UNCOMPRESS:
-							public_address_uncompressed = pubkeytopubaddress(public_key_uncompressed,65);
-						break;
-						case SEARCH_COMPRESS:
-							public_address_compressed = pubkeytopubaddress(public_key_compressed,33);
-						break;
-						case SEARCH_BOTH:
-							public_address_compressed = pubkeytopubaddress(public_key_compressed,33);
-							public_address_uncompressed = pubkeytopubaddress(public_key_uncompressed,65);
-						break;
-					}
-					if(FLAGVANITY)	{
-						if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH){
-							if(strncmp(public_address_uncompressed,vanity,len_vanity) == 0)	{
-								hextemp = key_mpz.GetBase16();
-								vanityKeys = fopen("vanitykeys.txt","a+");
-								if(vanityKeys != NULL)	{
-									fprintf(vanityKeys,"PrivKey: %s\nAddress uncompressed: %s\n",hextemp,public_address_uncompressed);
-									fclose(vanityKeys);
-								}
-								printf("\nVanity privKey: %s\nAddress uncompressed:	%s\n",hextemp,public_address_uncompressed);
-								free(hextemp);
-							}
-						}
-						if(FLAGSEARCH == SEARCH_COMPRESS || FLAGSEARCH == SEARCH_BOTH){
-							if(strncmp(public_address_compressed,vanity,len_vanity) == 0)	{
-								hextemp = key_mpz.GetBase16();
-								vanityKeys = fopen("vanitykeys.txt","a+");
-								if(vanityKeys != NULL)	{
-									fprintf(vanityKeys,"PrivKey: %s\nAddress compressed:	%s\n",hextemp,public_address_compressed);
-									fclose(vanityKeys);
-								}
-								printf("\nVanity privKey: %s\nAddress compressed: %s\n",hextemp,public_address_compressed);
-								free(hextemp);
-							}
-						}
-					}
-					if(FLAGSEARCH == SEARCH_COMPRESS || FLAGSEARCH == SEARCH_BOTH){
-						r = bloom_check(&bloom,public_address_compressed,MAXLENGTHADDRESS);
-						if(r) {
-							r = searchbinary(addressTable,public_address_compressed,N);
-							if(r) {
-								found++;
-								hextemp = key_mpz.GetBase16();
-								public_key_compressed_hex = tohex(public_key_compressed,33);
-								pthread_mutex_lock(&write_keys);
-								keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
-								if(keys != NULL)	{
-									fprintf(keys,"PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_compressed_hex,public_address_compressed);
-									fclose(keys);
-								}
-								printf("\nHIT!! PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_compressed_hex,public_address_compressed);
-								pthread_mutex_unlock(&write_keys);
-								free(public_key_compressed_hex);
-								free(hextemp);
-							}
-						}
-						free(public_address_compressed);
-					}
-					if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH){
-						r = bloom_check(&bloom,public_address_uncompressed,MAXLENGTHADDRESS);
-						if(r) {
-							r = searchbinary(addressTable,public_address_uncompressed,N);
-							if(r) {
-								found++;
-								hextemp = key_mpz.GetBase16();
-								public_key_uncompressed_hex = tohex(public_key_uncompressed,65);
-								pthread_mutex_lock(&write_keys);
-								keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
-								if(keys != NULL)	{
-									fprintf(keys,"PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,public_address_uncompressed);
-									fclose(keys);
-								}
-								printf("\nHIT!! PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,public_address_uncompressed);
-								pthread_mutex_unlock(&write_keys);
-								free(public_key_uncompressed_hex);
-								free(hextemp);
-							}
-						}
-						free(public_address_uncompressed);
-					}
-					if( (FLAGCRYPTO & CRYPTO_ETH) != 0) {
-						/*
-						mpz_export((public_key_uncompressed+1),&longtemp,1,8,1,0,R.x);
-						mpz_export((public_key_uncompressed+33),&longtemp,1,8,1,0,R.y);
-						public_address_uncompressed = pubkeytopubaddress_eth(public_key_uncompressed+1,64);
-						//printf("Testing for %s\n",public_address_uncompressed);
-						r = bloom_check(&bloom,public_address_uncompressed,MAXLENGTHADDRESS);
-						if(r) {
-							r = searchbinary(addressTable,public_address_uncompressed,N);
-							if(r) {
-								hextemp = (char*) malloc(65);
-								mpz_get_str(hextemp,16,key_mpz);
-								public_key_uncompressed_hex = tohex(public_key_uncompressed+1,64);
-								pthread_mutex_lock(&write_keys);
-								keys = fopen("keys.txt","a+");
-								if(keys != NULL)	{
-									fprintf(keys,"PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,public_address_uncompressed);
-									fclose(keys);
-								}
-								printf("HIT!! PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,public_address_uncompressed);
-								pthread_mutex_unlock(&write_keys);
-								free(public_key_uncompressed_hex);
-								free(hextemp);
-							}
-							free(public_address_uncompressed);
-						}
-						*/
-					}
-
-					count++;
-					if(count %	DEBUGCOUNT == 0)	{
-						steps[thread_number]++;
-					}
-					key_mpz.AddOne();
-				}
-
-				// Next start point (startP + GRP_SIZE*G)
-		    pp = startP;
-		    dy.ModSub(&_2Gn.y,&pp.y);
-
-		    _s.ModMulK1(&dy,&dx[i + 1]);
-		    _p.ModSquareK1(&_s);
-
-		    pp.x.ModNeg();
-		    pp.x.ModAdd(&_p);
-		    pp.x.ModSub(&_2Gn.x);
-
-		    pp.y.ModSub(&_2Gn.x,&pp.x);
-		    pp.y.ModMulK1(&_s);
-		    pp.y.ModSub(&_2Gn.y);
-		    startP = pp;
-			}while(count <= N_SECUENTIAL_MAX && continue_flag);
-		}
-	} while(continue_flag);
-	ends[thread_number] = 1;
-	return NULL;
-}
-
-
-void *thread_process_rmd160(void *vargp)	{
-	struct tothread *tt;
-	Point pts[CPU_GRP_SIZE];
-	Int dx[CPU_GRP_SIZE / 2 + 1];
-	IntGroup *grp = new IntGroup(CPU_GRP_SIZE / 2 + 1);
-	Point startP;
-	Int dy;
-	Int dyn;
-	Int _s;
-	Int _p;
-	Point pp;
-	Point pn;
-	int hLength = (CPU_GRP_SIZE / 2 - 1);
-	uint64_t i,j;
-	Point R,temporal;
-	uint64_t count = 0;
-	int r,thread_number,found,continue_flag = 1;
-	char public_key_compressed[33],public_key_uncompressed[65],rawvalue[32];
-	char *publickeyhashrmd160_compress,*publickeyhashrmd160_uncompress;
-	char *hextemp,*public_key_compressed_hex,*public_key_uncompressed_hex;
-	char *eth_address;
-	char *public_address_compressed,*public_address_uncompressed;
-	unsigned long longtemp;
-	FILE *keys,*vanityKeys;
-	Int key_mpz,mpz_bit_range_min,mpz_bit_range_max,mpz_bit_range_diff;
-	tt = (struct tothread *)vargp;
-	thread_number = tt->nt;
-	free(tt);
-	found = 0;
-	grp->Set(dx);
-	do {
-		if(FLAGRANDOM){
-			key_mpz.Rand(&n_range_start,&n_range_end);
-		}
-		else	{
-			if(n_range_start.IsLower(&n_range_end)){
-				pthread_mutex_lock(&write_random);
-				key_mpz.Set(&n_range_start);
-				n_range_start.Add(N_SECUENTIAL_MAX);
-				pthread_mutex_unlock(&write_random);
-			}
-			else	{
-				continue_flag = 0;
-			}
-		}
-		if(continue_flag)	{
-			count = 0;
-			do {
-
-				if(FLAGQUIET == 0){
-					hextemp = key_mpz.GetBase16();
-					printf("\rBase key: %s     ",hextemp);
-					fflush(stdout);
-					free(hextemp);
-					THREADOUTPUT = 1;
-				}
-				key_mpz.Add((uint64_t)CPU_GRP_SIZE / 2);
-	 			startP = secp->ComputePublicKey(&key_mpz);
-				key_mpz.Sub((uint64_t)CPU_GRP_SIZE / 2);
-
-				for(i = 0; i < hLength; i++) {
-		      dx[i].ModSub(&Gn[i].x,&startP.x);
-		    }
-		    dx[i].ModSub(&Gn[i].x,&startP.x);  // For the first point
-		    dx[i + 1].ModSub(&_2Gn.x,&startP.x); // For the next center point
-				grp->ModInv();
-
-				pts[CPU_GRP_SIZE / 2] = startP;
-
-				for(i = 0; i<hLength; i++) {
-					pp = startP;
-		      pn = startP;
-
-		      // P = startP + i*G
-		      dy.ModSub(&Gn[i].y,&pp.y);
-
-		      _s.ModMulK1(&dy,&dx[i]);        // s = (p2.y-p1.y)*inverse(p2.x-p1.x);
-		      _p.ModSquareK1(&_s);            // _p = pow2(s)
-
-		      pp.x.ModNeg();
-		      pp.x.ModAdd(&_p);
-		      pp.x.ModSub(&Gn[i].x);           // rx = pow2(s) - p1.x - p2.x;
-
-		      pp.y.ModSub(&Gn[i].x,&pp.x);
-		      pp.y.ModMulK1(&_s);
-		      pp.y.ModSub(&Gn[i].y);           // ry = - p2.y - s*(ret.x-p2.x);
-
-		      // P = startP - i*G  , if (x,y) = i*G then (x,-y) = -i*G
-		      dyn.Set(&Gn[i].y);
-		      dyn.ModNeg();
-		      dyn.ModSub(&pn.y);
-
-		      _s.ModMulK1(&dyn,&dx[i]);      // s = (p2.y-p1.y)*inverse(p2.x-p1.x);
-		      _p.ModSquareK1(&_s);            // _p = pow2(s)
-		      pn.x.ModNeg();
-		      pn.x.ModAdd(&_p);
-		      pn.x.ModSub(&Gn[i].x);          // rx = pow2(s) - p1.x - p2.x;
-
-		      pn.y.ModSub(&Gn[i].x,&pn.x);
-		      pn.y.ModMulK1(&_s);
-	      	pn.y.ModAdd(&Gn[i].y);          // ry = - p2.y - s*(ret.x-p2.x);
-
-		      pts[CPU_GRP_SIZE / 2 + (i + 1)] = pp;
-		      pts[CPU_GRP_SIZE / 2 - (i + 1)] = pn;
-				}
-
-				// First point (startP - (GRP_SZIE/2)*G)
-		    pn = startP;
-		    dyn.Set(&Gn[i].y);
-		    dyn.ModNeg();
-		    dyn.ModSub(&pn.y);
-
-		    _s.ModMulK1(&dyn,&dx[i]);
-		    _p.ModSquareK1(&_s);
-
-		    pn.x.ModNeg();
-		    pn.x.ModAdd(&_p);
-		    pn.x.ModSub(&Gn[i].x);
-		    pn.y.ModSub(&Gn[i].x,&pn.x);
-		    pn.y.ModMulK1(&_s);
-		    pn.y.ModAdd(&Gn[i].y);
-
-		    pts[0] = pn;
-
-				for(j = 0; j < CPU_GRP_SIZE;j++){
-					switch(FLAGSEARCH)	{
-						case SEARCH_UNCOMPRESS:
-							 secp->GetPublicKeyRaw(false,pts[j],public_key_uncompressed);
-						break;
-						case SEARCH_COMPRESS:
-							secp->GetPublicKeyRaw(true,pts[j],public_key_compressed);
-						break;
-						case SEARCH_BOTH:
-							secp->GetPublicKeyRaw(false,pts[j],public_key_uncompressed);
-							secp->GetPublicKeyRaw(true,pts[j],public_key_compressed);
-						break;
-					}
-
-					switch(FLAGSEARCH)	{
-						case SEARCH_UNCOMPRESS:
-							publickeyhashrmd160_uncompress = publickeytohashrmd160(public_key_uncompressed,65);
-						break;
-						case SEARCH_COMPRESS:
-							publickeyhashrmd160_compress = publickeytohashrmd160(public_key_compressed,33);
-						break;
-						case SEARCH_BOTH:
-							publickeyhashrmd160_compress = publickeytohashrmd160(public_key_compressed,33);
-							publickeyhashrmd160_uncompress = publickeytohashrmd160(public_key_uncompressed,65);
-						break;
-					}
-
-					if(FLAGSEARCH == SEARCH_COMPRESS || FLAGSEARCH == SEARCH_BOTH){
-						r = bloom_check(&bloom,publickeyhashrmd160_compress,MAXLENGTHADDRESS);
-						if(r) {
-							r = searchbinary(addressTable,publickeyhashrmd160_compress,N);
-							if(r) {
-								found++;
-								hextemp = key_mpz.GetBase16();
-								public_key_compressed_hex = tohex(public_key_compressed,33);
-								pthread_mutex_lock(&write_keys);
-								keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
-								if(keys != NULL)	{
-									fprintf(keys,"PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
-									fclose(keys);
-								}
-								printf("\nHIT!! PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
-								pthread_mutex_unlock(&write_keys);
-								free(public_key_compressed_hex);
-								free(hextemp);
-							}
-						}
-						free(publickeyhashrmd160_compress);
-					}
-					if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH){
-						r = bloom_check(&bloom,publickeyhashrmd160_uncompress,MAXLENGTHADDRESS);
-						if(r) {
-							r = searchbinary(addressTable,publickeyhashrmd160_uncompress,N);
-							if(r) {
-								found++;
-								hextemp = key_mpz.GetBase16();
-								public_key_uncompressed_hex = tohex(public_key_uncompressed,65);
-								pthread_mutex_lock(&write_keys);
-								keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
-								if(keys != NULL)	{
-									fprintf(keys,"PrivKey: %s\npubkey: %s\n",hextemp,public_key_uncompressed_hex);
-									fclose(keys);
-								}
-								printf("\nHIT!! PrivKey: %s\npubkey: %s\n",hextemp,public_key_uncompressed_hex);
-								pthread_mutex_unlock(&write_keys);
-								free(public_key_uncompressed_hex);
-								free(hextemp);
-							}
-						}
-						free(publickeyhashrmd160_uncompress);
-					}
-
-					count++;
-					if(count %	DEBUGCOUNT == 0)	{
-						steps[thread_number]++;
-					}
-					key_mpz.AddOne();
-				}
-
-				// Next start point (startP + GRP_SIZE*G)
-		    pp = startP;
-		    dy.ModSub(&_2Gn.y,&pp.y);
-
-		    _s.ModMulK1(&dy,&dx[i + 1]);
-		    _p.ModSquareK1(&_s);
-
-		    pp.x.ModNeg();
-		    pp.x.ModAdd(&_p);
-		    pp.x.ModSub(&_2Gn.x);
-
-		    pp.y.ModSub(&_2Gn.x,&pp.x);
-		    pp.y.ModMulK1(&_s);
-		    pp.y.ModSub(&_2Gn.y);
-		    startP = pp;
-			}while(count <= N_SECUENTIAL_MAX && continue_flag);
-		}
-	} while(continue_flag);
-	ends[thread_number] = 1;
-	return NULL;
-}
-
-void *thread_process_xpoint(void *vargp)	{
-	struct tothread *tt;
-	Point pts[CPU_GRP_SIZE];
-	Int dx[CPU_GRP_SIZE / 2 + 1];
-	IntGroup *grp = new IntGroup(CPU_GRP_SIZE / 2 + 1);
-	Point startP;
-	Int dy;
-	Int dyn;
-	Int _s;
-	Int _p;
-	Point pp;
-	Point pn;
-	int hLength = (CPU_GRP_SIZE / 2 - 1);
-	uint64_t i,j;
-	Point R,temporal;
-	uint64_t count = 0;
-	int r,thread_number,found,continue_flag = 1;
-	char public_key_compressed[33],public_key_uncompressed[65],rawvalue[32];
-	char *hextemp,*public_key_compressed_hex,*public_key_uncompressed_hex;
-	unsigned long longtemp;
-	FILE *keys,*vanityKeys;
-	Int key_mpz,mpz_bit_range_min,mpz_bit_range_max,mpz_bit_range_diff;
-	tt = (struct tothread *)vargp;
-	thread_number = tt->nt;
-	free(tt);
-	found = 0;
-	grp->Set(dx);
-	do {
-		if(FLAGRANDOM){
-			key_mpz.Rand(&n_range_start,&n_range_end);
-		}
-		else	{
-			if(n_range_start.IsLower(&n_range_end)){
-				pthread_mutex_lock(&write_random);
-				key_mpz.Set(&n_range_start);
-				n_range_start.Add(N_SECUENTIAL_MAX);
-				pthread_mutex_unlock(&write_random);
-			}
-			else	{
-				continue_flag = 0;
-			}
-		}
-		if(continue_flag)	{
-			count = 0;
-			do {
-
-				if(FLAGQUIET == 0){
-					hextemp = key_mpz.GetBase16();
-					printf("\rBase key: %s     ",hextemp);
-					fflush(stdout);
-					free(hextemp);
-					THREADOUTPUT = 1;
-				}
-				key_mpz.Add((uint64_t)CPU_GRP_SIZE / 2);
-	 			startP = secp->ComputePublicKey(&key_mpz);
-				key_mpz.Sub((uint64_t)CPU_GRP_SIZE / 2);
-
-				for(i = 0; i < hLength; i++) {
-		      dx[i].ModSub(&Gn[i].x,&startP.x);
-		    }
-		    dx[i].ModSub(&Gn[i].x,&startP.x);  // For the first point
-		    dx[i + 1].ModSub(&_2Gn.x,&startP.x); // For the next center point
-				grp->ModInv();
-
-				pts[CPU_GRP_SIZE / 2] = startP;
-
-				for(i = 0; i<hLength; i++) {
-					pp = startP;
-		      pn = startP;
-
-		      // P = startP + i*G
-		      dy.ModSub(&Gn[i].y,&pp.y);
-
-		      _s.ModMulK1(&dy,&dx[i]);        // s = (p2.y-p1.y)*inverse(p2.x-p1.x);
-		      _p.ModSquareK1(&_s);            // _p = pow2(s)
-
-		      pp.x.ModNeg();
-		      pp.x.ModAdd(&_p);
-		      pp.x.ModSub(&Gn[i].x);           // rx = pow2(s) - p1.x - p2.x;
-
-#if 0
-			      pp.y.ModSub(&Gn[i].x,&pp.x);
-			      pp.y.ModMulK1(&_s);
-			      pp.y.ModSub(&Gn[i].y);           // ry = - p2.y - s*(ret.x-p2.x);
-#endif
-		      // P = startP - i*G  , if (x,y) = i*G then (x,-y) = -i*G
-		      dyn.Set(&Gn[i].y);
-		      dyn.ModNeg();
-		      dyn.ModSub(&pn.y);
-
-		      _s.ModMulK1(&dyn,&dx[i]);      // s = (p2.y-p1.y)*inverse(p2.x-p1.x);
-		      _p.ModSquareK1(&_s);            // _p = pow2(s)
-		      pn.x.ModNeg();
-		      pn.x.ModAdd(&_p);
-		      pn.x.ModSub(&Gn[i].x);          // rx = pow2(s) - p1.x - p2.x;
-
-					if(FLAGMODE != MODE_XPOINT  )	{
-			      pn.y.ModSub(&Gn[i].x,&pn.x);
-			      pn.y.ModMulK1(&_s);
-		      	pn.y.ModAdd(&Gn[i].y);          // ry = - p2.y - s*(ret.x-p2.x);
-					}
-
-		      pts[CPU_GRP_SIZE / 2 + (i + 1)] = pp;
-		      pts[CPU_GRP_SIZE / 2 - (i + 1)] = pn;
-				}
-
-				// First point (startP - (GRP_SZIE/2)*G)
-		    pn = startP;
-		    dyn.Set(&Gn[i].y);
-		    dyn.ModNeg();
-		    dyn.ModSub(&pn.y);
-
-		    _s.ModMulK1(&dyn,&dx[i]);
-		    _p.ModSquareK1(&_s);
-
-		    pn.x.ModNeg();
-		    pn.x.ModAdd(&_p);
-		    pn.x.ModSub(&Gn[i].x);
-
-#if 0
-			    pn.y.ModSub(&Gn[i].x,&pn.x);
-			    pn.y.ModMulK1(&_s);
-			    pn.y.ModAdd(&Gn[i].y);
-#endif
-
-		    pts[0] = pn;
-
-
-				for(j = 0; j < CPU_GRP_SIZE;j++){
-					pts[j].x.Get32Bytes((unsigned char *)rawvalue);
-					r = bloom_check(&bloom,rawvalue,MAXLENGTHADDRESS);
-					if(r) {
-						r = searchbinary(addressTable,rawvalue,N);
-						if(r) {
-							found++;
-							hextemp = key_mpz.GetBase16();
-							R = secp->ComputePublicKey(&key_mpz);
-							public_key_compressed_hex = secp->GetPublicKeyHex(true,R);
-							printf("\nHIT!! PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
-							pthread_mutex_lock(&write_keys);
-							keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
-							if(keys != NULL)	{
-								fprintf(keys,"PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
-								fclose(keys);
-							}
-							pthread_mutex_unlock(&write_keys);
-							free(public_key_compressed_hex);
-							free(hextemp);
-						}
-					}
-					count++;
-					if(count %	DEBUGCOUNT == 0)	{
-						steps[thread_number]++;
-					}
-					key_mpz.AddOne();
-				}
 
 				// Next start point (startP + GRP_SIZE*G)
 		    pp = startP;
@@ -3097,6 +2459,7 @@ void *thread_bPloadFile(void *vargp)	{
 	}
 	do {
 		if(fread(rawvalue,1,32,fd) == 32)	{
+
 			if(i < bsgs_m2)	{
 				memcpy(bPtable[j].value,rawvalue+16,BSGS_XVALUE_RAM);
 				bPtable[j].index = j;
@@ -3130,7 +2493,7 @@ void sleep_ms(int milliseconds)	{ // cross-platform sleep function
 #endif
 }
 
-void *thread_process_pub2rmd(void *vargp)	{
+void *thread_pub2rmd(void *vargp)	{
 	FILE *fd;
 	Int key_mpz;
 	struct tothread *tt;

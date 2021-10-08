@@ -1,9 +1,3 @@
-#Version 0.1.20210423 secp256k1
-- separated functions for each mode
-- new funtion GetPublicKeyRaw in the secp256k1.cpp
-- change -e param to use as error rate for bloom filter
-- test available to use k factor for bloom filter size, this will help a little for speed for address, rmd160 and xpoint
-
 # Version 0.1.20210420 secp256k1
 - Solved Issues 49, 50 51
   See:

@@ -34,7 +34,6 @@ public:
 
   char* GetPublicKeyHex(bool compressed, Point &p);
   char* GetPublicKeyRaw(bool compressed, Point &p);
-  void GetPublicKeyRaw(bool compressed, Point &p,char *dst);
   bool ParsePublicKeyHex(char *str,Point &p,bool &isCompressed);
 
   Point Add(Point &p1, Point &p2);

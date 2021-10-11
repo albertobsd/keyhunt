@@ -52,7 +52,7 @@ explicit_memset(void *buf, int c, size_t n)
 static inline uint64_t
 le64dec(const void *buf)
 {
-	const uint8_t *p = buf;
+	const uint8_t *p = (const uint8_t *)buf;
 
 	return (((uint64_t)p[0]) |
 	    ((uint64_t)p[1] << 8) |
@@ -67,7 +67,7 @@ le64dec(const void *buf)
 static inline void
 le64enc(void *buf, uint64_t v)
 {
-	uint8_t *p = buf;
+	uint8_t *p = (uint8_t *)buf;
 
 	*p++ = v; v >>= 8;
 	*p++ = v; v >>= 8;
@@ -437,7 +437,7 @@ KECCAK_512_Final(uint8_t h[SHA3_512_DIGEST_LENGTH], SHA3_512_CTX *C)
 static void
 sha3_selftest_prng(void *buf, size_t len, uint32_t seed)
 {
-	uint8_t *p = buf;
+	uint8_t *p = (uint8_t *)buf;
 	size_t n = len;
 	uint32_t t, a, b;
 

@@ -37,6 +37,8 @@ struct bloom
   uint8_t major;
   uint8_t minor;
   double bpe;
+  uint8_t checksum[32];
+  uint8_t checksum_backup[32];
   uint8_t *bf;
   pthread_mutex_t mutex;
 };

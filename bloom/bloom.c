@@ -29,7 +29,7 @@
 #define STRING(n) #n
 #define BLOOM_MAGIC "libbloom2"
 #define BLOOM_VERSION_MAJOR 2
-#define BLOOM_VERSION_MINOR 1
+#define BLOOM_VERSION_MINOR 200
 
 inline static int test_bit_set_bit(unsigned char * buf, uint64_t bit, int set_bit)
 {
@@ -105,7 +105,12 @@ int bloom_init2(struct bloom * bloom, uint64_t entries, long double error)
   }
 
   bloom->hashes = (uint8_t)ceil(0.693147180559945 * bloom->bpe);  // ln(2)
-
+  
+  /*
+  printf("\nBPE: %lu\n",bloom->bpe);
+  printf("BITS: %lu\n",bloom->bits);
+  printf("BYTES: %lu\n",bloom->bytes);
+  */
   bloom->bf = (uint8_t *)calloc(bloom->bytes, sizeof(uint8_t));
   if (bloom->bf == NULL) {                                   // LCOV_EXCL_START
     return 1;

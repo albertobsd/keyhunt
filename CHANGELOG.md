@@ -1,3 +1,11 @@
+# Version 0.2.211007 Chocolate ¡Beta!
+- BSGS improvements:
+--  10x more Speed
+--  new submodes for BSGS, secuential (default), backward, both, random and dance
+--  automatic file generation for bloom filter file and bPtable file.
+--  Good bye to bPfile.
+- Memory check periodically for bloom filters and bP Table
+
 # Version 0.1.20210420 secp256k1
 - Solved Issues 49, 50 51
   See:

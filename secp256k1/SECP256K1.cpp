@@ -231,6 +231,7 @@ Point Secp256K1::AddDirect(Point &p1,Point &p2) {
   return r;
 }
 
+
 Point Secp256K1::Add2(Point &p1, Point &p2) {
   // P2.z = 1
   Int u;

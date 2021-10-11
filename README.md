@@ -783,6 +783,7 @@ To get optimal performance the k values need to be base 2^x values, this is 1,2,
 
 ### Valid n and k values
 
+```
 +---------------------------+-------------+---------------------------+
 | bits | n in hexadecimal   | k max value | Amount of RAM with k = 1  |
 +---------------------------+-------------+---------------------------+
@@ -809,7 +810,7 @@ To get optimal performance the k values need to be base 2^x values, this is 1,2,
 |   60 | 0x1000000000000000 | 1048576     |                 ~4.5 GB   |
 |   62 | 0x4000000000000000 | 2097152     |                   ~9 GB   |
 +---------------------------+-------------+---------------------------+
-  
+```
 
 if you exceed the Max value of K the program can have a unknow behavior, the program can have a suboptimal performance, or in the wrong case you can missing some hits.
 

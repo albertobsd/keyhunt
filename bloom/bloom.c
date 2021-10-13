@@ -31,16 +31,21 @@
 #define BLOOM_VERSION_MAJOR 2
 #define BLOOM_VERSION_MINOR 200
 
-inline static int test_bit_set_bit(unsigned char * buf, uint64_t bit, int set_bit)
+inline static int test_bit_set_bit(struct bloom * bloom, uint64_t bit, int set_bit)
 {
   uint64_t byte = bit >> 3;
-  uint8_t c = buf[byte];        // expensive memory access
+  uint8_t c;
   uint8_t mask = 1 << (bit % 8);
+  pthread_mutex_lock(&bloom->mutex);
+  c = bloom->bf[byte];        // expensive memory access
+  pthread_mutex_unlock(&bloom->mutex);
   if (c & mask) {
     return 1;
   } else {
     if (set_bit) {
-      buf[byte] = c | mask;
+		pthread_mutex_lock(&bloom->mutex);
+		bloom->bf[byte] = c | mask;
+		pthread_mutex_unlock(&bloom->mutex);
     }
     return 0;
   }
@@ -58,9 +63,12 @@ static int bloom_check_add(struct bloom * bloom, const void * buffer, int len, i
   uint64_t b = XXH64(buffer, len, a);
   uint64_t x;
   uint8_t i;
+  int r;
   for (i = 0; i < bloom->hashes; i++) {
     x = (a + b*i) % bloom->bits;
-    if (test_bit_set_bit(bloom->bf, x, add)) {
+	r = test_bit_set_bit(bloom, x, add);
+	
+    if (r) {
       hits++;
     } else if (!add) {
       // Don't care about the presence of all the bits. Just our own.
@@ -106,11 +114,6 @@ int bloom_init2(struct bloom * bloom, uint64_t entries, long double error)
 
   bloom->hashes = (uint8_t)ceil(0.693147180559945 * bloom->bpe);  // ln(2)
   
-  /*
-  printf("\nBPE: %lu\n",bloom->bpe);
-  printf("BITS: %lu\n",bloom->bits);
-  printf("BYTES: %lu\n",bloom->bytes);
-  */
   bloom->bf = (uint8_t *)calloc(bloom->bytes, sizeof(uint8_t));
   if (bloom->bf == NULL) {                                   // LCOV_EXCL_START
     return 1;
@@ -168,9 +171,7 @@ int bloom_check(struct bloom * bloom, const void * buffer, int len)
 int bloom_add(struct bloom * bloom, const void * buffer, int len)
 {
   int r;
-  pthread_mutex_lock(&bloom->mutex);
   r =bloom_check_add(bloom, buffer, len, 1);
-  pthread_mutex_unlock(&bloom->mutex);
   return r;
 }
 

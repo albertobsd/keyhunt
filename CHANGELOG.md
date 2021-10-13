@@ -1,3 +1,15 @@
+# Version 0.2.211012 Chocolate ¡Beta!
+- Fixed the slow bP table generation.
+-- This fix make obsolete the files keyhunt_bsgs_0_*.blm 
+-- please delete those files, please do:
+
+```
+rm keyhunt_bsgs_0_*.blm 
+```
+
+- Added multi vanitysearch for address mode
+
+
 # Version 0.2.211007 Chocolate ¡Beta!
 - BSGS improvements:
 --  10x more Speed

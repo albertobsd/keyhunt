@@ -79,7 +79,7 @@ struct __attribute__((__packed__)) publickey {
 	} X;
 };
 
-const char *version = "0.2.211007 Chocolate ¡Beta!";
+const char *version = "0.2.211012 Chocolate ¡Beta!";
 
 #define CPU_GRP_SIZE 1024
 
@@ -90,7 +90,6 @@ std::vector<Point> GSn;
 Point _2GSn;
 
 void init_generator();
-
 
 int searchbinary(struct address_value *buffer,char *data,int64_t _N);
 void sleep_ms(int milliseconds);
@@ -189,11 +188,12 @@ int FLAGRAWDATA	= 0;
 int FLAGRANDOM = 0;
 int FLAG_N = 0;
 int FLAGPRECALCUTED_P_FILE = 0;
+int COUNT_VANITIES = 0;
 
-int len_vanity;
+int *len_vanities;
 int bitrange;
 char *str_N;
-char *vanity;
+char **vanities;
 char *range_start;
 char *range_end;
 
@@ -213,7 +213,7 @@ char checksum[32],checksum_backup[32];
 char buffer_bloom_file[1024];
 struct bsgs_xvalue *bPtable;
 struct address_value *addressTable;
-struct bloom bloom_bP;
+struct bloom bloom_bP[256];
 struct bloom bloom_bPx2nd; //Second Bloom filter check
 uint64_t bloom_bP_totalbytes = 0;
 char *precalculated_p_filename;
@@ -264,7 +264,7 @@ int main(int argc, char **argv)	{
 	Tokenizer t,tokenizerbsgs,tokenizer_xpoint;	//tokenizer
 	char *filename,*precalculated_mp_filename,*hextemp,*aux,*aux2,*pointx_str,*pointy_str,*str_seconds,*str_total,*str_pretotal,*str_divpretotal,*bf_ptr;
 	FILE *fd,*fd_aux1,*fd_aux2,*fd_aux3;
-	uint64_t j,total_precalculated,i,PERTHREAD,BASE,PERTHREAD_R;
+	uint64_t j,total_precalculated,i,PERTHREAD,BASE,PERTHREAD_R,itemsbloom,itemsbloom2;
 	int readed,s,continue_flag,check_flag,r,lenaux,lendiff,c,salir,index_value;
 	Int total,pretotal,debugcount_mpz,seconds,div_pretotal;
 	struct bPload *temp;
@@ -280,7 +280,7 @@ int main(int argc, char **argv)	{
 
 	printf("[+] Version %s, developed by AlbertoBSD\n",version);
 
-	while ((c = getopt(argc, argv, "dehMqRwzSB:b:c:E:f:k:l:m:n:p:r:s:t:v:G:")) != -1) {
+	while ((c = getopt(argc, argv, "dehMqRwzSB:b:c:E:f:k:l:m:n:p:r:s:t:v:V:G:")) != -1) {
 		switch(c) {
 			case 'h':
 				printf("\nUsage:\n-h\t\tshow this help\n");
@@ -305,6 +305,7 @@ int main(int argc, char **argv)	{
 				printf("-S\t\tCapital S is for SAVING in files BSGS data (Bloom filters and bPtable)\n");
 				printf("-t tn\t\tThreads number, must be positive integer\n");
 				printf("-v va\t\tSearch for vanity Address, only with -m address\n");
+				printf("-V file\t\tFile with vanity Address to search, only with -m address");
 				printf("-w\t\tMark the input file as RAW data xpoint fixed 32 byte each point. Valid only with -m xpoint\n");
 				printf("\nExample\n\n");
 				printf("%s -t 16 -r 1:FFFFFFFF -s 0\n\n",argv[0]);
@@ -513,9 +514,89 @@ int main(int argc, char **argv)	{
 			break;
 			case 'v':
 				FLAGVANITY = 1;
-				vanity = optarg;
-				len_vanity = strlen(optarg);
-				printf("[+] Added Vanity search : %s\n",vanity);
+				if(COUNT_VANITIES > 0)	{
+					vanities = (char**)realloc(vanities,(COUNT_VANITIES +1 ) * sizeof(char*));
+					len_vanities = (int*)realloc(len_vanities,(COUNT_VANITIES +1 ) * sizeof(int));
+				}
+				else	{
+					vanities = (char**)malloc(sizeof(char*));
+					len_vanities = (int*)malloc(sizeof(int));
+				}
+				if(vanities == NULL || len_vanities == NULL)	{
+					fprintf(stderr,"[E] malloc!\n");
+					exit(0);
+				}
+				len_vanities[COUNT_VANITIES] = strlen(optarg);
+				vanities[COUNT_VANITIES] = (char*)malloc(len_vanities[COUNT_VANITIES]+2);
+				if(vanities[COUNT_VANITIES] == NULL)	{
+					fprintf(stderr,"[E] malloc!\n");
+					exit(0);
+				}
+				snprintf(vanities[COUNT_VANITIES],len_vanities[COUNT_VANITIES]+1 ,"%s",optarg);
+				printf("[+] Added Vanity search : %s\n",vanities[COUNT_VANITIES]);
+				COUNT_VANITIES++;
+			break;
+			case 'V':
+				FLAGVANITY = 1;
+				printf("[+] Added Vanity file : %s\n",optarg);
+				fd = fopen(optarg,"r");
+				if(fd == NULL)	{
+					fprintf(stderr,"[E] Can't open the file : %s\n",optarg);
+					exit(0);
+				}
+				r = 0;
+				do	{
+					fgets(buffer,1024,fd);
+					trim(buffer,"\n\t\r ");
+					if(strlen(buffer) > 0)	{
+						r++;
+					}
+					memset(buffer,0,1024);
+				}while(!feof(fd));
+				
+				if(r > 0)	{
+					if(COUNT_VANITIES > 0)	{
+						vanities = (char**)realloc(vanities,(COUNT_VANITIES + r ) * sizeof(char*));
+						len_vanities = (int*)realloc(len_vanities,(COUNT_VANITIES + r )* sizeof(int));
+					}
+					else	{
+						vanities = (char**)malloc( r  * sizeof(char*));
+						len_vanities = (int*)malloc(r * sizeof(int));
+					}
+					if(vanities == NULL || len_vanities == NULL)	{
+						fprintf(stderr,"[E] malloc!\n");
+						exit(0);
+					}
+					
+					fseek(fd,0,SEEK_SET);
+					
+					index_value = 0;
+					while(index_value < r){
+						fgets(buffer,1024,fd);
+						trim(buffer,"\n\t\r ");
+						if(strlen(buffer) > 0)	{
+							len_vanities[COUNT_VANITIES+index_value] = strlen(buffer);
+							vanities[COUNT_VANITIES+index_value] = (char*) malloc(len_vanities[COUNT_VANITIES+index_value]+2);
+							if(vanities[COUNT_VANITIES+index_value] == NULL)	{
+								fprintf(stderr,"[E] malloc!\n");
+								exit(0);
+							}
+							snprintf(vanities[COUNT_VANITIES+index_value],len_vanities[COUNT_VANITIES+index_value]+1 ,"%s",buffer);
+							printf("[D] Added Vanity search : %s\n",vanities[COUNT_VANITIES+index_value]);
+						}
+						memset(buffer,0,1024);
+						index_value++;
+					}
+					COUNT_VANITIES+= r;
+				}
+				else	{
+					fprintf(stderr,"[W] file %s is emptied\n",optarg);
+					if(COUNT_VANITIES == 0)	{
+						FLAGVANITY = 0;
+					}
+				}
+				fclose(fd);
+				fd = NULL;
 			break;
 			case 'w':
 			printf("[+] Data marked as RAW\n");
@@ -1080,29 +1161,29 @@ int main(int argc, char **argv)	{
 		printf("[+] N = 0x%s\n",hextemp);
 		free(hextemp);
 
-
+		itemsbloom = ((uint64_t)(bsgs_m/256)) > 10000 ? (uint64_t)(bsgs_m/256) : 10000;
+		itemsbloom2 = bsgs_m2 > 1000 ? bsgs_m2 : 10000;
+		
 		printf("[+] Bloom filter for %" PRIu64 " elements ",bsgs_m);
 		fflush(stdout);
-		if(bloom_init2(&bloom_bP,bsgs_m,0.000001)	== 1){
-			fprintf(stderr,"\n[E] error bloom_init\n");
+		for(i=0; i< 256; i++)	{
+			if(bloom_init2(&bloom_bP[i],itemsbloom,0.000001)	== 1){
+				fprintf(stderr,"[E] error bloom_init [%" PRIu64 "]\n",i);
+				exit(0);
+			}
+			bloom_bP_totalbytes += bloom_bP[i].bytes;
+			if(FLAGDEBUG) bloom_print(&bloom_bP[i]);
+		}
+		printf(": %.2f MB\n",(float)((uint64_t)bloom_bP_totalbytes/(uint64_t)1048576));
+		//if(FLAGDEBUG) bloom_print(&bloom_bP);
+
+		if(bloom_init2(&bloom_bPx2nd,itemsbloom2,0.000001)	== 1){
+			fprintf(stderr,"[E] error bloom_init for %lu elements\n",bsgs_m2);
 			exit(0);
 		}
-		printf(": %.2f MB\n",(float)((uint64_t)bloom_bP.bytes/(uint64_t)1048576));
-		if(FLAGDEBUG) bloom_print(&bloom_bP);
 
-		if(bsgs_m2 > 1000)	{
-			if(bloom_init2(&bloom_bPx2nd,bsgs_m2,0.000001)	== 1){
-				fprintf(stderr,"[E] error bloom_init for %lu elements\n",bsgs_m2);
-				exit(0);
-			}
-		}
-		else	{
-			if(bloom_init2(&bloom_bPx2nd,1000,0.000001)	== 1){
-				fprintf(stderr,"[E] error bloom_init for 1000 elements\n");
-				exit(0);
-			}
-		}
 		if(FLAGDEBUG) bloom_print(&bloom_bPx2nd);
+		
 		printf("[+] Bloom filter for %" PRIu64 " elements : %.2f MB\n",bsgs_m2,(double)((double)bloom_bPx2nd.bytes/(double)1048576));
 
 		BSGS_MP = secp->ComputePublicKey(&BSGS_M);
@@ -1152,41 +1233,51 @@ int main(int argc, char **argv)	{
 		
 		if(FLAGSAVEREADFILE)	{
 			/*Reading file for 1st bloom filter */
-			snprintf(buffer_bloom_file,1024,"keyhunt_bsgs_0_%" PRIu64 ".blm",bsgs_m);
+			snprintf(buffer_bloom_file,1024,"keyhunt_bsgs_3_%" PRIu64 ".blm",bsgs_m);
 			fd_aux1 = fopen(buffer_bloom_file,"rb");
 			if(fd_aux1 != NULL)	{
-				bf_ptr = (char*) bloom_bP.bf;	/*We need to save the current bf pointer*/
+				
 				printf("[+] Reading bloom filter from file %s ..",buffer_bloom_file);
 				fflush(stdout);
-				readed = fread(&bloom_bP,sizeof(struct bloom),1,fd_aux1);
-				if(readed != 1)	{
-					fprintf(stderr,"[E] Error reading the file %s\n",buffer_bloom_file);
-					exit(0);
-				}
-				bloom_bP.bf = (uint8_t*)bf_ptr;	/* Restoring the bf pointer*/
-				readed = fread(bloom_bP.bf,bloom_bP.bytes,1,fd_aux1);
-				if(readed != 1)	{
-					fprintf(stderr,"[E] Error reading the file %s\n",buffer_bloom_file);
-					exit(0);
-				}
-				memset(rawvalue,0,32);
-				if(memcmp(bloom_bP.checksum,rawvalue,32) == 0 )	{	/* Old File, we need to do the checksum*/
-					if(FLAGDEBUG) printf("[D] bloom_bP.checksum is zero\n");
-					sha256((char*)bloom_bP.bf,bloom_bP.bytes,bloom_bP.checksum);
-					memcpy(bloom_bP.checksum_backup,bloom_bP.checksum,32);
-					FLAGREADEDFILE1 = 0;	/* We mark the FLAGREADEDFILE1 to 0 to write the file with the correct checkum*/
-				}
-				else	{	/* new file, we need to verify the checksum */
-					sha256((char*)bloom_bP.bf,bloom_bP.bytes,rawvalue);
-					if(memcmp(bloom_bP.checksum,rawvalue,32) == 0 )	{	/* Verification */
-						FLAGREADEDFILE1 = 1;	/* OK */
-					}
-					else	{
-						fprintf(stderr,"[E] Error checksum file mismatch!\n");
+				FLAGREADEDFILE1 = 1;
+				for(i = 0; i < 256 && FLAGREADEDFILE1;i++)	{
+					bf_ptr = (char*) bloom_bP[i].bf;	/*We need to save the current bf pointer*/
+					readed = fread(&bloom_bP[i],sizeof(struct bloom),1,fd_aux1);
+					if(readed != 1)	{
+						fprintf(stderr,"[E] Error reading the file %s\n",buffer_bloom_file);
 						exit(0);
 					}
-					
+					bloom_bP[i].bf = (uint8_t*)bf_ptr;	/* Restoring the bf pointer*/
+					readed = fread(bloom_bP[i].bf,bloom_bP[i].bytes,1,fd_aux1);
+					if(readed != 1)	{
+						fprintf(stderr,"[E] Error reading the file %s\n",buffer_bloom_file);
+						exit(0);
+					}
+					memset(rawvalue,0,32);
+					if(memcmp(bloom_bP[i].checksum,rawvalue,32) == 0 )	{	/* Old File, we need to do the checksum*/
+						if(FLAGDEBUG) printf("[D] bloom_bP.checksum is zero\n");
+						sha256((char*)bloom_bP[i].bf,bloom_bP[i].bytes,bloom_bP[i].checksum);
+						memcpy(bloom_bP[i].checksum_backup,bloom_bP[i].checksum,32);
+						FLAGREADEDFILE1 = 0;	/* We mark the FLAGREADEDFILE1 to 0 to write the file with the correct checkum*/
+					}
+					else	{	/* new file, we need to verify the checksum */
+						sha256((char*)bloom_bP[i].bf,bloom_bP[i].bytes,rawvalue);
+						if(memcmp(bloom_bP[i].checksum,rawvalue,32) == 0 )	{	/* Verification */
+							FLAGREADEDFILE1 = 1;	/* OK */
+						}
+						else	{
+							fprintf(stderr,"[E] Error checksum file mismatch!\n");
+							exit(0);
+						}
+					}
 				}
+				
+				
+				
+				
+
+				
+
 				
 				
 				printf(" Done!\n");
@@ -1330,8 +1421,13 @@ int main(int argc, char **argv)	{
 			
 		}
 		if(!FLAGREADEDFILE1)	{
-			sha256((char*)bloom_bP.bf, bloom_bP.bytes, bloom_bP.checksum);
-			memcpy(bloom_bP.checksum_backup,bloom_bP.checksum,32);
+			
+			for(i = 0; i < 256 ; i++)	{
+				sha256((char*)bloom_bP[i].bf, bloom_bP[i].bytes, bloom_bP[i].checksum);
+				memcpy(bloom_bP[i].checksum_backup,bloom_bP[i].checksum,32);
+			}
+			
+			
 		}
 		
 		if(!FLAGREADEDFILE2)	{
@@ -1350,20 +1446,22 @@ int main(int argc, char **argv)	{
 		if(FLAGSAVEREADFILE)	{
 			if(!FLAGREADEDFILE1)	{
 				/* Writing file for 1st bloom filter */
-				snprintf(buffer_bloom_file,1024,"keyhunt_bsgs_0_%" PRIu64 ".blm",bsgs_m);
+				snprintf(buffer_bloom_file,1024,"keyhunt_bsgs_3_%" PRIu64 ".blm",bsgs_m);
 				fd_aux1 = fopen(buffer_bloom_file,"wb");
 				if(fd_aux1 != NULL)	{
 					printf("[+] Writing bloom filter to file %s .. ",buffer_bloom_file);
 					fflush(stdout);
-					readed = fwrite(&bloom_bP,sizeof(struct bloom),1,fd_aux1);
-					if(readed != 1)	{
-						fprintf(stderr,"[E] Error writing the file %s\n",buffer_bloom_file);
-						exit(0);
-					}
-					readed = fwrite(bloom_bP.bf,bloom_bP.bytes,1,fd_aux1);
-					if(readed != 1)	{
-						fprintf(stderr,"[E] Error writing the file %s\n",buffer_bloom_file);
-						exit(0);
+					for(i = 0; i < 256;i++)	{
+						readed = fwrite(&bloom_bP[i],sizeof(struct bloom),1,fd_aux1);
+						if(readed != 1)	{
+							fprintf(stderr,"[E] Error writing the file %s please delete it\n",buffer_bloom_file);
+							exit(0);
+						}
+						readed = fwrite(bloom_bP[i].bf,bloom_bP[i].bytes,1,fd_aux1);
+						if(readed != 1)	{
+							fprintf(stderr,"[E] Error writing the file %s please delete it\n",buffer_bloom_file);
+							exit(0);
+						}
 					}
 					printf("Done!\n");
 					fclose(fd_aux1);
@@ -1663,7 +1761,7 @@ void *thread_process(void *vargp)	{
 	int hLength = (CPU_GRP_SIZE / 2 - 1);
 	uint64_t i,j,count;
 	Point R,temporal;
-	int r,thread_number,found,continue_flag = 1;
+	int r,thread_number,found,continue_flag = 1,i_vanity;
 	char *public_key_compressed,*public_key_uncompressed,hexstrpoint[65],rawvalue[32];
 	char *publickeyhashrmd160_compress,*publickeyhashrmd160_uncompress;
 	char *hextemp,*public_key_compressed_hex,*public_key_uncompressed_hex;
@@ -1823,29 +1921,33 @@ void *thread_process(void *vargp)	{
 									break;
 								}
 								if(FLAGVANITY)	{
-									if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH){
-										if(strncmp(public_address_uncompressed,vanity,len_vanity) == 0)	{
-											hextemp = key_mpz.GetBase16();
-											vanityKeys = fopen("vanitykeys.txt","a+");
-											if(vanityKeys != NULL)	{
-												fprintf(vanityKeys,"PrivKey: %s\nAddress uncompressed: %s\n",hextemp,public_address_uncompressed);
-												fclose(vanityKeys);
+									i_vanity = 0;
+									while(i_vanity < COUNT_VANITIES)	{
+										if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH){
+											if(strncmp(public_address_uncompressed,vanities[i_vanity],len_vanities[i_vanity]) == 0)	{
+												hextemp = key_mpz.GetBase16();
+												vanityKeys = fopen("vanitykeys.txt","a+");
+												if(vanityKeys != NULL)	{
+													fprintf(vanityKeys,"PrivKey: %s\nAddress uncompressed: %s\n",hextemp,public_address_uncompressed);
+													fclose(vanityKeys);
+												}
+												printf("\nVanity privKey: %s\nAddress uncompressed:	%s\n",hextemp,public_address_uncompressed);
+												free(hextemp);
 											}
-											printf("\nVanity privKey: %s\nAddress uncompressed:	%s\n",hextemp,public_address_uncompressed);
-											free(hextemp);
 										}
-									}
-									if(FLAGSEARCH == SEARCH_COMPRESS || FLAGSEARCH == SEARCH_BOTH){
-										if(strncmp(public_address_compressed,vanity,len_vanity) == 0)	{
-											hextemp = key_mpz.GetBase16();
-											vanityKeys = fopen("vanitykeys.txt","a+");
-											if(vanityKeys != NULL)	{
-												fprintf(vanityKeys,"PrivKey: %s\nAddress compressed:	%s\n",hextemp,public_address_compressed);
-												fclose(vanityKeys);
+										if(FLAGSEARCH == SEARCH_COMPRESS || FLAGSEARCH == SEARCH_BOTH){
+											if(strncmp(public_address_compressed,vanities[i_vanity],len_vanities[i_vanity]) == 0)	{
+												hextemp = key_mpz.GetBase16();
+												vanityKeys = fopen("vanitykeys.txt","a+");
+												if(vanityKeys != NULL)	{
+													fprintf(vanityKeys,"PrivKey: %s\nAddress compressed:	%s\n",hextemp,public_address_compressed);
+													fclose(vanityKeys);
+												}
+												printf("\nVanity privKey: %s\nAddress compressed: %s\n",hextemp,public_address_compressed);
+												free(hextemp);
 											}
-											printf("\nVanity privKey: %s\nAddress compressed: %s\n",hextemp,public_address_compressed);
-											free(hextemp);
 										}
+										i_vanity ++;
 									}
 								}
 								if(FLAGSEARCH == SEARCH_COMPRESS || FLAGSEARCH == SEARCH_BOTH){
@@ -2491,7 +2593,7 @@ void *thread_process_bsgs(void *vargp)	{
 						
 						for(int i = 0; i<CPU_GRP_SIZE && bsgs_found[k]== 0; i++) {
 							pts[i].x.Get32Bytes((unsigned char*)xpoint_raw);
-							r = bloom_check(&bloom_bP,xpoint_raw,32);
+							r = bloom_check(&bloom_bP[((unsigned char)xpoint_raw[0])],xpoint_raw,32);
 							if(r) {
 								r = bsgs_secondcheck(&base_key,((j*1024) + i),k,&keyfound);
 								if(r)	{
@@ -2753,7 +2855,7 @@ void *thread_process_bsgs_random(void *vargp)	{
 						
 						for(int i = 0; i<CPU_GRP_SIZE && bsgs_found[k]== 0; i++) {
 							pts[i].x.Get32Bytes((unsigned char*)xpoint_raw);
-							r = bloom_check(&bloom_bP,xpoint_raw,32);
+							r = bloom_check(&bloom_bP[((unsigned char)xpoint_raw[0])],xpoint_raw,32);
 							if(r) {
 								r = bsgs_secondcheck(&base_key,((j*1024) + i),k,&keyfound);
 								if(r)	{
@@ -2912,7 +3014,7 @@ void *thread_bPloadFile(void *vargp)	{
 				j++;
 			}
 			if(!FLAGREADEDFILE1)
-				bloom_add(&bloom_bP, rawvalue ,BSGS_BUFFERXPOINTLENGTH);
+				bloom_add(&bloom_bP[((uint8_t)rawvalue[0])], rawvalue ,BSGS_BUFFERXPOINTLENGTH);
 			i++;
 			tt->counter++;
 		}
@@ -3179,7 +3281,7 @@ void *thread_bPload(void *vargp)	{
 			}
 			if(i_counter < tt->to)	{
 				if(!FLAGREADEDFILE1)
-					bloom_add(&bloom_bP, rawvalue ,BSGS_BUFFERXPOINTLENGTH);
+					bloom_add(&bloom_bP[((unsigned char)rawvalue[0])], rawvalue ,BSGS_BUFFERXPOINTLENGTH);
 				tt->counter++;
 				i_counter++;
 			}
@@ -3444,7 +3546,7 @@ void *thread_process_bsgs_dance(void *vargp)	{
 						
 						for(int i = 0; i<CPU_GRP_SIZE && bsgs_found[k]== 0; i++) {
 							pts[i].x.Get32Bytes((unsigned char*)xpoint_raw);
-							r = bloom_check(&bloom_bP,xpoint_raw,32);
+							r = bloom_check(&bloom_bP[((unsigned char)xpoint_raw[0])],xpoint_raw,32);
 							if(r) {
 								r = bsgs_secondcheck(&base_key,((j*1024) + i),k,&keyfound);
 								if(r)	{
@@ -3736,7 +3838,7 @@ void *thread_process_bsgs_backward(void *vargp)	{
 						
 						for(int i = 0; i<CPU_GRP_SIZE && bsgs_found[k]== 0; i++) {
 							pts[i].x.Get32Bytes((unsigned char*)xpoint_raw);
-							r = bloom_check(&bloom_bP,xpoint_raw,32);
+							r = bloom_check(&bloom_bP[((unsigned char)xpoint_raw[0])],xpoint_raw,32);
 							if(r) {
 								r = bsgs_secondcheck(&base_key,((j*1024) + i),k,&keyfound);
 								if(r)	{
@@ -4028,7 +4130,7 @@ void *thread_process_bsgs_both(void *vargp)	{
 						
 						for(int i = 0; i<CPU_GRP_SIZE && bsgs_found[k]== 0; i++) {
 							pts[i].x.Get32Bytes((unsigned char*)xpoint_raw);
-							r = bloom_check(&bloom_bP,xpoint_raw,32);
+							r = bloom_check(&bloom_bP[((unsigned char)xpoint_raw[0])],xpoint_raw,32);
 							if(r) {
 								r = bsgs_secondcheck(&base_key,((j*1024) + i),k,&keyfound);
 								if(r)	{
@@ -4131,3 +4233,4 @@ void memorycheck()	{
 		exit(0);
 	}
 }
+

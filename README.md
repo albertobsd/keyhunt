@@ -30,7 +30,7 @@ and then execute with `-h` to see the help
 
 
 ## ¡Beta!
-This version is still a beta version, there are a lot of things that can be fail. And absoluly there are some bugs 
+This version is still a *beta* version, there are a lot of things that can be fail. And absoluly there are some bugs 
 
 # Modes
 
@@ -143,6 +143,167 @@ output:
 [+] Sorting data ... done! 1 values were loaded and sorted
 [+] Total 6291456 keys in 20 seconds: 314572 keys/s
 ```
+
+### vanity search.
+
+well this function always be there in the code but is not eficient, use only as a test and for fun, anyway if you want to search for a *vanity* address for you, you also *need* to search for some address at the same time this last is not optional, please feel free of use the VanitySearch
+ from Jean Luc Pons (https://github.com/JeanLucPons/VanitySearch) if you want a better speed.
+ 
+Try to find all the unsolved puzzles at the same time while you search for a cool address for yourself.
+
+Unsolved puzzles:
+
+```
+16jY7qLJnxb7CHZyqBP8qca9d51gAjyXQN
+13zb1hQbWVsc2S7ZTZnP2G4undNNpdh5so
+1BY8GQbnueYofwSuFAT3USAhGjPrkxDdW9
+1MVDYgVaSN6iKKEsbzRUAYFrYJadLYZvvZ
+19vkiEajfhuZ8bs8Zu2jgmC6oqZbWqhxhG
+1PWo3JeB9jrGwfHDNpdGK54CRas7fsVzXU
+1JTK7s9YVYywfm5XUH7RNhHJH1LshCaRFR
+12VVRNPi4SJqUTsp6FmqDqY5sGosDtysn4
+1FWGcVDK3JGzCC3WtkYetULPszMaK2Jksv
+1DJh2eHFYQfACPmrvpyWc8MSTYKh7w9eRF
+1Bxk4CQdqL9p22JEtDfdXMsng1XacifUtE
+15qF6X51huDjqTmF9BJgxXdt1xcj46Jmhb
+1ARk8HWJMn8js8tQmGUJeQHjSE7KRkn2t8
+15qsCm78whspNQFydGJQk5rexzxTQopnHZ
+13zYrYhhJxp6Ui1VV7pqa5WDhNWM45ARAC
+14MdEb4eFcT3MVG5sPFG4jGLuHJSnt1Dk2
+1CMq3SvFcVEcpLMuuH8PUcNiqsK1oicG2D
+1K3x5L6G57Y494fDqBfrojD28UJv4s5JcK
+1PxH3K1Shdjb7gSEoTX7UPDZ6SH4qGPrvq
+16AbnZjZZipwHMkYKBSfswGWKDmXHjEpSf
+19QciEHbGVNY4hrhfKXmcBBCrJSBZ6TaVt
+1EzVHtmbN4fs4MiNk3ppEnKKhsmXYJ4s74
+1AE8NzzgKE7Yhz7BWtAcAAxiFMbPo82NB5
+17Q7tuG2JwFFU9rXVj3uZqRtioH3mx2Jad
+1K6xGMUbs6ZTXBnhw1pippqwK6wjBWtNpL
+15ANYzzCp5BFHcCnVFzXqyibpzgPLWaD8b
+18ywPwj39nGjqBrQJSzZVq2izR12MDpDr8
+1CaBVPrwUxbQYYswu32w7Mj4HR4maNoJSX
+1JWnE6p6UN7ZJBN7TtcbNDoRcjFtuDWoNL
+1CKCVdbDJasYmhswB6HKZHEAnNaDpK7W4n
+1PXv28YxmYMaB8zxrKeZBW8dt2HK7RkRPX
+1AcAmB6jmtU6AiEcXkmiNE9TNVPsj9DULf
+1EQJvpsmhazYCcKX5Au6AZmZKRnzarMVZu
+18KsfuHuzQaBTNLASyj15hy4LuqPUo1FNB
+15EJFC5ZTs9nhsdvSUeBXjLAuYq3SWaxTc
+1HB1iKUqeffnVsvQsbpC6dNi1XKbyNuqao
+1GvgAXVCbA8FBjXfWiAms4ytFeJcKsoyhL
+1824ZJQ7nKJ9QFTRBqn7z7dHV5EGpzUpH3
+18A7NA9FTsnJxWgkoFfPAFbQzuQxpRtCos
+1NeGn21dUDDeqFQ63xb2SpgUuXuBLA4WT4
+174SNxfqpdMGYy5YQcfLbSTK3MRNZEePoy
+1MnJ6hdhvK37VLmqcdEwqC3iFxyWH2PHUV
+1KNRfGWw7Q9Rmwsc6NT5zsdvEb9M2Wkj5Z
+1PJZPzvGX19a7twf5HyD2VvNiPdHLzm9F6
+1GuBBhf61rnvRe4K8zu8vdQB3kHzwFqSy7
+17s2b9ksz5y7abUm92cHwG8jEPCzK3dLnT
+1GDSuiThEV64c166LUFC9uDcVdGjqkxKyh
+1Me3ASYt5JCTAK2XaC32RMeH34PdprrfDx
+1CdufMQL892A69KXgv6UNBD17ywWqYpKut
+1BkkGsX9ZM6iwL3zbqs7HWBV7SvosR6m8N
+1PXAyUB8ZoH3WD8n5zoAthYjN15yN5CVq5
+1AWCLZAjKbV1P7AHvaPNCKiB7ZWVDMxFiz
+1G6EFyBRU86sThN3SSt3GrHu1sA7w7nzi4
+1MZ2L1gFrCtkkn6DnTT2e4PFUTHw9gNwaj
+1Hz3uv3nNZzBVMXLGadCucgjiCs5W9vaGz
+1Fo65aKq8s8iquMt6weF1rku1moWVEd5Ua
+16zRPnT8znwq42q7XeMkZUhb1bKqgRogyy
+1KrU4dHE5WrW8rhWDsTRjR21r8t3dsrS3R
+17uDfp5r4n441xkgLFmhNoSW1KWp6xVLD
+13A3JrvXmvg5w9XGvyyR4JEJqiLz8ZySY3
+16RGFo6hjq9ym6Pj7N5H7L1NR1rVPJyw2v
+1UDHPdovvR985NrWSkdWQDEQ1xuRiTALq
+15nf31J46iLuK1ZkTnqHo7WgN5cARFK3RA
+1Ab4vzG6wEQBDNQM1B2bvUz4fqXXdFk2WT
+1Fz63c775VV9fNyj25d9Xfw3YHE6sKCxbt
+1QKBaU6WAeycb3DbKbLBkX7vJiaS8r42Xo
+1CD91Vm97mLQvXhrnoMChhJx4TP9MaQkJo
+15MnK2jXPqTMURX4xC3h4mAZxyCcaWWEDD
+13N66gCzWWHEZBxhVxG18P8wyjEWF9Yoi1
+1NevxKDYuDcCh1ZMMi6ftmWwGrZKC6j7Ux
+19GpszRNUej5yYqxXoLnbZWKew3KdVLkXg
+1M7ipcdYHey2Y5RZM34MBbpugghmjaV89P
+18aNhurEAJsw6BAgtANpexk5ob1aGTwSeL
+1FwZXt6EpRT7Fkndzv6K4b4DFoT4trbMrV
+1CXvTzR6qv8wJ7eprzUKeWxyGcHwDYP1i2
+1MUJSJYtGPVGkBCTqGspnxyHahpt5Te8jy
+13Q84TNNvgcL3HJiqQPvyBb9m4hxjS3jkV
+1LuUHyrQr8PKSvbcY1v1PiuGuqFjWpDumN
+18192XpzzdDi2K11QVHR7td2HcPS6Qs5vg
+1NgVmsCCJaKLzGyKLFJfVequnFW9ZvnMLN
+1AoeP37TmHdFh8uN72fu9AqgtLrUwcv2wJ
+1FTpAbQa4h8trvhQXjXnmNhqdiGBd1oraE
+14JHoRAdmJg3XR4RjMDh6Wed6ft6hzbQe9
+19z6waranEf8CcP8FqNgdwUe1QRxvUNKBG
+14u4nA5sugaswb6SZgn5av2vuChdMnD9E5
+1NBC8uXJy1GiJ6drkiZa1WuKn51ps7EPTv
+```
+
+To search only one vanity address is with  `-v 1Hunter1` where `1Good1` is the vanity addres that are you looking for:
+
+full command
+```
+./keyhunt -m address -f tests/unsolvedpuzzles.txt -l compress -R -b 256 -v 1Good
+```
+
+output:
+
+```
+[+] Version 0.2.211012 Chocolate ¡Beta!, developed by AlbertoBSD
+[+] Mode address
+[+] Search compress only
+[+] Random mode
+[+] Added Vanity search : 1Good
+[+] Opening file tests/unsolvedpuzzles.txt
+[+] Setting search for btc adddress
+[+] Allocating memory for 86 elements: 0.00 MB
+[+] Bloom filter for 86 elements.
+[+] Loading data to the bloomfilter total: 0.00 MB
+[+] Bloomfilter completed
+[+] Sorting data ... done! 86 values were loaded and sorted
+Base key: bc850706b582fe5dba5c4e10b62af4872bfbf87018986f4bXXXXXXXXXXXXXXXX
+Vanity privKey: bc850706b582fe5dba5c4e10b62af4872bfbf87018986f4bXXXXXXXXXXXXXXXX
+Address compressed: 1Goodj7J2nYETeiYM3uxRvekfC3VkpsCfM
+```
+
+challenge your self and use keythunt and find the privatekeys for this address `1Goodj7J2nYETeiYM3uxRvekfC3VkpsCfM`
+
+publickey:
+
+```
+03dd178097fef876f59f6f5d3c384bab8e824f116c864cd552edbf420a8e157d88
+```
+
+command to search multiple vanity address from a file `-V filename.txt` please note that it is  `-V` Capital V for read a file.
+
+```
+./keyhunt -m address -f tests/unsolvedpuzzles.txt -l compress -R -b 256 -V tests/vanitytargets.txt
+```
+
+Output:
+```
+[+] Version 0.2.211012 Chocolate ¡Beta!, developed by AlbertoBSD
+[+] Mode address
+[+] Search compress only
+[+] Random mode
+[+] Added Vanity file : tests/vanitytargets.txt
+[D] Added Vanity search : 1GoodBoy
+[D] Added Vanity search : 1BadBoy
+[+] Opening file tests/unsolvedpuzzles.txt
+[+] Setting search for btc adddress
+[+] Allocating memory for 86 elements: 0.00 MB
+[+] Bloom filter for 86 elements.
+[+] Loading data to the bloomfilter total: 0.00 MB
+[+] Bloomfilter completed
+[+] Sorting data ... done! 86 values were loaded and sorted
+Base key: c0a082112714d9f4dba8bf07adb9bc2204c594b5c24270b0cb9a8ff6c2adc9c3
+```
+
+All the vanity address and his privatekeys will be saved in the file `vanitykeys.txt` of your current directory
+
 
 ## rmd160 mode
 
@@ -400,7 +561,9 @@ The input file need to have a list of publickeys compress or uncompress those pu
 046534b9e9d56624f5850198f6ac462f482fec8a60262728ee79a91cac1d60f8d6a92d5131a20f78e26726a63d212158b20b14c3025ebb9968c890c4bab90bfc69 # 0000000000000000000000000000000000800000000000000000200000000000
 ```
 
-This example contains 2 publickeys followed by his privatekey just to test the correct behavior of the application
+This example contains 2 publickeys followed by his privatekey just to test the correct behavior of the application.
+
+*Don't load more than 100 or 1000 publickeys* if you lad more than it will take a long long time in update the speed counter and the speed will be very low.
 
 btw any word followed by and space after the publickey is ignored the file can be only the publickeys:
 
@@ -783,7 +946,6 @@ To get optimal performance the k values need to be base 2^x values, this is 1,2,
 
 ### Valid n and k values
 
-```
 +---------------------------+-------------+---------------------------+
 | bits | n in hexadecimal   | k max value | Amount of RAM with k = 1  |
 +---------------------------+-------------+---------------------------+
@@ -810,9 +972,9 @@ To get optimal performance the k values need to be base 2^x values, this is 1,2,
 |   60 | 0x1000000000000000 | 1048576     |                 ~4.5 GB   |
 |   62 | 0x4000000000000000 | 2097152     |                   ~9 GB   |
 +---------------------------+-------------+---------------------------+
-```
+  
 
-if you exceed the Max value of K the program can have a unknow behavior, the program can have a suboptimal performance, or in the wrong case you can missing some hits.
+*if you exceed the Max value of K the program can have a unknow behavior, the program can have a suboptimal performance, or in the wrong cases you can missing some hits and have an incorrect SPEED.*
 
 Of course you can use a bigger number N  like 2^64 or 2^70 if you have enough memory for it.
 
@@ -887,14 +1049,23 @@ sys     0m13.009s
 - Where the privatekeys will be saved?
 R: In a file called `KEYFOUNDKEYFOUND.txt`
 
+- Why the speed for bsgs say 0 keys/s
+R: this was asked here https://github.com/albertobsd/keyhunt/issues/69 and here https://github.com/albertobsd/keyhunt/issues/108 and also others in telegram
+
+Please check the video that i made to answer that https://youtu.be/MVby8mYNxbI
+
 - Is available for Windows?
-R: It can be compiled with mingw, It can be executed in the Ubuntu shell for windows 10
-Updated: Yes, thanks to @WanderingPhilosopher
-Available in: https://github.com/WanderingPhilosopher/keyhunt/releases/tag/v1.0
+R: It can be compiled with mingw, also it can be executed in the Ubuntu shell for windows 10
+Updated: 
+Yes, thanks to @WanderingPhilosopher
+Available in: https://github.com/WanderingPhilosopher/keyhunt
+
+Also thanks to @XopMC
+Available in: https://github.com/XopMC/keyhunt-win
 
 - Why i need the bPfile.bin ?
 R: Usually you don't need it, but if you are going to run and stop the program several times is faster load the data from a file.
-NOTE: bPfile.bin will discontinued in some future version, the current versios have the `-S` to SAVE the FILES or READ from IT if they already exist
+NOTE: *bPfile.bin will discontinued in some future version, the current versios have the `-S` to SAVE the FILES or READ from IT if they already exist*
 
 - The bPfile gives me extra speed?
 R: No, is just to help to speed up a little the load process and no more, but the final speed of keys per second is going to be the same without this file.

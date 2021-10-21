@@ -140,9 +140,9 @@ public:
   void SetInt64(uint64_t value);
   void SetInt32(uint32_t value);
   void Set(Int *a);
-  void SetBase10(char *value);
-  void SetBase16(char *value);
-  void SetBaseN(int n,char *charset,char *value);
+  void SetBase10(const char *value);
+  void SetBase16(const char *value);
+  void SetBaseN(int n,const char *charset,const char *value);
   void SetByte(int n,unsigned char byte);
   void SetDWord(int n, uint32_t b);
   void SetQWord(int n,uint64_t b);
@@ -161,7 +161,7 @@ public:
   char* GetBase2();
   char* GetBase10();
   char* GetBase16();
-  char* GetBaseN(int n,char *charset);
+  char* GetBaseN(int n,const char *charset);
   char* GetBlockStr();
   char* GetC64Str(int nbDigit);
 
@@ -195,7 +195,7 @@ private:
 
 // Inline routines
 
-#ifndef WIN64
+#ifndef _WIN64
 
 // Missing intrinsics
 static uint64_t inline _umul128(uint64_t a, uint64_t b, uint64_t *h) {

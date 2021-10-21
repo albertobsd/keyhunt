@@ -920,7 +920,7 @@ void Int::GCD(Int *a) {
 
 // ------------------------------------------------
 
-void Int::SetBase10(char *value) {
+void Int::SetBase10(const char *value) {
   CLEAR();
   Int pw((uint64_t)1);
   Int c;
@@ -937,7 +937,7 @@ void Int::SetBase10(char *value) {
 
 // ------------------------------------------------
 
-void  Int::SetBase16(char *value) {
+void  Int::SetBase16(const char *value) {
   SetBaseN(16,"0123456789ABCDEF",value);
 }
 
@@ -976,7 +976,7 @@ char * Int::GetC64Str(int nbDigit) {
   tmp[1] = 0;
   for (int i = 0; i< nbDigit; i++) {
     if (bits64[i] != 0) {
-#ifdef WIN64
+#ifdef _WIN64
       sprintf(bStr, "0x%016I64XULL", bits64[i]);
 #else
       sprintf(bStr, "0x%" PRIx64  "ULL", bits64[i]);
@@ -993,17 +993,16 @@ char * Int::GetC64Str(int nbDigit) {
 
 // ------------------------------------------------
 
-void  Int::SetBaseN(int n,char *charset,char *value) {
-
+void  Int::SetBaseN(int n,const char *charset,const char *value) {
   CLEAR();
   Int pw((uint64_t)1);
   Int nb((uint64_t)n);
   Int c;
   int lgth = (int)strlen(value);
   for(int i=lgth-1;i>=0;i--) {
-    char *p = strchr(charset,toupper(value[i]));
+    char *p = strchr((char*)charset,toupper(value[i]));
     if(!p) {
-      printf("Invalid charset !!\n");
+		printf("Invalid charset !!\n");
       return;
     }
     int id = (int)(p-charset);
@@ -1016,7 +1015,7 @@ void  Int::SetBaseN(int n,char *charset,char *value) {
 
 // ------------------------------------------------
 
-char* Int::GetBaseN(int n,char *charset) {
+char* Int::GetBaseN(int n,const char *charset) {
   char *ret = (char*) calloc(1,1024);
 
   Int N(this);

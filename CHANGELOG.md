@@ -1,3 +1,10 @@
+# Version 0.2.211018 Chocolate ¡Beta!
+- Solved some bugs: https://github.com/albertobsd/keyhunt/issues/122 https://github.com/albertobsd/keyhunt/issues/111
+- Files are going to be updated automatillyca 
+-- from keyhunt_bsgs_3_*.blm  to keyhunt_bsgs_4*.blm 
+-- from keyhunt_bsgs_1_*.blm  to keyhunt_bsgs_5*.blm 
+-- the program will notify you when time to delete the old files
+
 # Version 0.2.211012 Chocolate ¡Beta!
 - Fixed the slow bP table generation.
 -- This fix make obsolete the files keyhunt_bsgs_0_*.blm 

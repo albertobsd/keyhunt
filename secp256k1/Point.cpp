@@ -75,16 +75,3 @@ void Point::Reduce() {
 bool Point::equals(Point &p) {
   return x.IsEqual(&p.x) && y.IsEqual(&p.y) && z.IsEqual(&p.z);
 }
-
-/*
-std::string Point::toString() {
-
-  std::string ret;
-  ret  = "X=" + x.GetBase16() + "\n";
-  ret += "Y=" + y.GetBase16() + "\n";
-  ret += "Z=" + z.GetBase16() + "\n";
-  return ret;
-
-}
-
-*/

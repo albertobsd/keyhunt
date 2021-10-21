@@ -8,8 +8,6 @@ email: alberto.bsd@gmail.com
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
-#include <unistd.h>
-#include <pthread.h>
 #include <math.h>
 #include <time.h>
 #include <vector>
@@ -17,8 +15,10 @@ email: alberto.bsd@gmail.com
 #include "base58/libbase58.h"
 #include "rmd160/rmd160.h"
 #include "sha256/sha256.h"
+#include "oldbloom/oldbloom.h"
 #include "bloom/bloom.h"
 #include "sha3/sha3.h"
+#include "util.h"
 
 #include "secp256k1/SECP256k1.h"
 #include "secp256k1/Point.h"
@@ -26,9 +26,14 @@ email: alberto.bsd@gmail.com
 #include "secp256k1/IntGroup.h"
 #include "secp256k1/Random.h"
 
-#include "util.h"
-#ifdef WIN32
-	#include <windows.h>
+
+
+#ifdef _WIN64
+#include "getopt.h"
+#include <windows.h>
+#else
+#include <unistd.h>
+#include <pthread.h>
 #endif
 
 #define CRYPTO_NONE 0
@@ -47,6 +52,13 @@ email: alberto.bsd@gmail.com
 #define SEARCH_COMPRESS 1
 #define SEARCH_BOTH 2
 
+#define THREADBPWORKLOAD 1048576
+#define FLIPBITLIMIT 10000000
+
+struct checksumsha256	{
+	char data[32];
+	char backup[32];
+};
 
 struct bsgs_xvalue	{
 	uint8_t value[6];
@@ -68,8 +80,21 @@ struct bPload	{
 	uint64_t from;
 	uint64_t to;
 	uint64_t counter;
+	uint32_t aux;
 };
 
+#ifdef _WIN64
+#define PACK( __Declaration__ ) __pragma( pack(push, 1) ) __Declaration__ __pragma( pack(pop))
+PACK(struct publickey
+{
+	uint8_t parity;
+	union {
+		uint8_t data8[32];
+		uint32_t data32[8];
+		uint64_t data64[4];
+	} X;
+});
+#else
 struct __attribute__((__packed__)) publickey {
   uint8_t parity;
 	union	{
@@ -78,8 +103,10 @@ struct __attribute__((__packed__)) publickey {
 		uint64_t data64[4];
 	} X;
 };
+#endif
 
-const char *version = "0.2.211012 Chocolate ¡Beta!";
+
+const char *version = "0.2.211018 Chocolate ¡Beta!";
 
 #define CPU_GRP_SIZE 1024
 
@@ -113,6 +140,17 @@ int64_t bsgs_partition(struct bsgs_xvalue *arr, int64_t n);
 int bsgs_searchbinary(struct bsgs_xvalue *arr,char *data,int64_t _N,uint64_t *r_value);
 int bsgs_secondcheck(Int *start_range,uint32_t a,uint32_t k_index,Int *privatekey);
 
+#ifdef _WIN64
+DWORD WINAPI thread_process(LPVOID vargp);
+DWORD WINAPI thread_process_bsgs(LPVOID vargp);
+DWORD WINAPI thread_process_bsgs_backward(LPVOID vargp);
+DWORD WINAPI thread_process_bsgs_both(LPVOID vargp);
+DWORD WINAPI thread_process_bsgs_random(LPVOID vargp);
+DWORD WINAPI thread_process_bsgs_dance(LPVOID vargp);
+DWORD WINAPI thread_bPload(LPVOID vargp);
+DWORD WINAPI thread_bPloadFile(LPVOID vargp);
+DWORD WINAPI thread_pub2rmd(LPVOID vargp);
+#else
 void *thread_process(void *vargp);
 void *thread_process_bsgs(void *vargp);
 void *thread_process_bsgs_backward(void *vargp);
@@ -122,6 +160,8 @@ void *thread_process_bsgs_dance(void *vargp);
 void *thread_bPload(void *vargp);
 void *thread_bPloadFile(void *vargp);
 void *thread_pub2rmd(void *vargp);
+#endif
+
 
 char *publickeytohashrmd160(char *pkey,int length);
 char *pubkeytopubaddress(char *pkey,int length);
@@ -129,7 +169,7 @@ char *pubkeytopubaddress(char *pkey,int length);
 void KECCAK_256(uint8_t *source, size_t size,uint8_t *dst);
 void generate_binaddress_eth(Point *publickey,unsigned char *dst_address);
 
-void memorycheck();
+void memorycheck_bsgs();
 
 int THREADOUTPUT = 0;
 char *bit_range_str_min;
@@ -141,14 +181,31 @@ const char *cryptos[3] = {"btc","eth","all"};
 const char *publicsearch[3] = {"uncompress","compress","both"};
 const char *default_filename = "addresses.txt";
 
+#ifdef _WIN64
+HANDLE* tid = NULL;
+HANDLE write_keys;
+HANDLE write_random;
+HANDLE bsgs_thread;
+HANDLE bPload_mutex;
+#else
 pthread_t *tid = NULL;
 pthread_mutex_t write_keys;
 pthread_mutex_t write_random;
-
 pthread_mutex_t bsgs_thread;
+pthread_mutex_t bPload_mutex;
+#endif
+
+
+uint64_t FINISHED_THREADS_COUNTER = 0;
+uint64_t FINISHED_THREADS_BP = 0;
+uint64_t THREADCYCLES = 0;
+uint64_t THREADCOUNTER = 0;
+uint64_t FINISHED_ITEMS = 0;
+uint64_t OLDFINISHED_ITEMS = -1;
+int AVAILABLE_THREADS;
+
 
 struct bloom bloom;
-
 
 uint64_t *steps = NULL;
 unsigned int *ends = NULL;
@@ -157,8 +214,6 @@ uint64_t N = 0;
 
 uint64_t N_SECUENTIAL_MAX = 0xffffffff;
 uint64_t DEBUGCOUNT = 0x100000;
-
-
 
 
 Int OUTPUTSECONDS;
@@ -176,6 +231,10 @@ int FLAGSAVEREADFILE = 0;
 int FLAGREADEDFILE1 = 0;
 int FLAGREADEDFILE2 = 0;
 int FLAGREADEDFILE3 = 0;
+
+int FLAGUPDATEFILE1 = 0;
+int FLAGUPDATEFILE2 = 0;
+
 int FLAGSEARCH = 2;
 int FLAGBITRANGE = 0;
 int FLAGRANGE = 0;
@@ -213,8 +272,25 @@ char checksum[32],checksum_backup[32];
 char buffer_bloom_file[1024];
 struct bsgs_xvalue *bPtable;
 struct address_value *addressTable;
-struct bloom bloom_bP[256];
+
+struct oldbloom oldbloom_bP;
+struct bloom *bloom_bP;
+struct checksumsha256 *bloom_bP_checksums;
+
+#ifdef _WIN64
+std::vector<HANDLE> bloom_bP_mutex;
+HANDLE bloom_bPx2nd_mutex;
+#else
+pthread_mutex_t *bloom_bP_mutex;
+pthread_mutex_t bloom_bPx2nd_mutex;
+#endif
+
+
+
+
 struct bloom bloom_bPx2nd; //Second Bloom filter check
+struct checksumsha256 bloom_bPx2nd_checksum;
+
 uint64_t bloom_bP_totalbytes = 0;
 char *precalculated_p_filename;
 uint64_t bsgs_m = 4194304;
@@ -262,12 +338,35 @@ int main(int argc, char **argv)	{
 	char rawvalue[32];
 	struct tothread *tt;	//tothread
 	Tokenizer t,tokenizerbsgs,tokenizer_xpoint;	//tokenizer
-	char *filename,*precalculated_mp_filename,*hextemp,*aux,*aux2,*pointx_str,*pointy_str,*str_seconds,*str_total,*str_pretotal,*str_divpretotal,*bf_ptr;
+	char *filename = NULL;
+	char *precalculated_mp_filename = NULL;
+	char *hextemp = NULL;
+	char *aux = NULL;
+	char *aux2 = NULL;
+	char *pointx_str = NULL;
+	char *pointy_str = NULL;
+	char *str_seconds = NULL;
+	char *str_total = NULL;
+	char *str_pretotal = NULL;
+	char *str_divpretotal = NULL;
+	char *bf_ptr = NULL;
+
 	FILE *fd,*fd_aux1,*fd_aux2,*fd_aux3;
 	uint64_t j,total_precalculated,i,PERTHREAD,BASE,PERTHREAD_R,itemsbloom,itemsbloom2;
-	int readed,s,continue_flag,check_flag,r,lenaux,lendiff,c,salir,index_value;
+	int readed,continue_flag,check_flag,r,lenaux,lendiff,c,salir,index_value;
 	Int total,pretotal,debugcount_mpz,seconds,div_pretotal;
-	struct bPload *temp;
+	struct bPload *bPload_temp_ptr;
+	
+#ifdef _WIN64
+	DWORD s;
+	write_keys = CreateMutex(NULL, FALSE, NULL);
+	write_random = CreateMutex(NULL, FALSE, NULL);
+	bsgs_thread = CreateMutex(NULL, FALSE, NULL);
+#else
+	int s;
+#endif
+
+	
 	srand (time(NULL));
 
 	secp = new Secp256K1();
@@ -277,8 +376,13 @@ int main(int argc, char **argv)	{
 	ONE.SetInt32(1);
 	BSGS_GROUP_SIZE.SetInt32(CPU_GRP_SIZE);
 	rseed(clock() + time(NULL));
-
+	
+#ifdef _WIN64
+	printf("[+] Version %s, developed by AlbertoBSD(Win64 build by KV)\n", version);
+#else
 	printf("[+] Version %s, developed by AlbertoBSD\n",version);
+#endif
+	
 
 	while ((c = getopt(argc, argv, "dehMqRwzSB:b:c:E:f:k:l:m:n:p:r:s:t:v:V:G:")) != -1) {
 		switch(c) {
@@ -370,6 +474,7 @@ int main(int argc, char **argv)	{
 			break;
 			case 'd':
 				FLAGDEBUG = 1;
+				printf("[+] Flag DEBUG enabled\n");
 			break;
 
 			case 'e':
@@ -696,9 +801,6 @@ int main(int argc, char **argv)	{
 				N_SECUENTIAL_MAX = 0xFFFFFFFF;
 			}
 		}
-
-		
-
 		
 		aux =(char*) malloc(1000);
 		if(aux == NULL)	{
@@ -1097,9 +1199,6 @@ int main(int argc, char **argv)	{
 
 		bsgs_m = BSGS_M.GetInt64();
 
-
-
-
 		if(FLAGRANGE || FLAGBITRANGE)	{
 			if(FLAGBITRANGE)	{	// Bit Range
 				n_range_start.SetBase16(bit_range_str_min);
@@ -1165,6 +1264,14 @@ int main(int argc, char **argv)	{
 		itemsbloom2 = bsgs_m2 > 1000 ? bsgs_m2 : 10000;
 		
 		printf("[+] Bloom filter for %" PRIu64 " elements ",bsgs_m);
+		bloom_bP = (struct bloom*)calloc(256,sizeof(struct bloom));
+		bloom_bP_checksums = (struct checksumsha256*)calloc(256,sizeof(struct checksumsha256));
+		bloom_bP_mutex = (pthread_mutex_t*) calloc(256,sizeof(pthread_mutex_t));
+		
+		
+		if(bloom_bP == NULL || bloom_bP_checksums == NULL)	{
+			fprintf(stderr,"[E] error calloc()\n");
+		}
 		fflush(stdout);
 		for(i=0; i< 256; i++)	{
 			if(bloom_init2(&bloom_bP[i],itemsbloom,0.000001)	== 1){
@@ -1172,9 +1279,9 @@ int main(int argc, char **argv)	{
 				exit(0);
 			}
 			bloom_bP_totalbytes += bloom_bP[i].bytes;
-			if(FLAGDEBUG) bloom_print(&bloom_bP[i]);
+			//if(FLAGDEBUG) bloom_print(&bloom_bP[i]);
 		}
-		printf(": %.2f MB\n",(float)((uint64_t)bloom_bP_totalbytes/(uint64_t)1048576));
+		printf(": %.2f MB\n",(float)((float)(uint64_t)bloom_bP_totalbytes/(float)(uint64_t)1048576));
 		//if(FLAGDEBUG) bloom_print(&bloom_bP);
 
 		if(bloom_init2(&bloom_bPx2nd,itemsbloom2,0.000001)	== 1){
@@ -1182,7 +1289,7 @@ int main(int argc, char **argv)	{
 			exit(0);
 		}
 
-		if(FLAGDEBUG) bloom_print(&bloom_bPx2nd);
+		//if(FLAGDEBUG) bloom_print(&bloom_bPx2nd);
 		
 		printf("[+] Bloom filter for %" PRIu64 " elements : %.2f MB\n",bsgs_m2,(double)((double)bloom_bPx2nd.bytes/(double)1048576));
 
@@ -1233,14 +1340,13 @@ int main(int argc, char **argv)	{
 		
 		if(FLAGSAVEREADFILE)	{
 			/*Reading file for 1st bloom filter */
-			snprintf(buffer_bloom_file,1024,"keyhunt_bsgs_3_%" PRIu64 ".blm",bsgs_m);
+
+			snprintf(buffer_bloom_file,1024,"keyhunt_bsgs_4_%" PRIu64 ".blm",bsgs_m);
 			fd_aux1 = fopen(buffer_bloom_file,"rb");
 			if(fd_aux1 != NULL)	{
-				
 				printf("[+] Reading bloom filter from file %s ..",buffer_bloom_file);
 				fflush(stdout);
-				FLAGREADEDFILE1 = 1;
-				for(i = 0; i < 256 && FLAGREADEDFILE1;i++)	{
+				for(i = 0; i < 256;i++)	{
 					bf_ptr = (char*) bloom_bP[i].bf;	/*We need to save the current bf pointer*/
 					readed = fread(&bloom_bP[i],sizeof(struct bloom),1,fd_aux1);
 					if(readed != 1)	{
@@ -1253,48 +1359,115 @@ int main(int argc, char **argv)	{
 						fprintf(stderr,"[E] Error reading the file %s\n",buffer_bloom_file);
 						exit(0);
 					}
-					memset(rawvalue,0,32);
-					if(memcmp(bloom_bP[i].checksum,rawvalue,32) == 0 )	{	/* Old File, we need to do the checksum*/
-						if(FLAGDEBUG) printf("[D] bloom_bP.checksum is zero\n");
-						sha256((char*)bloom_bP[i].bf,bloom_bP[i].bytes,bloom_bP[i].checksum);
-						memcpy(bloom_bP[i].checksum_backup,bloom_bP[i].checksum,32);
-						FLAGREADEDFILE1 = 0;	/* We mark the FLAGREADEDFILE1 to 0 to write the file with the correct checkum*/
+					readed = fread(&bloom_bP_checksums[i],sizeof(struct checksumsha256),1,fd_aux1);
+					if(readed != 1)	{
+						fprintf(stderr,"[E] Error reading the file %s\n",buffer_bloom_file);
+						exit(0);
 					}
-					else	{	/* new file, we need to verify the checksum */
-						sha256((char*)bloom_bP[i].bf,bloom_bP[i].bytes,rawvalue);
-						if(memcmp(bloom_bP[i].checksum,rawvalue,32) == 0 )	{	/* Verification */
-							FLAGREADEDFILE1 = 1;	/* OK */
+					
+					memset(rawvalue,0,32);
+					sha256((char*)bloom_bP[i].bf,bloom_bP[i].bytes,rawvalue);
+					if(memcmp(bloom_bP_checksums[i].data,rawvalue,32) != 0 || memcmp(bloom_bP_checksums[i].backup,rawvalue,32) != 0 )	{	/* Verification */
+						fprintf(stderr,"[E] Error checksum file mismatch!\n");
+						exit(0);
+					}
+					/*
+					if(FLAGDEBUG)	{
+						hextemp = tohex(bloom_bP_checksums[i].data,32);
+						printf("Checksum %s\n",hextemp);
+						free(hextemp);
+						bloom_print(&bloom_bP[i]);
+					}
+					*/
+				}
+				printf(" Done!\n");
+				fclose(fd_aux1);
+				memset(buffer_bloom_file,0,1024);
+				snprintf(buffer_bloom_file,1024,"keyhunt_bsgs_3_%" PRIu64 ".blm",bsgs_m);
+				fd_aux1 = fopen(buffer_bloom_file,"rb");
+				if(fd_aux1 != NULL)	{
+					printf("[W] Unused file detected %s you can delete it without worry\n",buffer_bloom_file);
+					fclose(fd_aux1);
+				}
+				FLAGREADEDFILE1 = 1;
+			}
+			else	{	/*Checking for old file    keyhunt_bsgs_3_   */
+				snprintf(buffer_bloom_file,1024,"keyhunt_bsgs_3_%" PRIu64 ".blm",bsgs_m);
+				fd_aux1 = fopen(buffer_bloom_file,"rb");
+				if(fd_aux1 != NULL)	{
+					printf("[+] Reading bloom filter from file %s ..",buffer_bloom_file);
+					fflush(stdout);
+					for(i = 0; i < 256;i++)	{
+						bf_ptr = (char*) bloom_bP[i].bf;	/*We need to save the current bf pointer*/
+						readed = fread(&oldbloom_bP,sizeof(struct oldbloom),1,fd_aux1);
+						/*
+						if(FLAGDEBUG)	{
+							printf("old Bloom filter %i\n",i);
+							oldbloom_print(&oldbloom_bP);
 						}
-						else	{
+						*/
+						
+						if(readed != 1)	{
+							fprintf(stderr,"[E] Error reading the file %s\n",buffer_bloom_file);
+							exit(0);
+						}
+						memcpy(&bloom_bP[i],&oldbloom_bP,sizeof(struct bloom));//We only need to copy the part data to the new bloom size, not from the old size
+						bloom_bP[i].bf = (uint8_t*)bf_ptr;	/* Restoring the bf pointer*/
+						
+						readed = fread(bloom_bP[i].bf,bloom_bP[i].bytes,1,fd_aux1);
+						if(readed != 1)	{
+							fprintf(stderr,"[E] Error reading the file %s\n",buffer_bloom_file);
+							exit(0);
+						}
+						memcpy(bloom_bP_checksums[i].data,oldbloom_bP.checksum,32);
+						memcpy(bloom_bP_checksums[i].backup,oldbloom_bP.checksum_backup,32);
+						memset(rawvalue,0,32);
+						sha256((char*)bloom_bP[i].bf,bloom_bP[i].bytes,rawvalue);
+						if(memcmp(bloom_bP_checksums[i].data,rawvalue,32) != 0 || memcmp(bloom_bP_checksums[i].backup,rawvalue,32) != 0 )	{	/* Verification */
 							fprintf(stderr,"[E] Error checksum file mismatch!\n");
 							exit(0);
 						}
+						/*
+						else	{
+							if(FLAGDEBUG)	{
+								hextemp = tohex(bloom_bP_checksums[i].data,32);
+								printf("Checksum OK : %s\n",i,hextemp);
+								free(hextemp);								
+							}
+						}
+						*/
+						
+						/*
+						if(FLAGDEBUG)	{
+							printf("NEW Bloom filter %i\n",i);
+							bloom_print(bloom_bP);
+							printf("Press enter to continue... ");
+							fgets(rawvalue,1024,stdin);
+						}
+						*/
+						
 					}
+					printf("Done!\n");
+					fclose(fd_aux1);
+					FLAGUPDATEFILE1 = 1;	/* Flag to migrate the data to the new File keyhunt_bsgs_4_ */
+					FLAGREADEDFILE1 = 1;
+					
 				}
-				
-				
-				
-				
-
-				
-
-				
-				
-				printf(" Done!\n");
-				fclose(fd_aux1);
-			}
-			else	{
-				FLAGREADEDFILE1 = 0;
+				else	{
+					FLAGREADEDFILE1 = 0;
+					//Flag to make the new file
+				}
 			}
 			
 			/*Reading file for 2nd bloom filter */
-			snprintf(buffer_bloom_file,1024,"keyhunt_bsgs_1_%" PRIu64 ".blm",bsgs_m2);
+			snprintf(buffer_bloom_file,1024,"keyhunt_bsgs_5_%" PRIu64 ".blm",bsgs_m2);
 			fd_aux2 = fopen(buffer_bloom_file,"rb");
 			if(fd_aux2 != NULL)	{
 				bf_ptr = (char*) bloom_bPx2nd.bf;	/*We need to save the current bf pointer*/
-				printf("[+] Reading bloom filter from file %s .. ",buffer_bloom_file);
+				printf("[+] Reading bloom filter from file %s ..",buffer_bloom_file);
 				fflush(stdout);
 				readed = fread(&bloom_bPx2nd,sizeof(struct bloom),1,fd_aux2);
+				
 				if(readed != 1)	{
 					fprintf(stderr,"[E] Error reading the file %s\n",buffer_bloom_file);
 					exit(0);
@@ -1305,28 +1478,72 @@ int main(int argc, char **argv)	{
 					fprintf(stderr,"[E] Error reading the file %s\n",buffer_bloom_file);
 					exit(0);
 				}
-				memset(rawvalue,0,32);
-				if(memcmp(bloom_bPx2nd.checksum,rawvalue,32) == 0 )	{	/* Old File, we need to do the checksum*/
-					if(FLAGDEBUG) printf("[D] bloom_bPx2nd.checksum is zero\n");
-					sha256((char*)bloom_bPx2nd.bf,bloom_bPx2nd.bytes,bloom_bPx2nd.checksum);
-					memcpy(bloom_bPx2nd.checksum_backup,bloom_bPx2nd.checksum,32);
-					FLAGREADEDFILE2 = 0;	/* We mark the FLAGREADEDFILE2 to 0 to write the file with the correct checkum*/
+				readed = fread(&bloom_bPx2nd_checksum,sizeof(struct checksumsha256),1,fd_aux2);
+				if(readed != 1)	{
+					fprintf(stderr,"[E] Error reading the file %s\n",buffer_bloom_file);
+					exit(0);
 				}
-				else	{	/* new file, we need to verify the checksum */
-					sha256((char*)bloom_bPx2nd.bf,bloom_bPx2nd.bytes,rawvalue);
-					if(memcmp(bloom_bPx2nd.checksum,rawvalue,32) == 0 )	{	/* Verification */
-						FLAGREADEDFILE2 = 1;	/* OK */
+				memset(rawvalue,0,32);
+				sha256((char*)bloom_bPx2nd.bf,bloom_bPx2nd.bytes,rawvalue);
+				if(memcmp(bloom_bPx2nd_checksum.data,rawvalue,32) != 0 || memcmp(bloom_bPx2nd_checksum.backup,rawvalue,32) != 0 )	{	/* Verification */
+					fprintf(stderr,"[E] Error checksum file mismatch!\n");
+					exit(0);
+				}
+				fclose(fd_aux2);
+				printf(" Done!\n");
+				/*
+				if(FLAGDEBUG)	{
+					hextemp = tohex(bloom_bPx2nd_checksum.data,32);
+					printf("Checksum %s\n",hextemp);
+					free(hextemp);
+					bloom_print(&bloom_bPx2nd);
+				}
+				*/
+				memset(buffer_bloom_file,0,1024);
+				snprintf(buffer_bloom_file,1024,"keyhunt_bsgs_1_%" PRIu64 ".blm",bsgs_m2);
+				
+				fd_aux2 = fopen(buffer_bloom_file,"rb");
+				if(fd_aux2 != NULL)	{
+					printf("[W] Unused file detected %s you can delete it without worry\n",buffer_bloom_file);
+					fclose(fd_aux2);
+				}
+				FLAGREADEDFILE2 = 1;
+			}
+			else	{	/* Checking for old file keyhunt_bsgs_1*/
+				snprintf(buffer_bloom_file,1024,"keyhunt_bsgs_1_%" PRIu64 ".blm",bsgs_m2);
+				fd_aux2 = fopen(buffer_bloom_file,"rb");
+				if(fd_aux2 != NULL)	{
+					bf_ptr = (char*) bloom_bPx2nd.bf;	/* We need to save the current bf pointer */
+					printf("[+] Reading bloom filter from file %s .. ",buffer_bloom_file);
+					fflush(stdout);
+					readed = fread(&oldbloom_bP,sizeof(struct oldbloom),1,fd_aux2);
+					if(readed != 1)	{
+						fprintf(stderr,"[E] Error reading the file %s\n",buffer_bloom_file);
+						exit(0);
 					}
-					else	{
+					memcpy(&bloom_bPx2nd,&oldbloom_bP,sizeof(struct bloom));//We only need to copy the part data to the new bloom size, not from the old size
+					bloom_bPx2nd.bf = (uint8_t*)bf_ptr;	/* Restoring the bf pointer*/
+					readed = fread(bloom_bPx2nd.bf,bloom_bPx2nd.bytes,1,fd_aux2);
+					if(readed != 1)	{
+						fprintf(stderr,"[E] Error reading the file %s\n",buffer_bloom_file);
+						exit(0);
+					}
+					memcpy(bloom_bPx2nd_checksum.data,oldbloom_bP.checksum,32);
+					memcpy(bloom_bPx2nd_checksum.backup,oldbloom_bP.checksum_backup,32);
+					
+					sha256((char*)bloom_bPx2nd.bf,bloom_bPx2nd.bytes,rawvalue);
+					if(memcmp(bloom_bPx2nd_checksum.data,rawvalue,32) != 0 || memcmp(bloom_bPx2nd_checksum.backup,rawvalue,32) != 0 )	{	/* Verification */
 						fprintf(stderr,"[E] Error checksum file mismatch!\n");
 						exit(0);
 					}
+					printf("Done!\n");
+					fclose(fd_aux2);
+					FLAGREADEDFILE2 = 1;	/* OK */
+					FLAGUPDATEFILE2 = 1;
 				}
-				printf("Done!\n");
-				fclose(fd_aux2);
-			}
-			else	{
-				FLAGREADEDFILE2 = 0;
+				else	{
+					FLAGREADEDFILE2 = 0;
+				}
 			}
 			
 			/*Reading file for bPtable */
@@ -1349,104 +1566,181 @@ int main(int argc, char **argv)	{
 				printf(" Done!\n");
 				fclose(fd_aux3);
 				FLAGREADEDFILE3 = 1;
+				/*
+				if(FLAGDEBUG)	{
+					hextemp = tohex(checksum,32);
+					printf("Checksum %s\n",hextemp);
+					free(hextemp);
+				}
+				*/
 			}
 			else	{
 				FLAGREADEDFILE3 = 0;
 			}
 		}
 		
-		if(!FLAGREADEDFILE1 || !FLAGREADEDFILE2 || !FLAGREADEDFILE3)	{	/*If just one of the files were not readed, then we need to calculate the content*/
-			i = 0;
-			j = 0;
+		if(!FLAGREADEDFILE1 || !FLAGREADEDFILE2 || !FLAGREADEDFILE3)	{	/*If just one of the files were not readed, then we need to calculate the content of all because bloom*/
+			AVAILABLE_THREADS = NTHREADS;
+			FINISHED_THREADS_COUNTER = 0;
+			FINISHED_THREADS_BP = 0;
+			FINISHED_ITEMS = 0;
+			salir = 0;
 			BASE = 0;
-			PERTHREAD = bsgs_m /NTHREADS;
-			PERTHREAD_R = bsgs_m % NTHREADS;
-			temp = (struct bPload *) calloc(NTHREADS,sizeof(struct bPload));
+			THREADCOUNTER = 0;
+			THREADCYCLES = bsgs_m /THREADBPWORKLOAD;
+			PERTHREAD_R = bsgs_m % THREADBPWORKLOAD;
+			//if(FLAGDEBUG) printf("[D] THREADCYCLES: %lu\n",THREADCYCLES);
+			if(PERTHREAD_R != 0)	{
+				THREADCYCLES++;
+				//if(FLAGDEBUG) printf("[D] PERTHREAD_R: %lu\n",PERTHREAD_R);
+			}
+			
+			printf("\r[+] processing %lu/%lu bP points : %i%%\r",FINISHED_ITEMS,bsgs_m,(int) (((double)FINISHED_ITEMS/(double)bsgs_m)*100));
+			fflush(stdout);
+			
+#ifdef _WIN64
+			tid = (HANDLE*)calloc(NTHREADS, sizeof(HANDLE));
+#else
 			tid = (pthread_t *) calloc(NTHREADS,sizeof(pthread_t));
-
-
-
+#endif
 			if(FLAGPRECALCUTED_P_FILE)	{
-				printf("[+] Reading %lu bP points from file %s\n",bsgs_m,precalculated_p_filename);
-				for(i = 0; i < NTHREADS; i++)	{
-					temp[i].threadid = i;
-					temp[i].counter = 0;
-					if(i < NTHREADS -1)	{
-						temp[i].from = BASE +1;
-						temp[i].to = BASE + PERTHREAD;
+				do	{
+					for(i = 0; i < AVAILABLE_THREADS && !salir; i++)	{
+						bPload_temp_ptr = (struct bPload*) calloc(1,sizeof(struct bPload));
+						bPload_temp_ptr->from = BASE +1;
+						bPload_temp_ptr->threadid = THREADCOUNTER;
+						if( THREADCOUNTER < THREADCYCLES-1)	{
+							bPload_temp_ptr->to = BASE + THREADBPWORKLOAD;
+						}
+						else	{
+							bPload_temp_ptr->to = BASE + THREADBPWORKLOAD + PERTHREAD_R;
+							salir = 1;
+						}
+						//if(FLAGDEBUG) printf("[I] %lu to %lu\n",bPload_temp_ptr->from,bPload_temp_ptr->to);
+#ifdef _WIN64
+						tid[0] = CreateThread(NULL, 0, thread_bPloadFile, (void*)bPload_temp_ptr, 0, &s);
+#else
+						s = pthread_create(&tid[0],NULL,thread_bPloadFile,(void*)bPload_temp_ptr);
+#endif
+						BASE+=THREADBPWORKLOAD;
+						THREADCOUNTER++;
 					}
-					else	{
-						temp[i].from = BASE + 1;
-						temp[i].to = BASE + PERTHREAD + PERTHREAD_R;
+					AVAILABLE_THREADS = 0;
+					
+					if(OLDFINISHED_ITEMS != FINISHED_ITEMS)	{
+						printf("\r[+] processing %lu/%lu bP points : %i%%\r",FINISHED_ITEMS,bsgs_m,(int) (((double)FINISHED_ITEMS/(double)bsgs_m)*100));
+						fflush(stdout);
+						OLDFINISHED_ITEMS = FINISHED_ITEMS;
 					}
-					if(FLAGDEBUG) printf("[I] %lu to %lu\n",temp[i].from,temp[i].to);
-					s = pthread_create(&tid[i],NULL,thread_bPloadFile,(void *)&temp[i]);
-					BASE+=PERTHREAD;
-				}
+					sleep_ms(10);
+#ifdef _WIN64
+					WaitForSingleObject(bPload_mutex, INFINITE);
+					AVAILABLE_THREADS = FINISHED_THREADS_BP;
+					FINISHED_THREADS_BP = 0;
+					ReleaseMutex(bPload_mutex);
+#else	
+					pthread_mutex_lock(&bPload_mutex);
+					AVAILABLE_THREADS = FINISHED_THREADS_BP;
+					FINISHED_THREADS_BP = 0;
+					pthread_mutex_unlock(&bPload_mutex);
+				#endif
+					FINISHED_THREADS_COUNTER+= AVAILABLE_THREADS;
+					FINISHED_ITEMS+= AVAILABLE_THREADS * THREADBPWORKLOAD;
+
+
+				}while(FINISHED_THREADS_COUNTER < THREADCYCLES);
+				printf("\r[+] processing %lu/%lu bP points : 100%%     \n",bsgs_m,bsgs_m);
 			}
 			else	{
-				for(i = 0; i < NTHREADS; i++)	{
-					temp[i].counter = i;
-					if(i < NTHREADS -1)	{
-						temp[i].from = BASE +1;
-						temp[i].to = BASE + PERTHREAD;
-						BASE+=PERTHREAD;
+				do	{
+					for(i = 0; i < AVAILABLE_THREADS && !salir; i++)	{
+						bPload_temp_ptr = (struct bPload*) calloc(1,sizeof(struct bPload));
+						bPload_temp_ptr->from = BASE +1;
+						bPload_temp_ptr->threadid = THREADCOUNTER;
+						if( THREADCOUNTER < THREADCYCLES-1)	{
+							bPload_temp_ptr->to = BASE + THREADBPWORKLOAD;
+						}
+						else	{
+							bPload_temp_ptr->to = BASE + THREADBPWORKLOAD + PERTHREAD_R;
+							salir = 1;
+							//if(FLAGDEBUG) printf("[D] Salir OK\n");
+						}
+						//if(FLAGDEBUG) printf("[I] %lu to %lu\n",bPload_temp_ptr->from,bPload_temp_ptr->to);
+#ifdef _WIN64
+						tid[0] = CreateThread(NULL, 0, thread_bPload, (void*)bPload_temp_ptr, 0, &s);
+#else
+						s = pthread_create(&tid[0],NULL,thread_bPload,(void*)bPload_temp_ptr);
+#endif
+						BASE+=THREADBPWORKLOAD;
+						THREADCOUNTER++;
 					}
-					else	{
-						temp[i].from = BASE + 1;
-						temp[i].to = BASE + PERTHREAD + PERTHREAD_R;
-						BASE+=(PERTHREAD + PERTHREAD_R);
+					AVAILABLE_THREADS = 0;
+					if(OLDFINISHED_ITEMS != FINISHED_ITEMS)	{
+						printf("\r[+] processing %lu/%lu bP points : %i%%\r",FINISHED_ITEMS,bsgs_m,(int) (((double)FINISHED_ITEMS/(double)bsgs_m)*100));
+						fflush(stdout);
+						OLDFINISHED_ITEMS = FINISHED_ITEMS;
 					}
-					if(FLAGDEBUG) printf("[I] %lu to %lu\n",temp[i].from,temp[i].to);
-					s = pthread_create(&tid[i],NULL,thread_bPload,(void *)&temp[i]);
-				}
-			}
-			total_precalculated = 0;
-			do {
-				sleep(1);
-				total_precalculated = 0;
-				for(i = 0; i < NTHREADS; i++)	{
-					total_precalculated+=temp[i].counter;
-				}
-				printf("\r[+] processing %lu/%lu bP points : %i%%\r",total_precalculated,bsgs_m,(int) (((double)total_precalculated/(double)bsgs_m)*100));
-				fflush(stdout);
-			} while(total_precalculated < bsgs_m);
+					sleep_ms(10);
+#ifdef _WIN64
+					WaitForSingleObject(bPload_mutex, INFINITE);
+					AVAILABLE_THREADS = FINISHED_THREADS_BP;
+					FINISHED_THREADS_BP = 0;
+					FINISHED_THREADS_COUNTER+= AVAILABLE_THREADS;
+					FINISHED_ITEMS+= AVAILABLE_THREADS * THREADBPWORKLOAD;
+					ReleaseMutex(bPload_mutex);
+#else	
+					pthread_mutex_lock(&bPload_mutex);
+					AVAILABLE_THREADS = FINISHED_THREADS_BP;
+					FINISHED_THREADS_BP = 0;
+					FINISHED_THREADS_COUNTER+= AVAILABLE_THREADS;
+					FINISHED_ITEMS+= AVAILABLE_THREADS * THREADBPWORKLOAD;
+					pthread_mutex_unlock(&bPload_mutex);
+#endif
 
-			for(i = 0; i < NTHREADS; i++)	{
-				pthread_join(tid[i], NULL);
-			}
-			printf("\n");
-			free(temp);
-			free(tid);
-			
-		}
-		if(!FLAGREADEDFILE1)	{
-			
-			for(i = 0; i < 256 ; i++)	{
-				sha256((char*)bloom_bP[i].bf, bloom_bP[i].bytes, bloom_bP[i].checksum);
-				memcpy(bloom_bP[i].checksum_backup,bloom_bP[i].checksum,32);
-			}
-			
-			
+				}while(FINISHED_THREADS_COUNTER < THREADCYCLES);
+				printf("\r[+] processing %lu/%lu bP points : 100%%     \n",bsgs_m,bsgs_m);
+			}			
+
+			free(tid);			
 		}
 		
-		if(!FLAGREADEDFILE2)	{
-			sha256((char*)bloom_bPx2nd.bf, bloom_bPx2nd.bytes, bloom_bPx2nd.checksum);
-			memcpy(bloom_bPx2nd.checksum_backup,bloom_bPx2nd.checksum,32);
+		if(!FLAGREADEDFILE1 || !FLAGREADEDFILE2 )	{
+			printf("[+] Making checkums .. ");
+			fflush(stdout);
+		}	
+		if(!FLAGREADEDFILE1)	{
+			for(i = 0; i < 256 ; i++)	{
+				sha256((char*)bloom_bP[i].bf, bloom_bP[i].bytes, bloom_bP_checksums[i].data);
+				memcpy(bloom_bP_checksums[i].backup,bloom_bP_checksums[i].data,32);
+			}
 		}
+		if(!FLAGREADEDFILE2)	{
+			sha256((char*)bloom_bPx2nd.bf, bloom_bPx2nd.bytes, bloom_bPx2nd_checksum.data);
+			memcpy(bloom_bPx2nd_checksum.backup,bloom_bPx2nd_checksum.data,32);
+		}
+		if(!FLAGREADEDFILE1 || !FLAGREADEDFILE2 )	{
+			printf("done\n");
+			fflush(stdout);
+		}	
 		if(!FLAGREADEDFILE3)	{
 			printf("[+] Sorting %lu elements... ",bsgs_m2);
 			fflush(stdout);
 			bsgs_sort(bPtable,bsgs_m2);
-			printf("Done!\n");
-			fflush(stdout);
 			sha256((char*)bPtable, bytes, checksum);
 			memcpy(checksum_backup,checksum,32);
+			printf("Done!\n");
+			fflush(stdout);
 		}
-		if(FLAGSAVEREADFILE)	{
-			if(!FLAGREADEDFILE1)	{
+		if(FLAGSAVEREADFILE || FLAGUPDATEFILE1 || FLAGUPDATEFILE2 )	{
+			if(!FLAGREADEDFILE1 || FLAGUPDATEFILE1)	{
+				snprintf(buffer_bloom_file,1024,"keyhunt_bsgs_4_%" PRIu64 ".blm",bsgs_m);
+				
+				if(FLAGUPDATEFILE1)	{
+					printf("[W] Updating old file into a new one\n");
+				}
+				
 				/* Writing file for 1st bloom filter */
-				snprintf(buffer_bloom_file,1024,"keyhunt_bsgs_3_%" PRIu64 ".blm",bsgs_m);
+				
 				fd_aux1 = fopen(buffer_bloom_file,"wb");
 				if(fd_aux1 != NULL)	{
 					printf("[+] Writing bloom filter to file %s .. ",buffer_bloom_file);
@@ -1462,6 +1756,19 @@ int main(int argc, char **argv)	{
 							fprintf(stderr,"[E] Error writing the file %s please delete it\n",buffer_bloom_file);
 							exit(0);
 						}
+						readed = fwrite(&bloom_bP_checksums[i],sizeof(struct checksumsha256),1,fd_aux1);
+						if(readed != 1)	{
+							fprintf(stderr,"[E] Error writing the file %s please delete it\n",buffer_bloom_file);
+							exit(0);
+						}
+						/*
+						if(FLAGDEBUG)	{
+							hextemp = tohex(bloom_bP_checksums[i].data,32);
+							printf("Checksum %s\n",hextemp);
+							free(hextemp);
+							bloom_print(&bloom_bP[i]);
+						}
+						*/
 					}
 					printf("Done!\n");
 					fclose(fd_aux1);
@@ -1470,9 +1777,15 @@ int main(int argc, char **argv)	{
 					fprintf(stderr,"[E] Error can't create the file %s\n",buffer_bloom_file);
 				}
 			}
-			if(!FLAGREADEDFILE2)	{
+			if(!FLAGREADEDFILE2 || FLAGUPDATEFILE2 )	{
+				
+				snprintf(buffer_bloom_file,1024,"keyhunt_bsgs_5_%" PRIu64 ".blm",bsgs_m2);
+				
+				if(FLAGUPDATEFILE1)	{
+					printf("[W] Updating old file into a new one\n");
+				}
+				
 				/* Writing file for 2nd bloom filter */
-				snprintf(buffer_bloom_file,1024,"keyhunt_bsgs_1_%" PRIu64 ".blm",bsgs_m2);
 				fd_aux2 = fopen(buffer_bloom_file,"wb");
 				if(fd_aux2 != NULL)	{
 					printf("[+] Writing bloom filter to file %s .. ",buffer_bloom_file);
@@ -1487,14 +1800,26 @@ int main(int argc, char **argv)	{
 						fprintf(stderr,"[E] Error writing the file %s\n",buffer_bloom_file);
 						exit(0);
 					}
+					readed = fwrite(&bloom_bPx2nd_checksum,sizeof(struct checksumsha256),1,fd_aux2);
+					if(readed != 1)	{
+						fprintf(stderr,"[E] Error writing the file %s please delete it\n",buffer_bloom_file);
+						exit(0);
+					}
 					printf("Done!\n");
 					fclose(fd_aux2);					
+					/*
+					if(FLAGDEBUG)	{
+						hextemp = tohex(bloom_bPx2nd_checksum.data,32);
+						printf("Checksum %s\n",hextemp);
+						free(hextemp);
+						bloom_print(&bloom_bPx2nd);
+					}
+					*/
 				}
 				else	{
 					fprintf(stderr,"[E] Error can't create the file %s\n",buffer_bloom_file);
 				}
 			}
-			
 			
 			if(!FLAGREADEDFILE3)	{
 				/* Writing file for bPtable */
@@ -1514,7 +1839,14 @@ int main(int argc, char **argv)	{
 						exit(0);
 					}
 					printf("Done!\n");
-					fclose(fd_aux3);					
+					fclose(fd_aux3);	
+					/*
+					if(FLAGDEBUG)	{
+						hextemp = tohex(checksum,32);
+						printf("Checksum %s\n",hextemp);
+						free(hextemp);
+					}
+					*/
 				}
 				else	{
 					fprintf(stderr,"[E] Error can't create the file %s\n",buffer_bloom_file);
@@ -1527,12 +1859,35 @@ int main(int argc, char **argv)	{
 
 		steps = (uint64_t *) calloc(NTHREADS,sizeof(uint64_t));
 		ends = (unsigned int *) calloc(NTHREADS,sizeof(int));
+#ifdef _WIN64
+		tid = (HANDLE*)calloc(NTHREADS, sizeof(HANDLE));
+#else
 		tid = (pthread_t *) calloc(NTHREADS,sizeof(pthread_t));
+#endif
 		
 		for(i= 0;i < NTHREADS; i++)	{
 			tt = (tothread*) malloc(sizeof(struct tothread));
 			tt->nt = i;
 			switch(FLAGBSGSMODE)	{
+#ifdef _WIN64
+				case 0:
+					tid[i] = CreateThread(NULL, 0, thread_process_bsgs, (void*)tt, 0, &s);
+					break;
+				case 1:
+					tid[i] = CreateThread(NULL, 0, thread_process_bsgs_backward, (void*)tt, 0, &s);
+					break;
+				case 2:
+					tid[i] = CreateThread(NULL, 0, thread_process_bsgs_both, (void*)tt, 0, &s);
+					break;
+				case 3:
+					tid[i] = CreateThread(NULL, 0, thread_process_bsgs_random, (void*)tt, 0, &s);
+					break;
+				case 4:
+					tid[i] = CreateThread(NULL, 0, thread_process_bsgs_dance, (void*)tt, 0, &s);
+					break;
+				}
+#else
+
 				case 0:
 					s = pthread_create(&tid[i],NULL,thread_process_bsgs,(void *)tt);
 				break;
@@ -1548,9 +1903,14 @@ int main(int argc, char **argv)	{
 				case 4:
 					s = pthread_create(&tid[i],NULL,thread_process_bsgs_dance,(void *)tt);
 				break;
+#endif
 			}
+#ifdef _WIN64
+			if (tid[i] == NULL) {
+#else
 			if(s != 0)	{
-				fprintf(stderr,"[E] pthread_create thread_process\n");
+#endif
+				fprintf(stderr,"[E] thread thread_process\n");
 				exit(0);
 			}
 		}
@@ -1561,13 +1921,26 @@ int main(int argc, char **argv)	{
 	if(FLAGMODE != MODE_BSGS)	{
 		steps = (uint64_t *) calloc(NTHREADS,sizeof(uint64_t));
 		ends = (unsigned int *) calloc(NTHREADS,sizeof(int));
+#ifdef _WIN64
+		tid = (HANDLE*)calloc(NTHREADS, sizeof(HANDLE));
+#else
 		tid = (pthread_t *) calloc(NTHREADS,sizeof(pthread_t));
-
+#endif
 		for(i= 0;i < NTHREADS; i++)	{
 			tt = (tothread*) malloc(sizeof(struct tothread));
 			tt->nt = i;
 			steps[i] = 0;
 			switch(FLAGMODE)	{
+#ifdef _WIN64
+				case MODE_ADDRESS:
+				case MODE_XPOINT:
+				case MODE_RMD160:
+					tid[i] = CreateThread(NULL, 0, thread_process, (void*)tt, 0, &s);
+				break;
+				case MODE_PUB2RMD:
+					tid[i] = CreateThread(NULL, 0, thread_pub2rmd, (void*)tt, 0, &s);
+				break;
+#else
 				case MODE_ADDRESS:
 				case MODE_XPOINT:
 				case MODE_RMD160:
@@ -1576,6 +1949,7 @@ int main(int argc, char **argv)	{
 				case MODE_PUB2RMD:
 					s = pthread_create(&tid[i],NULL,thread_pub2rmd,(void *)tt);
 				break;
+#endif
 			}
 			if(s != 0)	{
 				fprintf(stderr,"[E] pthread_create thread_process\n");
@@ -1596,7 +1970,7 @@ int main(int argc, char **argv)	{
 	debugcount_mpz.Set(&BSGS_N);
 	seconds.SetInt32(0);
 	do	{
-		sleep(1);
+		sleep_ms(1000);
 		seconds.AddOne();
 		check_flag = 1;
 		for(i = 0; i <NTHREADS && check_flag; i++) {
@@ -1617,8 +1991,11 @@ int main(int argc, char **argv)	{
 					total.Add(&pretotal);
 					i++;
 				}
-				
+#ifdef _WIN64
+				WaitForSingleObject(bsgs_thread, INFINITE);
+#else
 				pthread_mutex_lock(&bsgs_thread);
+#endif			
 				pretotal.Set(&total);
 				pretotal.Div(&seconds);
 				str_seconds = seconds.GetBase10();
@@ -1663,19 +2040,28 @@ int main(int argc, char **argv)	{
 					free(str_divpretotal);
 
 				}
-				
-				
-
 				printf("%s",buffer);
 				fflush(stdout);
-				THREADOUTPUT = 0;
+				THREADOUTPUT = 0;			
+#ifdef _WIN64
+				ReleaseMutex(bsgs_thread);
+#else
 				pthread_mutex_unlock(&bsgs_thread);
+#endif
+
 				free(str_seconds);
 				free(str_pretotal);
 				free(str_total);
 			}
 		}
 	}while(continue_flag);
+	printf("\nEnd\n");
+#ifdef _WIN64
+	CloseHandle(write_keys);
+	CloseHandle(write_random);
+	CloseHandle(bsgs_thread);
+#endif
+
 }
 
 char *pubkeytopubaddress(char *pkey,int length)	{
@@ -1745,8 +2131,11 @@ int searchbinary(struct address_value *buffer,char *data,int64_t _N) {
 	}
 	return r;
 }
-
+#ifdef _WIN64
+DWORD WINAPI thread_process(LPVOID vargp) {
+#else
 void *thread_process(void *vargp)	{
+#endif
 	struct tothread *tt;
 	Point pts[CPU_GRP_SIZE];
 	Int dx[CPU_GRP_SIZE / 2 + 1];
@@ -1762,11 +2151,11 @@ void *thread_process(void *vargp)	{
 	uint64_t i,j,count;
 	Point R,temporal;
 	int r,thread_number,found,continue_flag = 1,i_vanity;
-	char *public_key_compressed,*public_key_uncompressed,hexstrpoint[65],rawvalue[32];
-	char *publickeyhashrmd160_compress,*publickeyhashrmd160_uncompress;
-	char *hextemp,*public_key_compressed_hex,*public_key_uncompressed_hex;
-	char *eth_address;
-	char *public_address_compressed,*public_address_uncompressed;
+	char *public_key_compressed = NULL,*public_key_uncompressed = NULL,hexstrpoint[65],rawvalue[32];
+	char *publickeyhashrmd160_compress = NULL,*publickeyhashrmd160_uncompress = NULL;
+	char *hextemp = NULL,*public_key_compressed_hex = NULL,*public_key_uncompressed_hex = NULL;
+	char *eth_address = NULL;
+	char *public_address_compressed = NULL,*public_address_uncompressed = NULL;
 	unsigned long longtemp;
 	FILE *keys,*vanityKeys;
 	Int key_mpz,mpz_bit_range_min,mpz_bit_range_max,mpz_bit_range_diff;
@@ -1776,16 +2165,25 @@ void *thread_process(void *vargp)	{
 	found = 0;
 	grp->Set(dx);
 	do {
-		
 		if(FLAGRANDOM){
 			key_mpz.Rand(&n_range_start,&n_range_end);
 		}
 		else	{
 			if(n_range_start.IsLower(&n_range_end))	{
+#ifdef _WIN64
+				WaitForSingleObject(write_random, INFINITE);
+#else
 				pthread_mutex_lock(&write_random);
+#endif
 				key_mpz.Set(&n_range_start);
 				n_range_start.Add(N_SECUENTIAL_MAX);
+
+#ifdef _WIN64
+				ReleaseMutex(write_random);
+#else
 				pthread_mutex_unlock(&write_random);
+#endif
+
 			}
 			else	{
 				continue_flag = 0;
@@ -1958,14 +2356,24 @@ void *thread_process(void *vargp)	{
 											found++;
 											hextemp = key_mpz.GetBase16();
 											public_key_compressed_hex = tohex(public_key_compressed,33);
+#ifdef _WIN64
+											WaitForSingleObject(write_keys, INFINITE);
+#else
 											pthread_mutex_lock(&write_keys);
+#endif
+
 											keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
 											if(keys != NULL)	{
 												fprintf(keys,"PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_compressed_hex,public_address_compressed);
 												fclose(keys);
 											}
 											printf("\nHIT!! PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_compressed_hex,public_address_compressed);
+#ifdef _WIN64
+											ReleaseMutex(write_keys);
+#else
 											pthread_mutex_unlock(&write_keys);
+#endif
+
 											free(public_key_compressed_hex);
 											free(hextemp);
 										}
@@ -1981,14 +2389,23 @@ void *thread_process(void *vargp)	{
 											found++;
 											hextemp = key_mpz.GetBase16();
 											public_key_uncompressed_hex = tohex(public_key_uncompressed,65);
+#ifdef _WIN64
+											WaitForSingleObject(write_keys, INFINITE);
+#else
 											pthread_mutex_lock(&write_keys);
+#endif
+
 											keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
 											if(keys != NULL)	{
 												fprintf(keys,"PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,public_address_uncompressed);
 												fclose(keys);
 											}
 											printf("\nHIT!! PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,public_address_uncompressed);
+#ifdef _WIN64
+											ReleaseMutex(write_keys);
+#else
 											pthread_mutex_unlock(&write_keys);
+#endif
 											free(public_key_uncompressed_hex);
 											free(hextemp);
 										}
@@ -2010,14 +2427,24 @@ void *thread_process(void *vargp)	{
 										hexstrpoint[1] = 'x';
 										tohex_dst(rawvalue+12,20,hexstrpoint+2);
 										
+#ifdef _WIN64
+									WaitForSingleObject(write_keys, INFINITE);
+#else
 										pthread_mutex_lock(&write_keys);
+#endif
+
 										keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
 										if(keys != NULL)	{
 											fprintf(keys,"PrivKey: %s\naddress: %s\n",hextemp,hexstrpoint);
 											fclose(keys);
 										}
 										printf("\n Hit!!!! PrivKey: %s\naddress: %s\n",hextemp,hexstrpoint);
+#ifdef _WIN64
+									ReleaseMutex(write_keys);
+#else
 										pthread_mutex_unlock(&write_keys);
+#endif
+
 										free(hextemp);
 									}
 								}
@@ -2046,14 +2473,24 @@ void *thread_process(void *vargp)	{
 										found++;
 										hextemp = key_mpz.GetBase16();
 										public_key_compressed_hex = tohex(public_key_compressed,33);
+#ifdef _WIN64
+									WaitForSingleObject(write_keys, INFINITE);
+#else
 										pthread_mutex_lock(&write_keys);
+#endif
+
 										keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
 										if(keys != NULL)	{
 											fprintf(keys,"PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
 											fclose(keys);
 										}
 										printf("\nHIT!! PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
+#ifdef _WIN64
+									ReleaseMutex(write_keys);
+#else
 										pthread_mutex_unlock(&write_keys);
+#endif
+
 										free(public_key_compressed_hex);
 										free(hextemp);
 									}
@@ -2068,14 +2505,23 @@ void *thread_process(void *vargp)	{
 										found++;
 										hextemp = key_mpz.GetBase16();
 										public_key_uncompressed_hex = tohex(public_key_uncompressed,65);
+#ifdef _WIN64
+										WaitForSingleObject(write_keys, INFINITE);
+#else
 										pthread_mutex_lock(&write_keys);
+#endif
 										keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
 										if(keys != NULL)	{
 											fprintf(keys,"PrivKey: %s\npubkey: %s\n",hextemp,public_key_uncompressed_hex);
 											fclose(keys);
 										}
 										printf("\nHIT!! PrivKey: %s\npubkey: %s\n",hextemp,public_key_uncompressed_hex);
+#ifdef _WIN64
+										ReleaseMutex(write_keys);
+#else
 										pthread_mutex_unlock(&write_keys);
+#endif
+
 										free(public_key_uncompressed_hex);
 										free(hextemp);
 									}
@@ -2094,13 +2540,23 @@ void *thread_process(void *vargp)	{
 									R = secp->ComputePublicKey(&key_mpz);
 									public_key_compressed = secp->GetPublicKeyHex(true,R);
 									printf("\nHIT!! PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed);
+#ifdef _WIN64
+									WaitForSingleObject(write_keys, INFINITE);
+#else
 									pthread_mutex_lock(&write_keys);
+#endif
+
 									keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
 									if(keys != NULL)	{
 										fprintf(keys,"PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed);
 										fclose(keys);
 									}
+#ifdef _WIN64
+									ReleaseMutex(write_keys);
+#else
 									pthread_mutex_unlock(&write_keys);
+#endif
+
 									free(public_key_compressed);
 									free(hextemp);
 								}
@@ -2392,7 +2848,12 @@ int bsgs_searchbinary(struct bsgs_xvalue *buffer,char *data,int64_t _N,uint64_t 
 	return r;
 }
 
+#ifdef _WIN64
+DWORD WINAPI thread_process_bsgs(LPVOID vargp) {
+#else
 void *thread_process_bsgs(void *vargp)	{
+#endif
+
 	FILE *filekey;
 	struct tothread *tt;
 	char xpoint_raw[32],*aux_c,*hextemp;
@@ -2422,32 +2883,39 @@ void *thread_process_bsgs(void *vargp)	{
 	thread_number = tt->nt;
 	free(tt);
 
-	pthread_mutex_lock(&bsgs_thread);
-	/* we need to set our base_key to the current BSGS_CURRENT value*/
-	base_key.Set(&BSGS_CURRENT);
-	BSGS_CURRENT.Add(&BSGS_N);
+
 	
-	/*Then add BSGS_N to BSGS_CURRENT*/
 	/*
 		We do this in an atomic pthread_mutex operation to not affect others threads
 		so BSGS_CURRENT is never the same between threads
 	*/
+#ifdef _WIN64
+	WaitForSingleObject(bsgs_thread, INFINITE);
+#else
+	pthread_mutex_lock(&bsgs_thread);
+#endif
+	
+	base_key.Set(&BSGS_CURRENT);	/* we need to set our base_key to the current BSGS_CURRENT value*/
+	BSGS_CURRENT.Add(&BSGS_N);	/*Then add BSGS_N to BSGS_CURRENT*/
+#ifdef _WIN64
+	ReleaseMutex(bsgs_thread);
+#else
 	pthread_mutex_unlock(&bsgs_thread);
+#endif
 	
 	intaux.Set(&BSGS_M);
 	intaux.Mult(CPU_GRP_SIZE/2);
 	
-	flip_detector = 1000000;
+	flip_detector = FLIPBITLIMIT;
 	
 	/*
 		while base_key is less than n_range_end then:
 	*/
 	while(base_key.IsLower(&n_range_end) )	{
 		if(thread_number == 0 && flip_detector == 0)	{
-			memorycheck();
-			flip_detector = 1000000;
+			memorycheck_bsgs();
+			flip_detector = FLIPBITLIMIT;
 		}
-		
 		if(FLAGMATRIX)	{
 			aux_c = base_key.GetBase16();
 			printf("[+] Thread 0x%s \n",aux_c);
@@ -2481,7 +2949,12 @@ void *thread_process_bsgs(void *vargp)	{
 					aux_c = secp->GetPublicKeyHex(OriginalPointsBSGScompressed[k],base_point);
 					printf("[+] Publickey %s\n",aux_c);
 					
+#ifdef _WIN64
+					WaitForSingleObject(write_keys, INFINITE);
+#else
 					pthread_mutex_lock(&write_keys);
+#endif
+
 					filekey = fopen("KEYFOUNDKEYFOUND.txt","a");
 					if(filekey != NULL)	{
 						fprintf(filekey,"Key found privkey %s\nPublickey %s\n",hextemp,aux_c);
@@ -2489,8 +2962,11 @@ void *thread_process_bsgs(void *vargp)	{
 					}
 					free(hextemp);
 					free(aux_c);
+#ifdef _WIN64
+					ReleaseMutex(write_keys);
+#else
 					pthread_mutex_unlock(&write_keys);
-					
+#endif
 					bsgs_found[k] = 1;
 					salir = 1;
 					for(j = 0; j < bsgs_point_number && salir; j++)	{
@@ -2602,7 +3078,12 @@ void *thread_process_bsgs(void *vargp)	{
 									point_found = secp->ComputePublicKey(&keyfound);
 									aux_c = secp->GetPublicKeyHex(OriginalPointsBSGScompressed[k],point_found);
 									printf("[+] Publickey %s\n",aux_c);
+#ifdef _WIN64
+									WaitForSingleObject(write_keys, INFINITE);
+#else
 									pthread_mutex_lock(&write_keys);
+#endif
+
 									filekey = fopen("KEYFOUNDKEYFOUND.txt","a");
 									if(filekey != NULL)	{
 										fprintf(filekey,"Key found privkey %s\nPublickey %s\n",hextemp,aux_c);
@@ -2610,7 +3091,12 @@ void *thread_process_bsgs(void *vargp)	{
 									}
 									free(hextemp);
 									free(aux_c);
-									pthread_mutex_unlock(&write_keys);
+#ifdef _WIN64
+					ReleaseMutex(write_keys);
+#else
+					pthread_mutex_unlock(&write_keys);
+#endif
+
 									bsgs_found[k] = 1;
 									salir = 1;
 									for(j = 0; j < bsgs_point_number && salir; j++)	{
@@ -2649,17 +3135,32 @@ void *thread_process_bsgs(void *vargp)	{
 		}
 			
 		steps[thread_number]++;
+#ifdef _WIN64
+		WaitForSingleObject(bsgs_thread, INFINITE);
+#else
 		pthread_mutex_lock(&bsgs_thread);
+#endif
+
 		base_key.Set(&BSGS_CURRENT);
 		BSGS_CURRENT.Add(&BSGS_N);
+#ifdef _WIN64
+		ReleaseMutex(bsgs_thread);
+#else
 		pthread_mutex_unlock(&bsgs_thread);
+#endif
+
 		flip_detector--;
 	}
 	ends[thread_number] = 1;
 	return NULL;
 }
 
+#ifdef _WIN64
+DWORD WINAPI thread_process_bsgs_random(LPVOID vargp) {
+#else
 void *thread_process_bsgs_random(void *vargp)	{
+#endif
+
 	FILE *filekey;
 	struct tothread *tt;
 	char xpoint_raw[32],*aux_c,*hextemp;
@@ -2693,20 +3194,28 @@ void *thread_process_bsgs_random(void *vargp)	{
 		-b	bit | Min bit value | Max bit value |
 		-r	A:B | A             | B             |
 	*/
+#ifdef _WIN64
+	WaitForSingleObject(bsgs_thread, INFINITE);
+#else
 	pthread_mutex_lock(&bsgs_thread);
-	base_key.Rand(&n_range_start,&n_range_end);
-	pthread_mutex_unlock(&bsgs_thread);
+#endif
 
+	base_key.Rand(&n_range_start,&n_range_end);
+#ifdef _WIN64
+	ReleaseMutex(bsgs_thread);
+#else
+	pthread_mutex_unlock(&bsgs_thread);
+#endif
 	intaux.Set(&BSGS_M);
 	intaux.Mult(CPU_GRP_SIZE/2);
-	flip_detector = 1000000;
+	flip_detector = FLIPBITLIMIT;
 	/*
 		while base_key is less than n_range_end then:
 	*/
 	while(base_key.IsLower(&n_range_end))	{
 		if(thread_number == 0 && flip_detector == 0)	{
-			memorycheck();
-			flip_detector = 1000000;
+			memorycheck_bsgs();
+			flip_detector = FLIPBITLIMIT;
 		}
 		if(FLAGMATRIX)	{
 				aux_c = base_key.GetBase16();
@@ -2743,7 +3252,12 @@ void *thread_process_bsgs_random(void *vargp)	{
 					aux_c = secp->GetPublicKeyHex(OriginalPointsBSGScompressed[k],base_point);
 					printf("[+] Publickey %s\n",aux_c);
 					
+#ifdef _WIN64
+					WaitForSingleObject(write_keys, INFINITE);
+#else
 					pthread_mutex_lock(&write_keys);
+#endif
+
 					filekey = fopen("KEYFOUNDKEYFOUND.txt","a");
 					if(filekey != NULL)	{
 						fprintf(filekey,"Key found privkey %s\nPublickey %s\n",hextemp,aux_c);
@@ -2751,7 +3265,12 @@ void *thread_process_bsgs_random(void *vargp)	{
 					}
 					free(hextemp);
 					free(aux_c);
+#ifdef _WIN64
+					ReleaseMutex(write_keys);
+#else
 					pthread_mutex_unlock(&write_keys);
+#endif
+
 					
 					bsgs_found[k] = 1;
 					salir = 1;
@@ -2864,7 +3383,12 @@ void *thread_process_bsgs_random(void *vargp)	{
 									point_found = secp->ComputePublicKey(&keyfound);
 									aux_c = secp->GetPublicKeyHex(OriginalPointsBSGScompressed[k],point_found);
 									printf("[+] Publickey %s\n",aux_c);
+#ifdef _WIN64
+									WaitForSingleObject(write_keys, INFINITE);
+#else
 									pthread_mutex_lock(&write_keys);
+#endif
+
 									filekey = fopen("KEYFOUNDKEYFOUND.txt","a");
 									if(filekey != NULL)	{
 										fprintf(filekey,"Key found privkey %s\nPublickey %s\n",hextemp,aux_c);
@@ -2872,7 +3396,12 @@ void *thread_process_bsgs_random(void *vargp)	{
 									}
 									free(hextemp);
 									free(aux_c);
+#ifdef _WIN64
+									ReleaseMutex(write_keys);
+#else
 									pthread_mutex_unlock(&write_keys);
+#endif
+
 									bsgs_found[k] = 1;
 									salir = 1;
 									for(j = 0; j < bsgs_point_number && salir; j++)	{
@@ -2917,9 +3446,18 @@ void *thread_process_bsgs_random(void *vargp)	{
 		} // End for with k bsgs_point_number
 
 		steps[thread_number]++;
+#ifdef _WIN64
+		WaitForSingleObject(bsgs_thread, INFINITE);
+#else
 		pthread_mutex_lock(&bsgs_thread);
+#endif
 		base_key.Rand(&n_range_start,&n_range_end);
+#ifdef _WIN64
+		ReleaseMutex(bsgs_thread);
+#else
 		pthread_mutex_unlock(&bsgs_thread);
+#endif
+
 		flip_detector--;
 	}
 	ends[thread_number] = 1;
@@ -2983,12 +3521,17 @@ int bsgs_secondcheck(Int *start_range,uint32_t a,uint32_t k_index,Int *privateke
 	return found;
 }
 
+#ifdef _WIN64
+DWORD WINAPI thread_bPloadFile(LPVOID vargp) {
+#else
 void *thread_bPloadFile(void *vargp)	{
+#endif
+
 	FILE *fd;
 	char rawvalue[32],*hextemp;
 	struct bPload *tt;
 	uint32_t j;
-	uint64_t i;
+	uint64_t i,to;
 	tt = (struct bPload *)vargp;
 	fd = fopen(precalculated_p_filename,"rb");
 	if(fd == NULL)	{
@@ -2997,6 +3540,8 @@ void *thread_bPloadFile(void *vargp)	{
 	}
 	i = tt->from -1;
 	j = tt->from -1;
+	to = tt->to;
+	free(tt);
 	if(fseek(fd,(uint64_t)(i*32),SEEK_SET) != 0)	{
 		fprintf(stderr,"Can't seek the file at index %" PRIu64 ", offset %" PRIu64 "\n",i,(uint64_t)(i*32));
 		exit(0);
@@ -3009,25 +3554,60 @@ void *thread_bPloadFile(void *vargp)	{
 					memcpy(bPtable[j].value,rawvalue+16,BSGS_XVALUE_RAM);
 					bPtable[j].index = j;
 				}
-				if(!FLAGREADEDFILE2)
+				if(!FLAGREADEDFILE2)	{
+#ifdef _WIN64
+					WaitForSingleObject(bloom_bPx2nd_mutex, INFINITE);
+#else
+					pthread_mutex_lock(&bloom_bPx2nd_mutex);
+#endif
 					bloom_add(&bloom_bPx2nd, rawvalue, BSGS_BUFFERXPOINTLENGTH);
+#ifdef _WIN64
+					ReleaseMutex(bloom_bPx2nd_mutex);
+#else
+					pthread_mutex_unlock(&bloom_bPx2nd_mutex);
+#endif
+				}
 				j++;
 			}
-			if(!FLAGREADEDFILE1)
+			if(!FLAGREADEDFILE1)	{
+#ifdef _WIN64
+				WaitForSingleObject(bloom_bP_mutex[((uint8_t)rawvalue[0])], INFINITE);
+#else
+				pthread_mutex_lock(&bloom_bP_mutex[((uint8_t)rawvalue[0])]);
+#endif
 				bloom_add(&bloom_bP[((uint8_t)rawvalue[0])], rawvalue ,BSGS_BUFFERXPOINTLENGTH);
+#ifdef _WIN64
+				ReleaseMutex(bloom_bP_mutex[((uint8_t)rawvalue[0])]);
+#else
+				pthread_mutex_unlock(&bloom_bP_mutex[((uint8_t)rawvalue[0])]);
+#endif	
+			}
 			i++;
-			tt->counter++;
 		}
 		else	{
 			fprintf(stderr,"Can't read the file seen you have less items that the amount needed\n");
 			exit(0);
 		}
-	} while( i < tt->to );
+	} while( i < to );
+#ifdef _WIN64
+	WaitForSingleObject(bPload_mutex, INFINITE);
+	FINISHED_THREADS_BP++;
+	ReleaseMutex(bPload_mutex);
+#else	
+	pthread_mutex_lock(&bPload_mutex);
+	FINISHED_THREADS_BP++;
+	pthread_mutex_unlock(&bPload_mutex);
+#endif
+	
+	
+	
+#ifndef _WIN64
 	pthread_exit(NULL);
+#endif
 }
 
 void sleep_ms(int milliseconds)	{ // cross-platform sleep function
-#ifdef WIN32
+#ifdef _WIN64
     Sleep(milliseconds);
 #elif _POSIX_C_SOURCE >= 199309L
     struct timespec ts;
@@ -3041,7 +3621,11 @@ void sleep_ms(int milliseconds)	{ // cross-platform sleep function
 #endif
 }
 
+#ifdef _WIN64
+DWORD WINAPI thread_pub2rmd(LPVOID vargp) {
+#else
 void *thread_pub2rmd(void *vargp)	{
+#endif
 	FILE *fd;
 	Int key_mpz;
 	struct tothread *tt;
@@ -3061,10 +3645,19 @@ void *thread_pub2rmd(void *vargp)	{
 		}
 		else	{
 			if(n_range_start.IsLower(&n_range_end))	{
+#ifdef _WIN64
+				WaitForSingleObject(write_random, INFINITE);
+#else
 				pthread_mutex_lock(&write_random);
+#endif
 				key_mpz.Set(&n_range_start);
 				n_range_start.Add(N_SECUENTIAL_MAX);
+#ifdef _WIN64
+				ReleaseMutex(write_random);
+#else
 				pthread_mutex_unlock(&write_random);
+#endif
+
 			}
 			else	{
 				pub2rmd_continue = 0;
@@ -3101,10 +3694,20 @@ void *thread_pub2rmd(void *vargp)	{
 							printf("\nHit: Publickey found %s\n",temphex);
 							fd = fopen("KEYFOUNDKEYFOUND.txt","a+");
 							if(fd != NULL)	{
+#ifdef _WIN64
+								WaitForSingleObject(write_keys, INFINITE);
+#else
 								pthread_mutex_lock(&write_keys);
+#endif
+
 								fprintf(fd,"Publickey found %s\n",temphex);
 								fclose(fd);
+#ifdef _WIN64
+								ReleaseMutex(write_keys);
+#else
 								pthread_mutex_unlock(&write_keys);
+#endif
+
 							}
 							else	{
 								fprintf(stderr,"\nPublickey found %s\nbut the file can't be open\n",temphex);
@@ -3124,10 +3727,20 @@ void *thread_pub2rmd(void *vargp)	{
 						printf("\nHit: Publickey found %s\n",temphex);
 						fd = fopen("KEYFOUNDKEYFOUND.txt","a+");
 						if(fd != NULL)	{
+#ifdef _WIN64
+							WaitForSingleObject(write_keys, INFINITE);
+#else
 							pthread_mutex_lock(&write_keys);
+#endif
+
 							fprintf(fd,"Publickey found %s\n",temphex);
 							fclose(fd);
+#ifdef _WIN64
+							ReleaseMutex(write_keys);
+#else
 							pthread_mutex_unlock(&write_keys);
+#endif
+
 						}
 						else	{
 							fprintf(stderr,"\nPublickey found %s\nbut the file can't be open\n",temphex);
@@ -3160,11 +3773,16 @@ void init_generator()	{
 	_2Gn = secp->DoubleDirect(Gn[CPU_GRP_SIZE / 2 - 1]);
 }
 
+#ifdef _WIN64
+DWORD WINAPI thread_bPload(LPVOID vargp) {
+#else
 void *thread_bPload(void *vargp)	{
+#endif
+
 	char *hextemp,rawvalue[32];
 	struct bPload *tt;
 	uint64_t j_counter,i_counter;
-	uint64_t i,j,nbStep;
+	uint64_t i,j,nbStep,to;
 	IntGroup *grp = new IntGroup(CPU_GRP_SIZE / 2 + 1);
 	Point startP;
 	Int dx[CPU_GRP_SIZE / 2 + 1];
@@ -3175,17 +3793,23 @@ void *thread_bPload(void *vargp)	{
 	Int _p;
 	Point pp;
 	Point pn;
-	int hLength = (CPU_GRP_SIZE / 2 - 1);
+	int hLength = (CPU_GRP_SIZE / 2 - 1) ,threadid;
 	tt = (struct bPload *)vargp;
 	Int km(tt->from);
-	if(FLAGDEBUG) printf("[D] thread %i from %" PRIu64 " to %" PRIu64 "\n",tt->threadid,tt->from,tt->to);
+	threadid = tt->threadid;
+	//if(FLAGDEBUG) printf("[D] thread %i from %" PRIu64 " to %" PRIu64 "\n",threadid,tt->from,tt->to);
+	
 	i_counter = tt->from -1;
 	j_counter = tt->from -1;
 
 	nbStep = (tt->to - (tt->from-1)) / CPU_GRP_SIZE;
+	
 	if( ((tt->to - (tt->from-1)) % CPU_GRP_SIZE )  != 0)	{
 		nbStep++;
 	}
+	//if(FLAGDEBUG) printf("[D] thread %i nbStep %" PRIu64 "\n",threadid,nbStep);
+	to = tt->to;
+	free(tt);
 	km.Add((uint64_t)(CPU_GRP_SIZE / 2));
 	startP = secp->ComputePublicKey(&km);
 	grp->Set(dx);
@@ -3275,14 +3899,35 @@ void *thread_bPload(void *vargp)	{
 					memcpy(bPtable[j_counter].value,rawvalue+16,BSGS_XVALUE_RAM);
 					bPtable[j_counter].index = j_counter;
 				}
-				if(!FLAGREADEDFILE2)
+				if(!FLAGREADEDFILE2)	{
+#ifdef _WIN64
+					WaitForSingleObject(bloom_bPx2nd_mutex, INFINITE);
+#else
+					pthread_mutex_lock(&bloom_bPx2nd_mutex);
+#endif
 					bloom_add(&bloom_bPx2nd, rawvalue, BSGS_BUFFERXPOINTLENGTH);
+#ifdef _WIN64
+					ReleaseMutex(bloom_bPx2nd_mutex);
+#else
+					pthread_mutex_unlock(&bloom_bPx2nd_mutex);
+#endif
+				}
 				j_counter++;
 			}
-			if(i_counter < tt->to)	{
-				if(!FLAGREADEDFILE1)
-					bloom_add(&bloom_bP[((unsigned char)rawvalue[0])], rawvalue ,BSGS_BUFFERXPOINTLENGTH);
-				tt->counter++;
+			if(i_counter < to)	{
+				if(!FLAGREADEDFILE1)	{
+#ifdef _WIN64
+					WaitForSingleObject(bloom_bP_mutex[((uint8_t)rawvalue[0])], INFINITE);
+#else
+					pthread_mutex_lock(&bloom_bP_mutex[((uint8_t)rawvalue[0])]);
+#endif
+					bloom_add(&bloom_bP[((uint8_t)rawvalue[0])], rawvalue ,BSGS_BUFFERXPOINTLENGTH);
+#ifdef _WIN64
+					ReleaseMutex(bloom_bP_mutex[((uint8_t)rawvalue[0])]);
+#else
+					pthread_mutex_unlock(&bloom_bP_mutex[((uint8_t)rawvalue[0])]);
+#endif				
+				}
 				i_counter++;
 			}
 		}
@@ -3302,8 +3947,24 @@ void *thread_bPload(void *vargp)	{
 		pp.y.ModSub(&_2Gn.y);
 		startP = pp;
 	}
+	//if(FLAGDEBUG) printf("[D] thread %i finished\n",threadid);
 	delete grp;
+	
+#ifdef _WIN64
+	WaitForSingleObject(bPload_mutex, INFINITE);
+	FINISHED_THREADS_BP++;
+	ReleaseMutex(bPload_mutex);
+#else	
+	pthread_mutex_lock(&bPload_mutex);
+	FINISHED_THREADS_BP++;
+	pthread_mutex_unlock(&bPload_mutex);
+#endif
+	
+#ifndef _WIN64
 	pthread_exit(NULL);
+#endif
+	return NULL;
+
 }
 
 void KECCAK_256(uint8_t *source, size_t size,uint8_t *dst)	{
@@ -3317,14 +3978,19 @@ void generate_binaddress_eth(Point *publickey,unsigned char *dst_address)	{
 	unsigned char bin_publickey[64];
 	unsigned char bin_sha256[32];
 	size_t pubaddress_size = 50;
-	memset(dst_address,0,50);
+	memset(dst_address,0,32);
 	publickey->x.Get32Bytes(bin_publickey);
 	publickey->y.Get32Bytes(bin_publickey+32);
 	KECCAK_256(bin_publickey, 64, dst_address);	
 }
 
 
+#ifdef _WIN64
+DWORD WINAPI thread_process_bsgs_dance(LPVOID vargp) {
+#else
 void *thread_process_bsgs_dance(void *vargp)	{
+#endif
+
 	FILE *filekey;
 	struct tothread *tt;
 	char xpoint_raw[32],*aux_c,*hextemp;
@@ -3357,7 +4023,12 @@ void *thread_process_bsgs_dance(void *vargp)	{
 	
 	entrar = 1;
 	
+#ifdef _WIN64
+	WaitForSingleObject(bsgs_thread, INFINITE);
+#else
 	pthread_mutex_lock(&bsgs_thread);
+#endif
+
 	switch(rand() % 3)	{
 		case 0:	//TOP
 			base_key.Set(&n_range_end);
@@ -3383,13 +4054,18 @@ void *thread_process_bsgs_dance(void *vargp)	{
 			base_key.Rand(&BSGS_CURRENT,&n_range_end);
 		break;
 	}
+#ifdef _WIN64
+	ReleaseMutex(bsgs_thread);
+#else
 	pthread_mutex_unlock(&bsgs_thread);
+#endif
+
 	
 
 	intaux.Set(&BSGS_M);
 	intaux.Mult(CPU_GRP_SIZE/2);
 	
-	flip_detector = 1000000;
+	flip_detector = FLIPBITLIMIT;
 	
 	
 	/*
@@ -3397,8 +4073,8 @@ void *thread_process_bsgs_dance(void *vargp)	{
 	*/
 	while( entrar )	{
 		if(thread_number == 0 && flip_detector == 0)	{
-			memorycheck();
-			flip_detector = 1000000;
+			memorycheck_bsgs();
+			flip_detector = FLIPBITLIMIT;
 		}
 		
 		if(FLAGMATRIX)	{
@@ -3432,9 +4108,13 @@ void *thread_process_bsgs_dance(void *vargp)	{
 					hextemp = base_key.GetBase16();
 					printf("[+] Thread Key found privkey %s  \n",hextemp);
 					aux_c = secp->GetPublicKeyHex(OriginalPointsBSGScompressed[k],base_point);
-					printf("[+] Publickey %s\n",aux_c);
-					
+					printf("[+] Publickey %s\n",aux_c);				
+#ifdef _WIN64
+					WaitForSingleObject(write_keys, INFINITE);
+#else
 					pthread_mutex_lock(&write_keys);
+#endif
+
 					filekey = fopen("KEYFOUNDKEYFOUND.txt","a");
 					if(filekey != NULL)	{
 						fprintf(filekey,"Key found privkey %s\nPublickey %s\n",hextemp,aux_c);
@@ -3442,7 +4122,12 @@ void *thread_process_bsgs_dance(void *vargp)	{
 					}
 					free(hextemp);
 					free(aux_c);
+#ifdef _WIN64
+					ReleaseMutex(write_keys);
+#else
 					pthread_mutex_unlock(&write_keys);
+#endif
+
 					
 					bsgs_found[k] = 1;
 					salir = 1;
@@ -3555,7 +4240,12 @@ void *thread_process_bsgs_dance(void *vargp)	{
 									point_found = secp->ComputePublicKey(&keyfound);
 									aux_c = secp->GetPublicKeyHex(OriginalPointsBSGScompressed[k],point_found);
 									printf("[+] Publickey %s\n",aux_c);
+#ifdef _WIN64
+									WaitForSingleObject(write_keys, INFINITE);
+#else
 									pthread_mutex_lock(&write_keys);
+#endif
+
 									filekey = fopen("KEYFOUNDKEYFOUND.txt","a");
 									if(filekey != NULL)	{
 										fprintf(filekey,"Key found privkey %s\nPublickey %s\n",hextemp,aux_c);
@@ -3563,7 +4253,12 @@ void *thread_process_bsgs_dance(void *vargp)	{
 									}
 									free(hextemp);
 									free(aux_c);
+#ifdef _WIN64
+									ReleaseMutex(write_keys);
+#else
 									pthread_mutex_unlock(&write_keys);
+#endif
+
 									bsgs_found[k] = 1;
 									salir = 1;
 									for(j = 0; j < bsgs_point_number && salir; j++)	{
@@ -3604,7 +4299,12 @@ void *thread_process_bsgs_dance(void *vargp)	{
 		steps[thread_number]++;
 		flip_detector--;
 		
+#ifdef _WIN64
+		WaitForSingleObject(bsgs_thread, INFINITE);
+#else
 		pthread_mutex_lock(&bsgs_thread);
+#endif
+
 		switch(rand() % 3)	{
 			case 0:	//TOP
 				base_key.Set(&n_range_end);
@@ -3630,14 +4330,21 @@ void *thread_process_bsgs_dance(void *vargp)	{
 				base_key.Rand(&BSGS_CURRENT,&n_range_end);
 			break;
 		}
+#ifdef _WIN64
+		ReleaseMutex(bsgs_thread);
+#else
 		pthread_mutex_unlock(&bsgs_thread);
-		
+#endif		
 	}
 	ends[thread_number] = 1;
 	return NULL;
 }
 
+#ifdef _WIN64
+DWORD WINAPI thread_process_bsgs_backward(LPVOID vargp) {
+#else
 void *thread_process_bsgs_backward(void *vargp)	{
+#endif
 	FILE *filekey;
 	struct tothread *tt;
 	char xpoint_raw[32],*aux_c,*hextemp;
@@ -3668,11 +4375,21 @@ void *thread_process_bsgs_backward(void *vargp)	{
 	free(tt);
 	
 
+#ifdef _WIN64
+	WaitForSingleObject(bsgs_thread, INFINITE);
+#else
 	pthread_mutex_lock(&bsgs_thread);
+#endif
+
 	n_range_end.Sub(&BSGS_N);
 	base_key.Set(&n_range_end);
 	
+#ifdef _WIN64
+	ReleaseMutex(bsgs_thread);
+#else
 	pthread_mutex_unlock(&bsgs_thread);
+#endif
+
 	
 
 
@@ -3681,7 +4398,7 @@ void *thread_process_bsgs_backward(void *vargp)	{
 	intaux.Set(&BSGS_M);
 	intaux.Mult(CPU_GRP_SIZE/2);
 	
-	flip_detector = 1000000;
+	flip_detector = FLIPBITLIMIT;
 	entrar = 1;
 	
 	/*
@@ -3689,8 +4406,8 @@ void *thread_process_bsgs_backward(void *vargp)	{
 	*/
 	while( entrar )	{
 		if(thread_number == 0 && flip_detector == 0)	{
-			memorycheck();
-			flip_detector = 1000000;
+			memorycheck_bsgs();
+			flip_detector = FLIPBITLIMIT;
 		}
 		
 		if(FLAGMATRIX)	{
@@ -3726,7 +4443,12 @@ void *thread_process_bsgs_backward(void *vargp)	{
 					aux_c = secp->GetPublicKeyHex(OriginalPointsBSGScompressed[k],base_point);
 					printf("[+] Publickey %s\n",aux_c);
 					
+#ifdef _WIN64
+					WaitForSingleObject(write_keys, INFINITE);
+#else
 					pthread_mutex_lock(&write_keys);
+#endif
+
 					filekey = fopen("KEYFOUNDKEYFOUND.txt","a");
 					if(filekey != NULL)	{
 						fprintf(filekey,"Key found privkey %s\nPublickey %s\n",hextemp,aux_c);
@@ -3734,8 +4456,11 @@ void *thread_process_bsgs_backward(void *vargp)	{
 					}
 					free(hextemp);
 					free(aux_c);
+#ifdef _WIN64
+					ReleaseMutex(write_keys);
+#else
 					pthread_mutex_unlock(&write_keys);
-					
+#endif					
 					bsgs_found[k] = 1;
 					salir = 1;
 					for(j = 0; j < bsgs_point_number && salir; j++)	{
@@ -3847,7 +4572,12 @@ void *thread_process_bsgs_backward(void *vargp)	{
 									point_found = secp->ComputePublicKey(&keyfound);
 									aux_c = secp->GetPublicKeyHex(OriginalPointsBSGScompressed[k],point_found);
 									printf("[+] Publickey %s\n",aux_c);
+#ifdef _WIN64
+									WaitForSingleObject(write_keys, INFINITE);
+#else
 									pthread_mutex_lock(&write_keys);
+#endif
+
 									filekey = fopen("KEYFOUNDKEYFOUND.txt","a");
 									if(filekey != NULL)	{
 										fprintf(filekey,"Key found privkey %s\nPublickey %s\n",hextemp,aux_c);
@@ -3855,7 +4585,12 @@ void *thread_process_bsgs_backward(void *vargp)	{
 									}
 									free(hextemp);
 									free(aux_c);
+#ifdef _WIN64
+									ReleaseMutex(write_keys);
+#else
 									pthread_mutex_unlock(&write_keys);
+#endif
+
 									bsgs_found[k] = 1;
 									salir = 1;
 									for(j = 0; j < bsgs_point_number && salir; j++)	{
@@ -3896,7 +4631,12 @@ void *thread_process_bsgs_backward(void *vargp)	{
 		steps[thread_number]++;
 		flip_detector--;
 		
+#ifdef _WIN64
+		WaitForSingleObject(bsgs_thread, INFINITE);
+#else
 		pthread_mutex_lock(&bsgs_thread);
+#endif
+
 		n_range_end.Sub(&BSGS_N);
 		if(n_range_end.IsLower(&n_range_start))	{
 			entrar = 0;
@@ -3904,14 +4644,23 @@ void *thread_process_bsgs_backward(void *vargp)	{
 		else	{
 			base_key.Set(&n_range_end);
 		}
+#ifdef _WIN64
+		ReleaseMutex(bsgs_thread);
+#else
 		pthread_mutex_unlock(&bsgs_thread);
+#endif
+
 	}
 	ends[thread_number] = 1;
 	return NULL;
 }
 
 
+#ifdef _WIN64
+DWORD WINAPI thread_process_bsgs_both(LPVOID vargp) {
+#else
 void *thread_process_bsgs_both(void *vargp)	{
+#endif
 	FILE *filekey;
 	struct tothread *tt;
 	char xpoint_raw[32],*aux_c,*hextemp;
@@ -3944,9 +4693,14 @@ void *thread_process_bsgs_both(void *vargp)	{
 	
 	entrar = 1;
 	
+#ifdef _WIN64
+	WaitForSingleObject(bsgs_thread, INFINITE);
+#else
 	pthread_mutex_lock(&bsgs_thread);
+#endif
+
 	r = rand() % 2;
-	if(FLAGDEBUG) printf("[D] was %s\n",r ? "Bottom":"TOP");
+	//if(FLAGDEBUG) printf("[D] was %s\n",r ? "Bottom":"TOP");
 	switch(r)	{
 		case 0:	//TOP
 			base_key.Set(&n_range_end);
@@ -3968,12 +4722,17 @@ void *thread_process_bsgs_both(void *vargp)	{
 			}
 		break;
 	}
+#ifdef _WIN64
+	ReleaseMutex(bsgs_thread);
+#else
 	pthread_mutex_unlock(&bsgs_thread);
+#endif
+
 	
 	intaux.Set(&BSGS_M);
 	intaux.Mult(CPU_GRP_SIZE/2);
 	
-	flip_detector = 1000000;
+	flip_detector = FLIPBITLIMIT;
 	
 	
 	/*
@@ -3982,8 +4741,8 @@ void *thread_process_bsgs_both(void *vargp)	{
 	while( entrar )	{
 		
 		if(thread_number == 0 && flip_detector == 0)	{
-			memorycheck();
-			flip_detector = 1000000;
+			memorycheck_bsgs();
+			flip_detector = FLIPBITLIMIT;
 		}
 		if(FLAGMATRIX)	{
 			aux_c = base_key.GetBase16();
@@ -4017,8 +4776,11 @@ void *thread_process_bsgs_both(void *vargp)	{
 					printf("[+] Thread Key found privkey %s  \n",hextemp);
 					aux_c = secp->GetPublicKeyHex(OriginalPointsBSGScompressed[k],base_point);
 					printf("[+] Publickey %s\n",aux_c);
-					
+#ifdef _WIN64
+					WaitForSingleObject(write_keys, INFINITE);
+#else
 					pthread_mutex_lock(&write_keys);
+#endif
 					filekey = fopen("KEYFOUNDKEYFOUND.txt","a");
 					if(filekey != NULL)	{
 						fprintf(filekey,"Key found privkey %s\nPublickey %s\n",hextemp,aux_c);
@@ -4026,7 +4788,11 @@ void *thread_process_bsgs_both(void *vargp)	{
 					}
 					free(hextemp);
 					free(aux_c);
+#ifdef _WIN64
+					ReleaseMutex(write_keys);
+#else
 					pthread_mutex_unlock(&write_keys);
+#endif
 					
 					bsgs_found[k] = 1;
 					salir = 1;
@@ -4139,7 +4905,12 @@ void *thread_process_bsgs_both(void *vargp)	{
 									point_found = secp->ComputePublicKey(&keyfound);
 									aux_c = secp->GetPublicKeyHex(OriginalPointsBSGScompressed[k],point_found);
 									printf("[+] Publickey %s\n",aux_c);
+#ifdef _WIN64
+									WaitForSingleObject(write_keys, INFINITE);
+#else
 									pthread_mutex_lock(&write_keys);
+#endif
+
 									filekey = fopen("KEYFOUNDKEYFOUND.txt","a");
 									if(filekey != NULL)	{
 										fprintf(filekey,"Key found privkey %s\nPublickey %s\n",hextemp,aux_c);
@@ -4147,7 +4918,12 @@ void *thread_process_bsgs_both(void *vargp)	{
 									}
 									free(hextemp);
 									free(aux_c);
+#ifdef _WIN64
+									ReleaseMutex(write_keys);
+#else
 									pthread_mutex_unlock(&write_keys);
+#endif
+
 									bsgs_found[k] = 1;
 									salir = 1;
 									for(j = 0; j < bsgs_point_number && salir; j++)	{
@@ -4188,7 +4964,12 @@ void *thread_process_bsgs_both(void *vargp)	{
 		steps[thread_number]++;
 		flip_detector--;
 		
+#ifdef _WIN64
+		WaitForSingleObject(bsgs_thread, INFINITE);
+#else
 		pthread_mutex_lock(&bsgs_thread);
+#endif
+
 		switch(rand() % 2)	{
 			case 0:	//TOP
 				base_key.Set(&n_range_end);
@@ -4210,17 +4991,20 @@ void *thread_process_bsgs_both(void *vargp)	{
 				}
 			break;
 		}
+#ifdef _WIN64
+		ReleaseMutex(bsgs_thread);
+#else
 		pthread_mutex_unlock(&bsgs_thread);
-		
+#endif		
 	}
 	ends[thread_number] = 1;
 	return NULL;
 }
 
-void memorycheck()	{
+void memorycheck_bsgs()	{
 	char current_checksum[32];
 	char *hextemp,*aux_c;
-	if(FLAGDEBUG )printf("[D] Performing Memory checksum  \n");
+	//if(FLAGDEBUG )printf("[D] Performing Memory checksum  \n");
 	sha256((char*)bPtable,bytes,current_checksum);
 	if(memcmp(current_checksum,checksum,32) != 0 || memcmp(current_checksum,checksum_backup,32) != 0)	{
 		fprintf(stderr,"[E] Memory checksum mismatch, this should not happen but actually happened\nA bit in the memory was flipped by : electrical malfuntion, radiation or a cosmic ray\n");
@@ -4233,4 +5017,3 @@ void memorycheck()	{
 		exit(0);
 	}
 }
-

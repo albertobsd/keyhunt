@@ -19,7 +19,7 @@
 #include <cstring>
 #include "SECP256k1.h"
 #include "Point.h"
-#include "util.h"
+#include "../util.h"
 
 Secp256K1::Secp256K1() {
 }
@@ -104,6 +104,7 @@ Point Secp256K1::Negation(Point &p) {
   Q.x.Set(&p.x);
   Q.y.Set(&this->P);
   Q.y.Sub(&p.y);
+  Q.z.SetInt32(1);
   return Q;
 }
 
@@ -167,8 +168,8 @@ bool Secp256K1::ParsePublicKeyHex(char *str,Point &ret,bool &isCompressed) {
 }
 
 char* Secp256K1::GetPublicKeyHex(bool compressed, Point &pubKey) {
-  unsigned char publicKeyBytes[128];
-  char *ret;
+  unsigned char publicKeyBytes[65];
+  char *ret = NULL;
   if (!compressed) {
     //Uncompressed public key
     publicKeyBytes[0] = 0x4;
@@ -185,8 +186,24 @@ char* Secp256K1::GetPublicKeyHex(bool compressed, Point &pubKey) {
   return ret;
 }
 
+void Secp256K1::GetPublicKeyHex(bool compressed, Point &pubKey,char *dst){
+  unsigned char publicKeyBytes[65];
+  if (!compressed) {
+    //Uncompressed public key
+    publicKeyBytes[0] = 0x4;
+    pubKey.x.Get32Bytes(publicKeyBytes + 1);
+    pubKey.y.Get32Bytes(publicKeyBytes + 33);
+    tohex_dst((char*)publicKeyBytes,65,dst);
+  }
+  else {
+    // Compressed public key
+    publicKeyBytes[0] = pubKey.y.IsEven() ? 0x2 : 0x3;
+    pubKey.x.Get32Bytes(publicKeyBytes + 1);
+	tohex_dst((char*)publicKeyBytes,33,dst);
+  }
+}
+
 char* Secp256K1::GetPublicKeyRaw(bool compressed, Point &pubKey) {
-  unsigned char publicKeyBytes[128];
   char *ret = (char*) malloc(65);
   if(ret == NULL) {
     ::fprintf(stderr,"Can't alloc memory\n");
@@ -204,6 +221,20 @@ char* Secp256K1::GetPublicKeyRaw(bool compressed, Point &pubKey) {
     pubKey.x.Get32Bytes((unsigned char*) (ret + 1));
   }
   return ret;
+}
+
+void Secp256K1::GetPublicKeyRaw(bool compressed, Point &pubKey,char *dst) {
+  if (!compressed) {
+    //Uncompressed public key
+    dst[0] = 0x4;
+    pubKey.x.Get32Bytes((unsigned char*) (dst + 1));
+    pubKey.y.Get32Bytes((unsigned char*) (dst + 33));
+  }
+  else {
+    // Compressed public key
+    dst[0] = pubKey.y.IsEven() ? 0x2 : 0x3;
+    pubKey.x.Get32Bytes((unsigned char*) (dst + 1));
+  }
 }
 
 Point Secp256K1::AddDirect(Point &p1,Point &p2) {
@@ -451,4 +482,28 @@ bool Secp256K1::EC(Point &p) {
   _s.ModMulK1(&p.y,&p.y);
   _s.ModSub(&_p);
   return _s.IsZero(); // ( ((pow2(y) - (pow3(x) + 7)) % P) == 0 );
+}
+
+Point Secp256K1::ScalarMultiplication(Point &P,Int *scalar)	{
+	Point R,Q,T;
+	int  no_of_bits, loop;
+	no_of_bits = scalar->GetBitLength();
+	R.Clear();
+	R.z.SetInt32(1);
+	if(!scalar->IsZero())	{
+		Q.Set(P);
+		if(scalar->GetBit(0) == 1)	{
+			R.Set(P);
+		}
+		for(loop = 1; loop < no_of_bits; loop++) {
+			T = Double(Q);
+			Q.Set(T);
+			T.Set(R);
+			if(scalar->GetBit(loop)){
+				R = Add(T,Q);
+			}
+		}
+	}
+	R.Reduce();
+	return R;
 }

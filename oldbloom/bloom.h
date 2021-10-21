@@ -5,13 +5,13 @@
  *  This file is under BSD license. See LICENSE file.
  */
 
-#ifndef _BLOOM_H
-#define _BLOOM_H
+#ifndef _OLDBLOOM_H
+#define _OLDBLOOM_H
 
 #ifdef _WIN64
 #include <windows.h>
+#else
 #endif
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -23,7 +23,7 @@ extern "C" {
  * every struct must be to bloom_init().
  *
  */
-struct bloom
+struct oldbloom
 {
   // These fields are part of the public interface of this structure.
   // Client code may read these values if desired. Client code MUST NOT
@@ -41,17 +41,22 @@ struct bloom
   uint8_t major;
   uint8_t minor;
   double bpe;
+  uint8_t checksum[32];
+  uint8_t checksum_backup[32];
   uint8_t *bf;
+#ifdef _WIN64
+  HANDLE mutex;
+#else
+  pthread_mutex_t mutex;
+#endif
 };
 /*
 Customs
 */
-
 /*
-int bloom_loadcustom(struct bloom * bloom, char * filename);
-int bloom_savecustom(struct bloom * bloom, char * filename);
+int oldbloom_loadcustom(struct oldbloom * bloom, char * filename);
+int oldbloom_savecustom(struct oldbloom * bloom, char * filename);
 */
-
 
 /** ***************************************************************************
  * Initialize the bloom filter for use.
@@ -80,7 +85,7 @@ int bloom_savecustom(struct bloom * bloom, char * filename);
  *     1 - on failure
  *
  */
-int bloom_init2(struct bloom * bloom, uint64_t entries, long double error);
+int oldbloom_init2(struct oldbloom * bloom, uint64_t entries, long double error);
 
 
 /**
@@ -88,7 +93,7 @@ int bloom_init2(struct bloom * bloom, uint64_t entries, long double error);
  * Kept for compatibility with libbloom v.1. To be removed in v3.0.
  *
  */
-int bloom_init(struct bloom * bloom, uint64_t entries, long double error);
+int oldbloom_init(struct oldbloom * bloom, uint64_t entries, long double error);
 
 
 /** ***************************************************************************
@@ -108,7 +113,7 @@ int bloom_init(struct bloom * bloom, uint64_t entries, long double error);
  *    -1 - bloom not initialized
  *
  */
-int bloom_check(struct bloom * bloom, const void * buffer, int len);
+int oldbloom_check(struct oldbloom * bloom, const void * buffer, int len);
 
 
 /** ***************************************************************************
@@ -129,14 +134,14 @@ int bloom_check(struct bloom * bloom, const void * buffer, int len);
  *    -1 - bloom not initialized
  *
  */
-int bloom_add(struct bloom * bloom, const void * buffer, int len);
+int oldbloom_add(struct oldbloom * bloom, const void * buffer, int len);
 
 
 /** ***************************************************************************
  * Print (to stdout) info about this bloom filter. Debugging aid.
  *
  */
-void bloom_print(struct bloom * bloom);
+void oldbloom_print(struct oldbloom * bloom);
 
 
 /** ***************************************************************************
@@ -152,7 +157,7 @@ void bloom_print(struct bloom * bloom);
  * Return: none
  *
  */
-void bloom_free(struct bloom * bloom);
+void oldbloom_free(struct oldbloom * bloom);
 
 
 /** ***************************************************************************
@@ -170,7 +175,7 @@ void bloom_free(struct bloom * bloom);
  *     1 - on failure
  *
  */
-int bloom_reset(struct bloom * bloom);
+int oldbloom_reset(struct oldbloom * bloom);
 
 
 /** ***************************************************************************
@@ -186,7 +191,7 @@ int bloom_reset(struct bloom * bloom);
  *     1 - on failure
  *
  */
-//int bloom_save(struct bloom * bloom, char * filename);
+//int oldbloom_save(struct oldbloom * bloom, char * filename);
 
 
 /** ***************************************************************************
@@ -204,7 +209,7 @@ int bloom_reset(struct bloom * bloom);
  *     > 0 - on failure
  *
  */
-//int bloom_load(struct bloom * bloom, char * filename);
+//int oldbloom_load(struct oldbloom * bloom, char * filename);
 
 
 /** ***************************************************************************
@@ -213,7 +218,7 @@ int bloom_reset(struct bloom * bloom);
  * Return: version string
  *
  */
-const char * bloom_version();
+const char * oldbloom_version();
 
 #ifdef __cplusplus
 }

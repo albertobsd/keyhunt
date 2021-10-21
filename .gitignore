@@ -3,6 +3,8 @@ hexcharstoraw
 *.bin
 keyhunt
 KEYFOUNDKEYFOUND.txt
+*.tbl
+*.blm
 
 # Prerequisites
 *.d

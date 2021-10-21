@@ -7,6 +7,11 @@ Work for btc in this moment, only legacy Addresses that start with '1'
 
 Ethereum addresses is a work in develop
 
+
+## For regulars users
+
+Please read the CHANGELOG.md to see the new changes
+
 # Download
 
 To clone the repository:
@@ -772,7 +777,7 @@ OK at this point maybe you want to use ALL your RAM memory to solve the puzzle 1
 
 I already tested it with some **18 GB ** used with `-k 1024` and I get **~46 Petakeys/s per thread.**
 
-with 6 threads
+with **6** threads
 
 `./keyhunt -m bsgs -f tests/120.txt -b 120 -R -k 1024 -q -t 6`
 
@@ -947,35 +952,35 @@ To get optimal performance the k values need to be base 2^x values, this is 1,2,
 ### Valid n and k values
 
 ```
-+---------------------------+-------------+---------------------------+ 
-| bits | n in hexadecimal   | k max value | Amount of RAM with k = 1  | 
-| +-------------------------+-------------+---------------------------+ 
-| 20 | 0x100000             | 1 (default) |                           | 
-| 22 | 0x400000             | 2           |                           | 
-| 24 | 0x1000000            | 4           |                           | 
-| 26 | 0x4000000            | 8           |                           | 
-| 28 | 0x10000000           | 16          |                           |
-| 30 | 0x40000000           | 32          |                           | 
-| 32 | 0x100000000          | 64          |                           |
-| 34 | 0x400000000          | 128         |                           |
-| 36 | 0x1000000000         | 256         |                           |
-| 38 | 0x4000000000         | 512         |                           |
-| 40 | 0x10000000000        | 1024        |                           |
-| 42 | 0x40000000000        | 2048        |                           |
-| 44 | 0x100000000000       | 4096        | ~17 MB                    |
-| 46 | 0x400000000000       | 8192        | ~34 MB                    | 
-| 48 | 0x1000000000000      | 16384       |                           |
-| 50 | 0x4000000000000      | 32768       |                           | 
-| 52 | 0x10000000000000     | 65536       |                           |
-| 54 | 0x40000000000000     | 131072      |                           |
-| 56 | 0x100000000000000    | 262144      |                           | 
-| 58 | 0x400000000000000    | 524288      |                           |  
-| 60 | 0x1000000000000000   | 1048576     | ~4.5 GB                   | 
-| 62 | 0x4000000000000000   | 2097152     | ~9 GB                     | 
++---------------------------+-------------+---------------------------+
+| bits | n in hexadecimal   | k max value | Amount of RAM with k = 1  |
++---------------------------+-------------+---------------------------+
+|   20 |           0x100000 | 1 (default) |                           |
+|   22 |           0x400000 | 2           |                           |
+|   24 |          0x1000000 | 4           |                           |
+|   26 |          0x4000000 | 8           |                           |
+|   28 |         0x10000000 | 16          |                           |
+|   30 |         0x40000000 | 32          |                           |
+|   32 |        0x100000000 | 64          |                           |
+|   34 |        0x400000000 | 128         |                           |
+|   36 |       0x1000000000 | 256         |                           |
+|   38 |       0x4000000000 | 512         |                           |
+|   40 |      0x10000000000 | 1024        |                           |
+|   42 |      0x40000000000 | 2048        |                           |
+|   44 |     0x100000000000 | 4096        |                  ~17 MB   |
+|   46 |     0x400000000000 | 8192        |                  ~34 MB   |
+|   48 |    0x1000000000000 | 16384       |                           |
+|   50 |    0x4000000000000 | 32768       |                           |
+|   52 |   0x10000000000000 | 65536       |                           |
+|   54 |   0x40000000000000 | 131072      |                           |
+|   56 |  0x100000000000000 | 262144      |                           |
+|   58 |  0x400000000000000 | 524288      |                           |
+|   60 | 0x1000000000000000 | 1048576     |                 ~4.5 GB   |
+|   62 | 0x4000000000000000 | 2097152     |                   ~9 GB   |
 +---------------------------+-------------+---------------------------+
 ```
-
-*if you exceed the Max value of K the program can have a unknow behavior, the program can have a suboptimal performance, or in the wrong cases you can missing some hits and have an incorrect SPEED.*
+ 
+**if you exceed the Max value of K the program can have a unknow behavior, the program can have a suboptimal performance, or in the wrong cases you can missing some hits and have an incorrect SPEED.**
 
 Of course you can use a bigger number N  like 2^64 or 2^70 if you have enough memory for it.
 
@@ -1035,7 +1040,7 @@ Please note that number of threads was setting to 6 but only 4 threads were used
 The next command also solve the Puzzle 63 with more threads
 
 ```
-time ./keyhunt -m bsgs -t 6 -f tests/63.pub -n 0x400000000000000 -M -s 0 -S -k 16 -b 63 -B both
+time ./keyhunt -m bsgs -t 6 -f tests/63.pub -n 0x400000000000000 -M -s 0 -S -k 8 -b 63
 ```
 
 ```
@@ -1057,16 +1062,21 @@ Please check the video that i made to answer that https://youtu.be/MVby8mYNxbI
 
 - Is available for Windows?
 R: It can be compiled with mingw, also it can be executed in the Ubuntu shell for windows 10
+
 Updated: 
-Yes, thanks to @WanderingPhilosopher
+Yes thanks to @kanhavishva
+Available in: https://github.com/kanhavishva/keyhunt
+
+Also, thanks to @WanderingPhilosopher
 Available in: https://github.com/WanderingPhilosopher/keyhunt
 
 Also thanks to @XopMC
 Available in: https://github.com/XopMC/keyhunt-win
 
+
 - Why i need the bPfile.bin ?
 R: Usually you don't need it, but if you are going to run and stop the program several times is faster load the data from a file.
-NOTE: *bPfile.bin will discontinued in some future version, the current versios have the `-S` to SAVE the FILES or READ from IT if they already exist*
+**NOTE: bPfile.bin will discontinued in some future version, the current versios have the `-S` to SAVE the FILES or READ from IT if they already exist**
 
 - The bPfile gives me extra speed?
 R: No, is just to help to speed up a little the load process and no more, but the final speed of keys per second is going to be the same without this file.
@@ -1075,13 +1085,14 @@ R: No, is just to help to speed up a little the load process and no more, but th
 ## Dependencies
 - pthread
 
-Tested under Debian, Termux, Ubuntu Shell for windows 10
+Tested under Debian, Ubuntu Shell for windows 10
 
 ## Thanks
 
 This program was possible thanks to 
 - IceLand
 - kanhavishva
+- JLP for part of his code
 - All the group of CryptoHunters that made this program possible
 - All the users that tested it, report bugs, requested improvements and shared his knowledge.
 

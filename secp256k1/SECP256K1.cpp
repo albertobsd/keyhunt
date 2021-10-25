@@ -20,6 +20,8 @@
 #include "SECP256k1.h"
 #include "Point.h"
 #include "../util.h"
+#include "../hash/sha256.h"
+#include "../hash/ripemd160.h"
 
 Secp256K1::Secp256K1() {
 }
@@ -507,3 +509,214 @@ Point Secp256K1::ScalarMultiplication(Point &P,Int *scalar)	{
 	R.Reduce();
 	return R;
 }
+
+#define KEYBUFFCOMP(buff,p) \
+(buff)[0] = ((p).x.bits[7] >> 8) | ((uint32_t)(0x2 + (p).y.IsOdd()) << 24); \
+(buff)[1] = ((p).x.bits[6] >> 8) | ((p).x.bits[7] <<24); \
+(buff)[2] = ((p).x.bits[5] >> 8) | ((p).x.bits[6] <<24); \
+(buff)[3] = ((p).x.bits[4] >> 8) | ((p).x.bits[5] <<24); \
+(buff)[4] = ((p).x.bits[3] >> 8) | ((p).x.bits[4] <<24); \
+(buff)[5] = ((p).x.bits[2] >> 8) | ((p).x.bits[3] <<24); \
+(buff)[6] = ((p).x.bits[1] >> 8) | ((p).x.bits[2] <<24); \
+(buff)[7] = ((p).x.bits[0] >> 8) | ((p).x.bits[1] <<24); \
+(buff)[8] = 0x00800000 | ((p).x.bits[0] <<24); \
+(buff)[9] = 0; \
+(buff)[10] = 0; \
+(buff)[11] = 0; \
+(buff)[12] = 0; \
+(buff)[13] = 0; \
+(buff)[14] = 0; \
+(buff)[15] = 0x108;
+
+#define KEYBUFFUNCOMP(buff,p) \
+(buff)[0] = ((p).x.bits[7] >> 8) | 0x04000000; \
+(buff)[1] = ((p).x.bits[6] >> 8) | ((p).x.bits[7] <<24); \
+(buff)[2] = ((p).x.bits[5] >> 8) | ((p).x.bits[6] <<24); \
+(buff)[3] = ((p).x.bits[4] >> 8) | ((p).x.bits[5] <<24); \
+(buff)[4] = ((p).x.bits[3] >> 8) | ((p).x.bits[4] <<24); \
+(buff)[5] = ((p).x.bits[2] >> 8) | ((p).x.bits[3] <<24); \
+(buff)[6] = ((p).x.bits[1] >> 8) | ((p).x.bits[2] <<24); \
+(buff)[7] = ((p).x.bits[0] >> 8) | ((p).x.bits[1] <<24); \
+(buff)[8] = ((p).y.bits[7] >> 8) | ((p).x.bits[0] <<24); \
+(buff)[9] = ((p).y.bits[6] >> 8) | ((p).y.bits[7] <<24); \
+(buff)[10] = ((p).y.bits[5] >> 8) | ((p).y.bits[6] <<24); \
+(buff)[11] = ((p).y.bits[4] >> 8) | ((p).y.bits[5] <<24); \
+(buff)[12] = ((p).y.bits[3] >> 8) | ((p).y.bits[4] <<24); \
+(buff)[13] = ((p).y.bits[2] >> 8) | ((p).y.bits[3] <<24); \
+(buff)[14] = ((p).y.bits[1] >> 8) | ((p).y.bits[2] <<24); \
+(buff)[15] = ((p).y.bits[0] >> 8) | ((p).y.bits[1] <<24); \
+(buff)[16] = 0x00800000 | ((p).y.bits[0] <<24); \
+(buff)[17] = 0; \
+(buff)[18] = 0; \
+(buff)[19] = 0; \
+(buff)[20] = 0; \
+(buff)[21] = 0; \
+(buff)[22] = 0; \
+(buff)[23] = 0; \
+(buff)[24] = 0; \
+(buff)[25] = 0; \
+(buff)[26] = 0; \
+(buff)[27] = 0; \
+(buff)[28] = 0; \
+(buff)[29] = 0; \
+(buff)[30] = 0; \
+(buff)[31] = 0x208;
+
+#define KEYBUFFSCRIPT(buff,h) \
+(buff)[0] = 0x00140000 | (uint32_t)h[0] << 8 | (uint32_t)h[1]; \
+(buff)[1] = (uint32_t)h[2] << 24 | (uint32_t)h[3] << 16 | (uint32_t)h[4] << 8 | (uint32_t)h[5];\
+(buff)[2] = (uint32_t)h[6] << 24 | (uint32_t)h[7] << 16 | (uint32_t)h[8] << 8 | (uint32_t)h[9];\
+(buff)[3] = (uint32_t)h[10] << 24 | (uint32_t)h[11] << 16 | (uint32_t)h[12] << 8 | (uint32_t)h[13];\
+(buff)[4] = (uint32_t)h[14] << 24 | (uint32_t)h[15] << 16 | (uint32_t)h[16] << 8 | (uint32_t)h[17];\
+(buff)[5] = (uint32_t)h[18] << 24 | (uint32_t)h[19] << 16 | 0x8000; \
+(buff)[6] = 0; \
+(buff)[7] = 0; \
+(buff)[8] = 0; \
+(buff)[9] = 0; \
+(buff)[10] = 0; \
+(buff)[11] = 0; \
+(buff)[12] = 0; \
+(buff)[13] = 0; \
+(buff)[14] = 0; \
+(buff)[15] = 0xB0;
+
+
+void Secp256K1::GetHash160(int type,bool compressed,
+  Point &k0,Point &k1,Point &k2,Point &k3,
+  uint8_t *h0,uint8_t *h1,uint8_t *h2,uint8_t *h3) {
+
+#ifdef WIN64
+  __declspec(align(16)) unsigned char sh0[64];
+  __declspec(align(16)) unsigned char sh1[64];
+  __declspec(align(16)) unsigned char sh2[64];
+  __declspec(align(16)) unsigned char sh3[64];
+#else
+  unsigned char sh0[64] __attribute__((aligned(16)));
+  unsigned char sh1[64] __attribute__((aligned(16)));
+  unsigned char sh2[64] __attribute__((aligned(16)));
+  unsigned char sh3[64] __attribute__((aligned(16)));
+#endif
+
+  switch (type) {
+
+  case P2PKH:
+  case BECH32:
+  {
+
+    if (!compressed) {
+
+      uint32_t b0[32];
+      uint32_t b1[32];
+      uint32_t b2[32];
+      uint32_t b3[32];
+
+      KEYBUFFUNCOMP(b0, k0);
+      KEYBUFFUNCOMP(b1, k1);
+      KEYBUFFUNCOMP(b2, k2);
+      KEYBUFFUNCOMP(b3, k3);
+
+      sha256sse_2B(b0, b1, b2, b3, sh0, sh1, sh2, sh3);
+      ripemd160sse_32(sh0, sh1, sh2, sh3, h0, h1, h2, h3);
+
+    } else {
+
+      uint32_t b0[16];
+      uint32_t b1[16];
+      uint32_t b2[16];
+      uint32_t b3[16];
+
+      KEYBUFFCOMP(b0, k0);
+      KEYBUFFCOMP(b1, k1);
+      KEYBUFFCOMP(b2, k2);
+      KEYBUFFCOMP(b3, k3);
+
+      sha256sse_1B(b0, b1, b2, b3, sh0, sh1, sh2, sh3);
+      ripemd160sse_32(sh0, sh1, sh2, sh3, h0, h1, h2, h3);
+
+    }
+
+  }
+  break;
+
+  case P2SH:
+  {
+
+    unsigned char kh0[20];
+    unsigned char kh1[20];
+    unsigned char kh2[20];
+    unsigned char kh3[20];
+
+    GetHash160(P2PKH,compressed,k0,k1,k2,k3,kh0,kh1,kh2,kh3);
+
+    // Redeem Script (1 to 1 P2SH)
+    uint32_t b0[16];
+    uint32_t b1[16];
+    uint32_t b2[16];
+    uint32_t b3[16];
+
+    KEYBUFFSCRIPT(b0, kh0);
+    KEYBUFFSCRIPT(b1, kh1);
+    KEYBUFFSCRIPT(b2, kh2);
+    KEYBUFFSCRIPT(b3, kh3);
+
+    sha256sse_1B(b0, b1, b2, b3, sh0, sh1, sh2, sh3);
+    ripemd160sse_32(sh0, sh1, sh2, sh3, h0, h1, h2, h3);
+
+  }
+  break;
+
+  }
+}
+
+void Secp256K1::GetHash160(int type, bool compressed, Point &pubKey, unsigned char *hash) {
+
+  unsigned char shapk[64];
+
+  switch (type) {
+
+  case P2PKH:
+  case BECH32:
+  {
+    unsigned char publicKeyBytes[128];
+
+    if (!compressed) {
+
+      // Full public key
+      publicKeyBytes[0] = 0x4;
+      pubKey.x.Get32Bytes(publicKeyBytes + 1);
+      pubKey.y.Get32Bytes(publicKeyBytes + 33);
+      sha256_65(publicKeyBytes, shapk);
+
+    } else {
+
+      // Compressed public key
+      publicKeyBytes[0] = pubKey.y.IsEven() ? 0x2 : 0x3;
+      pubKey.x.Get32Bytes(publicKeyBytes + 1);
+      sha256_33(publicKeyBytes, shapk);
+
+    }
+
+    ripemd160_32(shapk, hash);
+  }
+  break;
+
+  case P2SH:
+  {
+
+    // Redeem Script (1 to 1 P2SH)
+    unsigned char script[64];
+
+    script[0] = 0x00;  // OP_0
+    script[1] = 0x14;  // PUSH 20 bytes
+    GetHash160(P2PKH, compressed, pubKey, script + 2);
+
+    sha256(script, 22, shapk);
+    ripemd160_32(shapk, hash);
+
+  }
+  break;
+
+  }
+
+}
+

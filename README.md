@@ -1,12 +1,16 @@
 # keyhunt
+
 Tool for hunt privatekeys for crypto currencies that use secp256k1  elliptic curve
 
 Post: https://bitcointalk.org/index.php?topic=5322040.0
 
-Work for btc in this moment, only legacy Addresses that start with '1'
+Work for Bitcoin
+- address compress or uncompress
+- hashes rmd160 compress or uncompress
+- publickeys compress or uncompress
 
-Ethereum addresses is a work in develop
-
+Work for Ethereum
+- address
 
 ## For regulars users
 
@@ -25,28 +29,38 @@ don't forget change to the keyhunt directory
 `cd keyhunt`
 
 # How to build
+
 First compile:
 
-`make`
+```
+make
+```
 
 and then execute with `-h` to see the help
 
-```./keyhunt -h```
+```
+./keyhunt -h
+```
 
 
 ## ¡Beta!
-This version is still a *beta* version, there are a lot of things that can be fail. And absoluly there are some bugs 
+
+This version is still a **beta** version, there are a lot of things that can be fail. And absoluly there are some bugs 
 
 # Modes
 
 Keyhunt can work in diferents ways at different speeds.
+
 The current availables modes are:
 - address
 - rmd160
 - xpoint
 - bsgs
 
-you can select them with `-m`
+## Experimental modes
+
+- minikeys
+- pub2rmd
 
 ## address mode
 
@@ -496,6 +510,7 @@ Output:
 
 
 ## pub2rmd mode
+
 This method is made to try to get the puzzles publickey key it works a little more faster because it skip the EC Operations
 
 The input file need to have the hash RMD160 of the address without publickey leaked:
@@ -1049,6 +1064,148 @@ user    2m15.706s
 sys     0m13.009s
 ```
 
+## minikeys Mode
+
+This mode is some experimental.
+
+For the moment only Minikeys of 22 characters are available
+
+The minikey are generated from a 16 byte buffer using the base58 encode funtion using the next string `S23456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz` any sugestion please let me know.
+
+
+
+This minikeys are generated in a deterministic way using one Intenger number from `1` to `0x100000000000000000000000000000000` that is why the range is from `-r 1:100000000000000000000000000000000`
+
+
+
+Command:
+
+```
+./keyhunt -m minikeys -f minkey_h160.txt -r 1:100000000000000000000000000000000 -n 0x1000000 -M
+```
+
+Output:
+
+```
+[+] Version 0.2.211024 Chocolate ¡Beta!, developed by AlbertoBSD
+[+] Mode minikeys
+[+] Matrix screen
+[+] Stride : 1
+[+] Opening file minkey_h160.txt
+[+] N = 0x1000000
+[+] Range
+[+] -- from : 0x1
+[+] -- to   : 0x100000000000000000000000000000000
+[+] Allocating memory for 61560 elements: 1.17 MB
+[+] Bloom filter for 61560 elements.
+[+] Loading data to the bloomfilter total: 0.21 MB
+[+] Bloomfilter completed
+[+] Sorting data ... done! 61560 values were loaded and sorted
+[+] Base key: 0x1  => S8AQGAut7N92awznwCnjuR
+[+] Base key: 0x1000001  => S8AQGFk5PpkiBMwcrkM943
+[+] Base key: 0x2000001  => S8AQGLaGgHNPmmtSnHuYCf
+[+] Total 141312 keys in 30 seconds: 4710 keys/s
+```
+
+Please note that total keys tested at the moment are only 141312, those are the valid keys that pass the check-test.
+
+the input file need to be a list of the RMD160 hash from the target address, example `tests/minikeys.txt`
+
+```
+da88f47133b93a1cc0c9dcf0163b2b48e2e0a20a
+24b6ed321b3ccfe1fc2e6860e3f89d4d5ab257da
+2312e3b76db5b91c5ad34eaea194c2ee6ece6f13
+```
+
+command
+
+```
+./keyhunt -m minikeys -f tests/minikeys.txt -r 1:100000000000000000000000000000000 -n 0x1000000 -M
+```
+
+output:
+
+```
+[+] Version 0.2.211024 Chocolate ¡Beta!, developed by AlbertoBSD
+[+] Mode minikeys
+[+] Matrix screen
+[+] Stride : 1
+[+] Opening file tests/minikeys.txt
+[+] N = 0x1000000
+[+] Range
+[+] -- from : 0x1
+[+] -- to   : 0x100000000000000000000000000000000
+[+] Allocating memory for 3 elements: 0.00 MB
+[+] Bloom filter for 3 elements.
+[+] Loading data to the bloomfilter total: 0.00 MB
+[+] Bloomfilter completed
+[+] Sorting data ... done! 3 values were loaded and sorted
+[+] Base key: 0x1  => S8AQGAut7N92awznwCnjuR
+
+HIT!! PrivKey: c4302796060742e218520bc5a4d3282ad4b8e3bf32ea2faeb1cc75cbbda33eed
+pubkey: 04fe4fee3a7f5fbc9289e1857cb2a84e0fc532a470b37635f419fdfcac9379c4c7fe2c29d36add668f38ddc18e0064a18f22467dd02a902406b7aa61112eec5249
+minikey: SUCsVzCwXiNaW4bnBuzx8Q
+address: 14CTHBV5S2fd9DPbKmMhrAe5se54Q85wqN
+
+HIT!! PrivKey: 3711a88da553ea782f9f8935cc10a9642191041e6d8e22ba1e48b7abf613047d
+pubkey: 04c5180db6ad25ba53d0c39ca95925f8554e71fbf15024f64cd105be307633975bc54ad824fcb85682053158a4a22ea4c61267a4d53b23b0c114d32ad581a5fe30
+minikey: SUpxjSMeoHoXuTVhy9VYQm
+address: 14M8TsBG3ntFiTm8XcDiBmHaECfZarfSw8
+
+HIT!! PrivKey: 82d02f3df7b73d7e6d8be2e3636461d3680263a07bd2e63e92e855840ecc2740
+pubkey: 04e6ebe21d214d13e547c74c8bf81fdf85cee2ba5d80e3ff1d4d0ef2d4542da9f938ae79f4c6f07f7ad4205794fc5e6e613146e6d218d5ddcb06377765a00baf7e
+minikey: SNQeNHzJXCJ3PcFUKB7bNv
+address: 1LvWNcKf4LuWcyCmZkEev8hMusQ4qr55L8
+^C
+```
+
+
+
+# Ethereum
+
+Finally ethreum address are supported, for ethreum there are no modes exect for address.
+
+if you have publickeys for ethereum you can use xpoint or bsgs mode.
+
+to test the functionality of ethereum you can use the sample file `tests/1to32.eth`
+
+command: 
+
+```
+./keyhunt -c eth -f tests/1to32.eth -r 1:100000000 -M
+```
+
+output:
+
+```
+[+] Version 0.2.211024 Chocolate ¡Beta!, developed by AlbertoBSD
+[+] Setting search for ETH adddress.
+[+] Matrix screen
+[+] Stride : 1
+[+] Opening file tests/1to32.eth
+[+] N = 0x100000000
+[+] Range
+[+] -- from : 0x1
+[+] -- to   : 0x100000000
+[+] Allocating memory for 32 elements: 0.00 MB
+[+] Bloom filter for 32 elements.
+[+] Loading data to the bloomfilter total: 0.00 MB
+[+] Bloomfilter completed
+[+] Sorting data ... done! 32 values were loaded and sorted
+Base key: 1 thread 0
+
+ Hit!!!! PrivKey: 1
+address: 0x7e5f4552091a69125d5dfcb7b8c2659029395bdf
+
+ Hit!!!! PrivKey: 3
+address: 0x6813eb9362372eef6200f3b1dbc3f819671cba69
+
+ Hit!!!! PrivKey: 7
+address: 0xd41c057fd1c78805aac12b0a94a405c0461a6fbb
+....
+```
+
+
 
 ## FAQ
 
@@ -1084,7 +1241,6 @@ R: No, is just to help to speed up a little the load process and no more, but th
 
 ## Dependencies
 - pthread
-
 Tested under Debian, Ubuntu Shell for windows 10
 
 ## Thanks

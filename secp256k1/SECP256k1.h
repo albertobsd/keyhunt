@@ -21,6 +21,12 @@
 #include "Point.h"
 #include <vector>
 
+// Address type
+#define P2PKH  0
+#define P2SH   1
+#define BECH32 2
+
+
 class Secp256K1 {
 
 public:
@@ -41,6 +47,13 @@ public:
   void GetPublicKeyRaw(bool compressed, Point &pubKey,char *dst);
   
   bool ParsePublicKeyHex(char *str,Point &p,bool &isCompressed);
+
+  void GetHash160(int type,bool compressed,
+    Point &k0, Point &k1, Point &k2, Point &k3,
+    uint8_t *h0, uint8_t *h1, uint8_t *h2, uint8_t *h3);
+
+  void GetHash160(int type,bool compressed, Point &pubKey, unsigned char *hash);
+
 
   Point Add(Point &p1, Point &p2);
   Point Add2(Point &p1, Point &p2);

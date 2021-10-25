@@ -14,7 +14,6 @@ email: alberto.bsd@gmail.com
 #include <inttypes.h>
 #include "base58/libbase58.h"
 #include "rmd160/rmd160.h"
-#include "sha256/sha256.h"
 #include "oldbloom/oldbloom.h"
 #include "bloom/bloom.h"
 #include "sha3/sha3.h"
@@ -26,6 +25,8 @@ email: alberto.bsd@gmail.com
 #include "secp256k1/IntGroup.h"
 #include "secp256k1/Random.h"
 
+#include "hash/sha256.h"
+#include "hash/ripemd160.h"
 
 
 #ifdef _WIN64
@@ -46,6 +47,7 @@ email: alberto.bsd@gmail.com
 #define MODE_BSGS 2
 #define MODE_RMD160 3
 #define MODE_PUB2RMD 4
+#define MODE_MINIKEYS 5
 
 
 #define SEARCH_UNCOMPRESS 0
@@ -105,8 +107,9 @@ struct __attribute__((__packed__)) publickey {
 };
 #endif
 
-
-const char *version = "0.2.211018 Chocolate ¡Beta!";
+const char *Ccoinbuffer = "S23456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+	
+const char *version = "0.2.211024 Chocolate ¡Beta!";
 
 #define CPU_GRP_SIZE 1024
 
@@ -141,6 +144,7 @@ int bsgs_searchbinary(struct bsgs_xvalue *arr,char *data,int64_t _N,uint64_t *r_
 int bsgs_secondcheck(Int *start_range,uint32_t a,uint32_t k_index,Int *privatekey);
 
 #ifdef _WIN64
+DWORD WINAPI thread_process_minikeys(LPVOID vargp);
 DWORD WINAPI thread_process(LPVOID vargp);
 DWORD WINAPI thread_process_bsgs(LPVOID vargp);
 DWORD WINAPI thread_process_bsgs_backward(LPVOID vargp);
@@ -151,6 +155,7 @@ DWORD WINAPI thread_bPload(LPVOID vargp);
 DWORD WINAPI thread_bPloadFile(LPVOID vargp);
 DWORD WINAPI thread_pub2rmd(LPVOID vargp);
 #else
+void *thread_process_minikeys(void *vargp);	
 void *thread_process(void *vargp);
 void *thread_process_bsgs(void *vargp);
 void *thread_process_bsgs_backward(void *vargp);
@@ -164,10 +169,14 @@ void *thread_pub2rmd(void *vargp);
 
 
 char *publickeytohashrmd160(char *pkey,int length);
+void publickeytohashrmd160_dst(char *pkey,int length,char *dst);
 char *pubkeytopubaddress(char *pkey,int length);
+void pubkeytopubaddress_dst(char *pkey,int length,char *dst);
+void rmd160toaddress_dst(char *rmd,char *dst);
+
 
 void KECCAK_256(uint8_t *source, size_t size,uint8_t *dst);
-void generate_binaddress_eth(Point *publickey,unsigned char *dst_address);
+void generate_binaddress_eth(Point &publickey,unsigned char *dst_address);
 
 void memorycheck_bsgs();
 
@@ -176,7 +185,7 @@ char *bit_range_str_min;
 char *bit_range_str_max;
 
 const char *bsgs_modes[5] {"secuential","backward","both","random","dance"};
-const char *modes[5] = {"xpoint","address","bsgs","rmd160","pub2rmd"};
+const char *modes[6] = {"xpoint","address","bsgs","rmd160","pub2rmd","minikeys"};
 const char *cryptos[3] = {"btc","eth","all"};
 const char *publicsearch[3] = {"uncompress","compress","both"};
 const char *default_filename = "addresses.txt";
@@ -212,9 +221,9 @@ unsigned int *ends = NULL;
 uint64_t N = 0;
 
 
-uint64_t N_SECUENTIAL_MAX = 0xffffffff;
-uint64_t DEBUGCOUNT = 0x100000;
-
+uint64_t N_SECUENTIAL_MAX = 0x100000000;
+uint64_t DEBUGCOUNT = 0x400;
+uint64_t u64range;
 
 Int OUTPUTSECONDS;
 
@@ -235,6 +244,7 @@ int FLAGREADEDFILE3 = 0;
 int FLAGUPDATEFILE1 = 0;
 int FLAGUPDATEFILE2 = 0;
 
+int FLAGSTRIDE = 0;
 int FLAGSEARCH = 2;
 int FLAGBITRANGE = 0;
 int FLAGRANGE = 0;
@@ -255,6 +265,8 @@ char *str_N;
 char **vanities;
 char *range_start;
 char *range_end;
+char *str_stride;
+Int stride;
 
 uint64_t BSGS_XVALUE_RAM = 6;
 uint64_t BSGS_BUFFERXPOINTLENGTH = 32;
@@ -295,7 +307,6 @@ uint64_t bloom_bP_totalbytes = 0;
 char *precalculated_p_filename;
 uint64_t bsgs_m = 4194304;
 uint64_t bsgs_m2;
-
 unsigned long int bsgs_aux;
 uint32_t bsgs_point_number;
 
@@ -366,7 +377,6 @@ int main(int argc, char **argv)	{
 	int s;
 #endif
 
-	
 	srand (time(NULL));
 
 	secp = new Secp256K1();
@@ -384,7 +394,7 @@ int main(int argc, char **argv)	{
 #endif
 	
 
-	while ((c = getopt(argc, argv, "dehMqRwzSB:b:c:E:f:k:l:m:n:p:r:s:t:v:V:G:")) != -1) {
+	while ((c = getopt(argc, argv, "dehMqRwzSB:b:c:E:f:I:k:l:m:N:n:p:r:s:t:v:V:G:")) != -1) {
 		switch(c) {
 			case 'h':
 				printf("\nUsage:\n-h\t\tshow this help\n");
@@ -394,7 +404,7 @@ int main(int argc, char **argv)	{
 				printf("-c crypto\tSearch for specific crypo. < btc, eth, all > valid only w/ -m address \n");
 				printf("\t\tYour file MUST be sordted if no you are going to lose collisions\n");
 				printf("-f file\t\tSpecify filename with addresses or xpoints or uncompressed public keys\n");
-				printf("-g count\tJust for the stats, mark as counted every debugcount keys	\n");
+				printf("-I stride\tStride for xpoint, rmd160 and address, this option don't work with bsgs	\n");
 				printf("-k value\tUse this only with bsgs mode, k value is factor for M, more speed but more RAM use wisely\n");
 				printf("-l look\tWhat type of address/hash160 are you looking for < compress , uncompress , both>\n");
 				printf("-m mode\t\tmode of search for cryptos. ( bsgs , xpoint , rmd160 , address ) default: address (more slow)\n");
@@ -484,6 +494,11 @@ int main(int argc, char **argv)	{
 				FLAGFILE = 1;
 				filename = optarg;
 			break;
+			case 'I':
+				FLAGSTRIDE = 1;
+				str_stride = optarg;
+			break;
+						
 
 			case 'k':
 				KFACTOR = (int)strtol(optarg,NULL,10);
@@ -514,7 +529,7 @@ int main(int argc, char **argv)	{
 				printf("[+] Matrix screen\n");
 			break;
 			case 'm':
-				switch(indexOf(optarg,modes,5)) {
+				switch(indexOf(optarg,modes,6)) {
 					case MODE_XPOINT: //xpoint
 						FLAGMODE = MODE_XPOINT;
 						printf("[+] Mode xpoint\n");
@@ -529,11 +544,16 @@ int main(int argc, char **argv)	{
 					break;
 					case MODE_RMD160:
 						FLAGMODE = MODE_RMD160;
+						FLAGCRYPTO = CRYPTO_BTC;
 						printf("[+] Mode rmd160\n");
 					break;
 					case MODE_PUB2RMD:
 						FLAGMODE = MODE_PUB2RMD;
 						printf("[+] Mode pub2rmd\n");
+					break;
+					case MODE_MINIKEYS:
+						FLAGMODE = MODE_MINIKEYS;
+						printf("[+] Mode minikeys\n");
 					break;
 					default:
 						fprintf(stderr,"[E] Unknow mode value %s\n",optarg);
@@ -545,6 +565,7 @@ int main(int argc, char **argv)	{
 				FLAG_N = 1;
 				str_N = optarg;
 			break;
+
 			case 'q':
 				FLAGQUIET	= 1;
 				printf("[+] Quiet thread output\n");
@@ -708,11 +729,27 @@ int main(int argc, char **argv)	{
 				FLAGRAWDATA = 1;
 			break;
 			default:
-				printf("[E] Unknow opcion -%c\n",c);
+				fprintf(stderr,"[E] Unknow opcion -%c\n",c);
 			break;
 		}
 	}
-	
+	if( ( FLAGBSGSMODE == MODE_BSGS || FLAGBSGSMODE == MODE_PUB2RMD || FLAGBSGSMODE == MODE_MINIKEYS ) && FLAGSTRIDE == 1)	{
+		fprintf(stderr,"[E] Stride doesn't work with BSGS, pub2rmd or minikeys\n");
+		exit(0);
+	}
+	if(FLAGSTRIDE)	{
+		if(str_stride[0] == '0' && str_stride[1] == 'x')	{
+			stride.SetBase16(str_stride+2);
+		}
+		else{
+			stride.SetBase16(str_stride);
+		}
+		printf("[+] Stride : %s\n",stride.GetBase10());
+	}
+	else	{
+		FLAGSTRIDE = 1;
+		stride.Set(&ONE);
+	}
 	init_generator();
 	if(FLAGMODE == MODE_BSGS )	{
 		printf("[+] Mode BSGS %s\n",bsgs_modes[FLAGBSGSMODE]);
@@ -730,6 +767,13 @@ int main(int argc, char **argv)	{
 		FLAGCRYPTO = CRYPTO_BTC;
 		printf("[+] Setting search for btc adddress\n");
 	}
+	/*
+	if(FLAGCRYPTO == CRYPTO_ETH)	{
+		FLAGCRYPTO = CRYPTO_BTC;
+		printf("[+] Setting search for btc adddress\n");
+		
+	}
+	*/
 	if(FLAGRANGE) {
 		n_range_start.SetBase16(range_start);
 		if(n_range_start.IsZero())	{
@@ -793,14 +837,30 @@ int main(int argc, char **argv)	{
 			if(N_SECUENTIAL_MAX < 1024)	{
 				fprintf(stderr,"[I] n value need to be equal or great than 1024, back to defaults\n");
 				FLAG_N = 0;
-				N_SECUENTIAL_MAX = 0xFFFFFFFF;
+				N_SECUENTIAL_MAX = 0x100000000;
 			}
 			if(N_SECUENTIAL_MAX % 1024 != 0)	{
 				fprintf(stderr,"[I] n value need to be multiplier of  1024\n");
 				FLAG_N = 0;
-				N_SECUENTIAL_MAX = 0xFFFFFFFF;
+				N_SECUENTIAL_MAX = 0x100000000;
 			}
 		}
+		printf("[+] N = %p\n",N_SECUENTIAL_MAX);
+
+		if(FLAGBITRANGE)	{	// Bit Range
+			printf("[+] Bit Range %i\n",bitrange);
+
+		}
+		else	{
+			printf("[+] Range \n");
+		}
+		
+		hextemp = n_range_start.GetBase16();
+		printf("[+] -- from : 0x%s\n",hextemp);
+		free(hextemp);
+		hextemp = n_range_end.GetBase16();
+		printf("[+] -- to   : 0x%s\n",hextemp);
+		free(hextemp);
 		
 		aux =(char*) malloc(1000);
 		if(aux == NULL)	{
@@ -808,23 +868,31 @@ int main(int argc, char **argv)	{
 		}
 		switch(FLAGMODE)	{
 			case MODE_ADDRESS:
-				while(!feof(fd))	{
-					hextemp = fgets(aux,998,fd);
-					if(hextemp == aux)	{
-						trim(aux," \t\n\r");
-						r = strlen(aux);
-						if(r > 10)	{ //Any length for invalid Address?
-							if(r > MAXLENGTHADDRESS)	{
-								MAXLENGTHADDRESS = r;
+				/* We need to count how many lines are in the file */
+					while(!feof(fd))	{
+						hextemp = fgets(aux,998,fd);
+						if(hextemp == aux)	{
+							trim(aux," \t\n\r");
+							r = strlen(aux);
+							if(r > 10)	{ //Any length for invalid Address?
+								if(r > MAXLENGTHADDRESS)	{
+									MAXLENGTHADDRESS = r;
+								}
+								N++;
 							}
-							N++;
 						}
 					}
-				}
-				MAXLENGTHADDRESS = 32;
+					if(FLAGCRYPTO == CRYPTO_BTC)	{
+						MAXLENGTHADDRESS = 32;
+					}
+					if(FLAGCRYPTO == CRYPTO_ETH)	{
+						MAXLENGTHADDRESS = 20;		/*20 bytes beacuase we only need the data in binary*/
+					}				
 			break;
+			case MODE_MINIKEYS:
 			case MODE_PUB2RMD:
 			case MODE_RMD160:
+				/* RMD160 marked as RAWDATA is a binary file and each register is 20 bytes	*/
 				if(FLAGRAWDATA) {
 					while(!feof(fd))	{
 						if(fread(aux,1,20,fd) == 20)	{
@@ -844,7 +912,7 @@ int main(int argc, char **argv)	{
 						}
 					}
 				}
-				MAXLENGTHADDRESS = 20;
+				MAXLENGTHADDRESS = 20;	/* MAXLENGTHADDRESS is 20 because we save the data in binary format */
 			break;
 			case MODE_XPOINT:
 				if(FLAGRAWDATA) {
@@ -901,25 +969,70 @@ int main(int argc, char **argv)	{
 		i = 0;
 		switch (FLAGMODE) {
 			case MODE_ADDRESS:
-				aux =(char*) malloc(2*MAXLENGTHADDRESS);
-				if(aux == NULL)	{
-					fprintf(stderr,"[E] error malloc()\n");
-					exit(0);
+				if(FLAGCRYPTO == CRYPTO_BTC)	{  // BTC address
+					aux =(char*) malloc(2*MAXLENGTHADDRESS);
+					if(aux == NULL)	{
+						fprintf(stderr,"[E] error malloc()\n");
+						exit(0);
+					}
+					while(i < N)	{
+						memset(aux,0,2*MAXLENGTHADDRESS);
+						memset(addressTable[i].value,0,sizeof(struct address_value));
+						hextemp = fgets(aux,2*MAXLENGTHADDRESS,fd);
+						if(hextemp == aux)	{
+							trim(aux," \t\n\r");
+							bloom_add(&bloom, aux,MAXLENGTHADDRESS);
+							memcpy(addressTable[i].value,aux,20);
+							i++;
+						}
+						else	{
+							trim(aux," \t\n\r");
+							fprintf(stderr,"[E] Omiting line : %s\n",aux);
+						}
+					}
 				}
-				while(i < N)	{
-					memset(aux,0,2*MAXLENGTHADDRESS);
-					memset((void *)&addressTable[i],0,sizeof(struct address_value));
-					hextemp = fgets(aux,2*MAXLENGTHADDRESS,fd);
-					if(hextemp == aux)	{
-						trim(aux," \t\n\r");
-						bloom_add(&bloom, aux,MAXLENGTHADDRESS);
-						memcpy(addressTable[i].value,aux,20);
+				if(FLAGCRYPTO == CRYPTO_ETH)	{  // ETH address
+					aux =(char*) malloc(2*MAXLENGTHADDRESS + 4);	// 40 bytes + 0x and the charecter \0
+					if(aux == NULL)	{
+						fprintf(stderr,"[E] error malloc()\n");
+						exit(0);
+					}
+					while(i < N)	{
+						memset(addressTable[i].value,0,sizeof(struct address_value));
+						memset(aux,0,2*MAXLENGTHADDRESS + 4);
+						memset((void *)&addressTable[i],0,sizeof(struct address_value));
+						hextemp = fgets(aux,2*MAXLENGTHADDRESS + 4,fd);
+						if(hextemp == aux)	{
+							trim(aux," \t\n\r");
+							switch(strlen(aux))	{
+								case 42:	/*Address with 0x */
+									if(isValidHex(aux+2))	{
+										hexs2bin(aux+2,addressTable[i].value);
+										bloom_add(&bloom, addressTable[i].value,MAXLENGTHADDRESS);
+									}
+									else	{
+										fprintf(stderr,"[E] Omiting line : %s\n",aux);
+									}
+								break;
+								case 40:	/*Address without 0x */
+									if(isValidHex(aux))	{
+										hexs2bin(aux,addressTable[i].value);
+										bloom_add(&bloom, addressTable[i].value,MAXLENGTHADDRESS);
+									}
+									else	{
+										fprintf(stderr,"[E] Omiting line : %s\n",aux);
+									}
+								break;
+								
+							}
+						}
+						else	{
+							trim(aux," \t\n\r");
+							fprintf(stderr,"[E] Omiting line : %s\n",aux);
+						}
 						i++;
 					}
-					else	{
-						trim(aux," \t\n\r");
-						fprintf(stderr,"[E] Omiting line : %s\n",aux);
-					}
+					
 				}
 			break;
 			case MODE_XPOINT:
@@ -1001,11 +1114,11 @@ int main(int argc, char **argv)	{
 							fprintf(stderr,"[E] Omiting line : %s\n",aux);
 							N--;
 						}
-
 						i++;
 					}
 				}
 			break;
+			case MODE_MINIKEYS:
 			case MODE_PUB2RMD:
 			case MODE_RMD160:
 				if(FLAGRAWDATA)	{
@@ -1031,7 +1144,7 @@ int main(int argc, char **argv)	{
 					while(i < N)	{
 						memset(aux,0,3*MAXLENGTHADDRESS);
 						hextemp = fgets(aux,3*MAXLENGTHADDRESS,fd);
-						memset(addressTable[i].value,0,20);
+						memset(addressTable[i].value,0,sizeof(struct address_value));
 						if(hextemp == aux)	{
 							trim(aux," \t\n\r");
 							lenaux = strlen(aux);
@@ -1289,14 +1402,13 @@ int main(int argc, char **argv)	{
 			exit(0);
 		}
 
-		//if(FLAGDEBUG) bloom_print(&bloom_bPx2nd);
 		
 		printf("[+] Bloom filter for %" PRIu64 " elements : %.2f MB\n",bsgs_m2,(double)((double)bloom_bPx2nd.bytes/(double)1048576));
 
 		BSGS_MP = secp->ComputePublicKey(&BSGS_M);
 		BSGS_MP2 = secp->ComputePublicKey(&BSGS_M2);
 		
-		BSGS_AMP2.reserve(bsgs_m2);
+		BSGS_AMP2.reserve(20);
 		GSn.reserve(CPU_GRP_SIZE/2);
 
 		i= 0;
@@ -1366,7 +1478,7 @@ int main(int argc, char **argv)	{
 					}
 					
 					memset(rawvalue,0,32);
-					sha256((char*)bloom_bP[i].bf,bloom_bP[i].bytes,rawvalue);
+					sha256((uint8_t*)bloom_bP[i].bf,bloom_bP[i].bytes,(uint8_t*)rawvalue);
 					if(memcmp(bloom_bP_checksums[i].data,rawvalue,32) != 0 || memcmp(bloom_bP_checksums[i].backup,rawvalue,32) != 0 )	{	/* Verification */
 						fprintf(stderr,"[E] Error checksum file mismatch!\n");
 						exit(0);
@@ -1422,7 +1534,7 @@ int main(int argc, char **argv)	{
 						memcpy(bloom_bP_checksums[i].data,oldbloom_bP.checksum,32);
 						memcpy(bloom_bP_checksums[i].backup,oldbloom_bP.checksum_backup,32);
 						memset(rawvalue,0,32);
-						sha256((char*)bloom_bP[i].bf,bloom_bP[i].bytes,rawvalue);
+						sha256((uint8_t*)bloom_bP[i].bf,bloom_bP[i].bytes,(uint8_t*)rawvalue);
 						if(memcmp(bloom_bP_checksums[i].data,rawvalue,32) != 0 || memcmp(bloom_bP_checksums[i].backup,rawvalue,32) != 0 )	{	/* Verification */
 							fprintf(stderr,"[E] Error checksum file mismatch!\n");
 							exit(0);
@@ -1484,7 +1596,7 @@ int main(int argc, char **argv)	{
 					exit(0);
 				}
 				memset(rawvalue,0,32);
-				sha256((char*)bloom_bPx2nd.bf,bloom_bPx2nd.bytes,rawvalue);
+				sha256((uint8_t*)bloom_bPx2nd.bf,bloom_bPx2nd.bytes,(uint8_t*)rawvalue);
 				if(memcmp(bloom_bPx2nd_checksum.data,rawvalue,32) != 0 || memcmp(bloom_bPx2nd_checksum.backup,rawvalue,32) != 0 )	{	/* Verification */
 					fprintf(stderr,"[E] Error checksum file mismatch!\n");
 					exit(0);
@@ -1531,7 +1643,7 @@ int main(int argc, char **argv)	{
 					memcpy(bloom_bPx2nd_checksum.data,oldbloom_bP.checksum,32);
 					memcpy(bloom_bPx2nd_checksum.backup,oldbloom_bP.checksum_backup,32);
 					
-					sha256((char*)bloom_bPx2nd.bf,bloom_bPx2nd.bytes,rawvalue);
+					sha256((uint8_t*)(char*)bloom_bPx2nd.bf,bloom_bPx2nd.bytes,(uint8_t*)rawvalue);
 					if(memcmp(bloom_bPx2nd_checksum.data,rawvalue,32) != 0 || memcmp(bloom_bPx2nd_checksum.backup,rawvalue,32) != 0 )	{	/* Verification */
 						fprintf(stderr,"[E] Error checksum file mismatch!\n");
 						exit(0);
@@ -1558,7 +1670,7 @@ int main(int argc, char **argv)	{
 					exit(0);
 				}
 				fread(checksum,32,1,fd_aux3);
-				sha256((char*)bPtable,bytes,checksum_backup);
+				sha256((uint8_t*)bPtable,bytes,(uint8_t*)checksum_backup);
 				if(memcmp(checksum,checksum_backup,32) != 0)	{
 					fprintf(stderr,"[E] Checksum from file %s mismatch!!\n",buffer_bloom_file);
 					exit(0);
@@ -1710,12 +1822,12 @@ int main(int argc, char **argv)	{
 		}	
 		if(!FLAGREADEDFILE1)	{
 			for(i = 0; i < 256 ; i++)	{
-				sha256((char*)bloom_bP[i].bf, bloom_bP[i].bytes, bloom_bP_checksums[i].data);
+				sha256((uint8_t*)bloom_bP[i].bf, bloom_bP[i].bytes,(uint8_t*) bloom_bP_checksums[i].data);
 				memcpy(bloom_bP_checksums[i].backup,bloom_bP_checksums[i].data,32);
 			}
 		}
 		if(!FLAGREADEDFILE2)	{
-			sha256((char*)bloom_bPx2nd.bf, bloom_bPx2nd.bytes, bloom_bPx2nd_checksum.data);
+			sha256((uint8_t*)bloom_bPx2nd.bf, bloom_bPx2nd.bytes,(uint8_t*) bloom_bPx2nd_checksum.data);
 			memcpy(bloom_bPx2nd_checksum.backup,bloom_bPx2nd_checksum.data,32);
 		}
 		if(!FLAGREADEDFILE1 || !FLAGREADEDFILE2 )	{
@@ -1726,7 +1838,7 @@ int main(int argc, char **argv)	{
 			printf("[+] Sorting %lu elements... ",bsgs_m2);
 			fflush(stdout);
 			bsgs_sort(bPtable,bsgs_m2);
-			sha256((char*)bPtable, bytes, checksum);
+			sha256((uint8_t*)bPtable, bytes,(uint8_t*) checksum);
 			memcpy(checksum_backup,checksum,32);
 			printf("Done!\n");
 			fflush(stdout);
@@ -1938,7 +2050,7 @@ int main(int argc, char **argv)	{
 					tid[i] = CreateThread(NULL, 0, thread_process, (void*)tt, 0, &s);
 				break;
 				case MODE_PUB2RMD:
-					tid[i] = CreateThread(NULL, 0, thread_pub2rmd, (void*)tt, 0, &s);
+					//tid[i] = CreateThread(NULL, 0, thread_pub2rmd, (void*)tt, 0, &s);
 				break;
 #else
 				case MODE_ADDRESS:
@@ -1948,6 +2060,9 @@ int main(int argc, char **argv)	{
 				break;
 				case MODE_PUB2RMD:
 					s = pthread_create(&tid[i],NULL,thread_pub2rmd,(void *)tt);
+				break;
+				case MODE_MINIKEYS:
+					s = pthread_create(&tid[i],NULL,thread_process_minikeys,(void *)tt);
 				break;
 #endif
 			}
@@ -2061,8 +2176,33 @@ int main(int argc, char **argv)	{
 	CloseHandle(write_random);
 	CloseHandle(bsgs_thread);
 #endif
-
 }
+
+void pubkeytopubaddress_dst(char *pkey,int length,char *dst)	{
+	char digest[60];
+	size_t pubaddress_size = 40;
+	sha256((uint8_t*)pkey, length,(uint8_t*) digest);
+	RMD160Data((const unsigned char*)digest,32, digest+1);
+	digest[0] = 0;
+	sha256((uint8_t*)digest, 21,(uint8_t*) digest+21);
+	sha256((uint8_t*)digest+21, 32,(uint8_t*) digest+21);
+	if(!b58enc(dst,&pubaddress_size,digest,25)){
+		fprintf(stderr,"error b58enc\n");
+	}
+}
+
+void rmd160toaddress_dst(char *rmd,char *dst){
+	char digest[60];
+	size_t pubaddress_size = 40;
+	digest[0] = 0;
+	memcpy(digest+1,rmd,20);
+	sha256((uint8_t*)digest, 21,(uint8_t*) digest+21);
+	sha256((uint8_t*)digest+21, 32,(uint8_t*) digest+21);
+	if(!b58enc(dst,&pubaddress_size,digest,25)){
+		fprintf(stderr,"error b58enc\n");
+	}
+}
+
 
 char *pubkeytopubaddress(char *pkey,int length)	{
 	char *pubaddress = (char*) calloc(MAXLENGTHADDRESS+10,1);
@@ -2073,21 +2213,30 @@ char *pubkeytopubaddress(char *pkey,int length)	{
 		exit(0);
 	}
 	//digest [000...0]
- 	sha256(pkey, length, digest);
+ 	sha256((uint8_t*)pkey, length,(uint8_t*) digest);
 	//digest [SHA256 32 bytes+000....0]
 	RMD160Data((const unsigned char*)digest,32, digest+1);
 	//digest [? +RMD160 20 bytes+????000....0]
 	digest[0] = 0;
 	//digest [0 +RMD160 20 bytes+????000....0]
-	sha256(digest, 21, digest+21);
+	sha256((uint8_t*)digest, 21,(uint8_t*) digest+21);
 	//digest [0 +RMD160 20 bytes+SHA256 32 bytes+....0]
-	sha256(digest+21, 32, digest+21);
+	sha256((uint8_t*)digest+21, 32,(uint8_t*) digest+21);
 	//digest [0 +RMD160 20 bytes+SHA256 32 bytes+....0]
 	if(!b58enc(pubaddress,&pubaddress_size,digest,25)){
 		fprintf(stderr,"error b58enc\n");
 	}
 	free(digest);
 	return pubaddress;	// pubaddress need to be free by te caller funtion
+}
+
+void publickeytohashrmd160_dst(char *pkey,int length,char *dst)	{
+	char digest[32];
+	//digest [000...0]
+ 	sha256((uint8_t*)pkey, length,(uint8_t*) digest);
+	//digest [SHA256 32 bytes]
+	RMD160Data((const unsigned char*)digest,32, dst);
+	//hash160 [RMD160 20 bytes]
 }
 
 char *publickeytohashrmd160(char *pkey,int length)	{
@@ -2098,7 +2247,7 @@ char *publickeytohashrmd160(char *pkey,int length)	{
 		exit(0);
 	}
 	//digest [000...0]
- 	sha256(pkey, length, digest);
+ 	sha256((uint8_t*)pkey, length,(uint8_t*) digest);
 	//digest [SHA256 32 bytes]
 	RMD160Data((const unsigned char*)digest,32, hash160);
 	//hash160 [RMD160 20 bytes]
@@ -2131,6 +2280,133 @@ int searchbinary(struct address_value *buffer,char *data,int64_t _N) {
 	}
 	return r;
 }
+
+
+#ifdef _WIN64
+DWORD WINAPI thread_process_minikeys(LPVOID vargp) {
+#else
+void *thread_process_minikeys(void *vargp)	{
+#endif
+	FILE *keys;
+	Point publickey[4];
+	Int key_mpz[4];
+	struct tothread *tt;
+	uint64_t count;
+	char publickeyhashrmd160_uncompress[4][20];
+	char public_key_compressed_hex[67],public_key_uncompressed_hex[131];
+	char hexstrpoint[65],rawvalue[4][32];
+	char address[4][40],minikeys[4][40];;
+	char *hextemp,*rawbuffer;
+	int r,thread_number,continue_flag = 1,k,j;
+	size_t len_dst;
+	size_t len_source;
+	Int counter;
+	tt = (struct tothread *)vargp;
+	thread_number = tt->nt;
+	free(tt);
+	rawbuffer = (char*) &counter.bits64 ;
+	len_dst = 23;
+	len_source = 16;
+	minikeys[0][0] = 'S';
+	minikeys[1][0] = 'S';
+	minikeys[2][0] = 'S';
+	minikeys[3][0] = 'S';
+	do	{
+		if(FLAGRANDOM){
+			counter.Rand(&n_range_start,&n_range_end);
+		}
+		else	{
+			if(n_range_start.IsLower(&n_range_end))	{
+#ifdef _WIN64
+				WaitForSingleObject(write_random, INFINITE);
+				counter.Set(&n_range_start);
+				n_range_start.Add(N_SECUENTIAL_MAX);
+				ReleaseMutex(write_random);
+#else
+				pthread_mutex_lock(&write_random);
+				counter.Set(&n_range_start);
+				n_range_start.Add(N_SECUENTIAL_MAX);
+				pthread_mutex_unlock(&write_random);
+#endif
+			}
+			else	{
+				continue_flag = 0;
+			}
+		}
+		if(continue_flag)	{
+			count = 0;
+			b58enc_custom( minikeys[0] + 1, &len_dst, rawbuffer, len_source,(char*)Ccoinbuffer);
+			if(FLAGMATRIX)	{
+					hextemp = counter.GetBase16();
+					printf("[+] Base key: 0x%s  => %s\n",hextemp,minikeys[0]);
+					fflush(stdout);
+					free(hextemp);
+			}
+			else	{
+				if(FLAGQUIET == 0){
+					hextemp = counter.GetBase16();
+					printf("\r[+] Base key: 0x%s  => %s\r",hextemp,minikeys[0]);
+					fflush(stdout);
+					free(hextemp);
+					THREADOUTPUT = 1;
+				}
+			}
+			do {
+				for(j = 0;j<256; j++)	{
+					for(k = 0; k < 4; k++){
+						do{
+							b58enc_custom(minikeys[k] + 1, &len_dst, rawbuffer, len_source,(char*)Ccoinbuffer);
+							if(len_dst == 23)	{
+								minikeys[k][22] = '?';
+								sha256((uint8_t*)minikeys[k],23,(uint8_t*)rawvalue[k]);
+							}
+							else	{
+								len_dst = 23;
+								rawvalue[k][0] = 0x01;
+							}
+							counter.AddOne();
+							count++;
+						}while(rawvalue[k][0] != 0x00);
+						//if(FLAGDEBUG) { printf("minikeys %s\n",minikeys[k]); }
+						sha256((uint8_t*)minikeys[k],22,(uint8_t*)rawvalue[k]);
+						key_mpz[k].Set32Bytes((uint8_t*)rawvalue[k]);
+						publickey[k] = secp->ComputePublicKey(&key_mpz[k]);
+						//if(FLAGDEBUG) { printf("minikeys %s\n",minikeys[k]); }
+					}					
+										
+					secp->GetHash160(P2PKH,false,publickey[0],publickey[1],publickey[2],publickey[3],(uint8_t*)publickeyhashrmd160_uncompress[0],(uint8_t*)publickeyhashrmd160_uncompress[1],(uint8_t*)publickeyhashrmd160_uncompress[2],(uint8_t*)publickeyhashrmd160_uncompress[3]);
+					for(k = 0; k < 4; k++)	{
+						r = bloom_check(&bloom,publickeyhashrmd160_uncompress[k],20);
+						if(r) {
+							r = searchbinary(addressTable,publickeyhashrmd160_uncompress[k],N);
+
+							if(r) {
+								/* hit */
+								hextemp = key_mpz[k].GetBase16();
+								secp->GetPublicKeyHex(false,publickey[k],public_key_uncompressed_hex);
+								pthread_mutex_lock(&write_keys);
+								keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
+								rmd160toaddress_dst(publickeyhashrmd160_uncompress[k],address[k]);
+								minikeys[k][22] = '\0';
+								if(keys != NULL)	{
+									fprintf(keys,"PrivKey: %s\npubkey: %s\nminikey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,minikeys[k],address[k]);
+									fclose(keys);
+								}
+								printf("\nHIT!! PrivKey: %s\npubkey: %s\nminikey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,minikeys[k],address[k]);
+								pthread_mutex_unlock(&write_keys);
+								free(hextemp);
+							}
+						}
+					}
+				}
+				steps[thread_number]++;
+			}while(count < N_SECUENTIAL_MAX && continue_flag);
+		}
+	}while(continue_flag);
+	
+	return NULL;
+}
+
 #ifdef _WIN64
 DWORD WINAPI thread_process(LPVOID vargp) {
 #else
@@ -2150,19 +2426,21 @@ void *thread_process(void *vargp)	{
 	int hLength = (CPU_GRP_SIZE / 2 - 1);
 	uint64_t i,j,count;
 	Point R,temporal;
-	int r,thread_number,found,continue_flag = 1,i_vanity;
-	char *public_key_compressed = NULL,*public_key_uncompressed = NULL,hexstrpoint[65],rawvalue[32];
-	char *publickeyhashrmd160_compress = NULL,*publickeyhashrmd160_uncompress = NULL;
-	char *hextemp = NULL,*public_key_compressed_hex = NULL,*public_key_uncompressed_hex = NULL;
+	int r,thread_number,continue_flag = 1,i_vanity,k;
+	char *hextemp = NULL;
 	char *eth_address = NULL;
-	char *public_address_compressed = NULL,*public_address_uncompressed = NULL;
+	char publickeyhashrmd160_uncompress[4][20],publickeyhashrmd160_compress[4][20];
+	char public_key_compressed_hex[67],public_key_uncompressed_hex[131];
+	char public_key_compressed[33],public_key_uncompressed[65];
+	char hexstrpoint[65],rawvalue[32];
+	char address_compressed[4][40],address_uncompressed[4][40];
+	
 	unsigned long longtemp;
 	FILE *keys,*vanityKeys;
-	Int key_mpz,mpz_bit_range_min,mpz_bit_range_max,mpz_bit_range_diff;
+	Int key_mpz,keyfound,temp_stride;
 	tt = (struct tothread *)vargp;
 	thread_number = tt->nt;
 	free(tt);
-	found = 0;
 	grp->Set(dx);
 	do {
 		if(FLAGRANDOM){
@@ -2172,18 +2450,15 @@ void *thread_process(void *vargp)	{
 			if(n_range_start.IsLower(&n_range_end))	{
 #ifdef _WIN64
 				WaitForSingleObject(write_random, INFINITE);
-#else
-				pthread_mutex_lock(&write_random);
-#endif
 				key_mpz.Set(&n_range_start);
 				n_range_start.Add(N_SECUENTIAL_MAX);
-
-#ifdef _WIN64
 				ReleaseMutex(write_random);
 #else
+				pthread_mutex_lock(&write_random);
+				key_mpz.Set(&n_range_start);
+				n_range_start.Add(N_SECUENTIAL_MAX);
 				pthread_mutex_unlock(&write_random);
 #endif
-
 			}
 			else	{
 				continue_flag = 0;
@@ -2191,204 +2466,269 @@ void *thread_process(void *vargp)	{
 		}
 		if(continue_flag)	{
 			count = 0;
+			if(FLAGMATRIX)	{
+					hextemp = key_mpz.GetBase16();
+					printf("Base key: %s thread %i\n",hextemp,thread_number);
+					fflush(stdout);
+					free(hextemp);
+			}
+			else	{
+				if(FLAGQUIET == 0){
+					hextemp = key_mpz.GetBase16();
+					printf("\rBase key: %s     \r",hextemp);
+					fflush(stdout);
+					free(hextemp);
+					THREADOUTPUT = 1;
+				}
+			}
 			do {
-				if(FLAGMATRIX)	{
-						hextemp = key_mpz.GetBase16();
-						printf("Base key: %s\n",hextemp);
-						fflush(stdout);
-						free(hextemp);
-				}
-				else	{
-					if(FLAGQUIET == 0){
-						hextemp = key_mpz.GetBase16();
-						printf("\rBase key: %s     \r",hextemp);
-						fflush(stdout);
-						free(hextemp);
-						THREADOUTPUT = 1;
-					}
-				}
-				key_mpz.Add((uint64_t)CPU_GRP_SIZE / 2);
+				temp_stride.SetInt32(CPU_GRP_SIZE / 2);
+				temp_stride.Mult(&stride);
+				key_mpz.Add(&temp_stride);
 	 			startP = secp->ComputePublicKey(&key_mpz);
-				key_mpz.Sub((uint64_t)CPU_GRP_SIZE / 2);
+				key_mpz.Sub(&temp_stride);
 
 				for(i = 0; i < hLength; i++) {
 					dx[i].ModSub(&Gn[i].x,&startP.x);
 				}
 			
-		    dx[i].ModSub(&Gn[i].x,&startP.x);  // For the first point
-		    dx[i + 1].ModSub(&_2Gn.x,&startP.x); // For the next center point
-			grp->ModInv();
+				dx[i].ModSub(&Gn[i].x,&startP.x);  // For the first point
+				dx[i + 1].ModSub(&_2Gn.x,&startP.x); // For the next center point
+				grp->ModInv();
 
-			pts[CPU_GRP_SIZE / 2] = startP;
+				pts[CPU_GRP_SIZE / 2] = startP;
 
-			for(i = 0; i<hLength; i++) {
-				pp = startP;
-				pn = startP;
+				for(i = 0; i<hLength; i++) {
+					pp = startP;
+					pn = startP;
 
-				// P = startP + i*G
-				dy.ModSub(&Gn[i].y,&pp.y);
+					// P = startP + i*G
+					dy.ModSub(&Gn[i].y,&pp.y);
 
-				_s.ModMulK1(&dy,&dx[i]);        // s = (p2.y-p1.y)*inverse(p2.x-p1.x);
-				_p.ModSquareK1(&_s);            // _p = pow2(s)
+					_s.ModMulK1(&dy,&dx[i]);        // s = (p2.y-p1.y)*inverse(p2.x-p1.x);
+					_p.ModSquareK1(&_s);            // _p = pow2(s)
 
-				pp.x.ModNeg();
-				pp.x.ModAdd(&_p);
-				pp.x.ModSub(&Gn[i].x);           // rx = pow2(s) - p1.x - p2.x;
+					pp.x.ModNeg();
+					pp.x.ModAdd(&_p);
+					pp.x.ModSub(&Gn[i].x);           // rx = pow2(s) - p1.x - p2.x;
 
-				if(FLAGMODE != MODE_XPOINT  )	{
-					pp.y.ModSub(&Gn[i].x,&pp.x);
-					pp.y.ModMulK1(&_s);
-					pp.y.ModSub(&Gn[i].y);           // ry = - p2.y - s*(ret.x-p2.x);
+					if(FLAGMODE != MODE_XPOINT  )	{
+						pp.y.ModSub(&Gn[i].x,&pp.x);
+						pp.y.ModMulK1(&_s);
+						pp.y.ModSub(&Gn[i].y);           // ry = - p2.y - s*(ret.x-p2.x);
+					}
+
+					// P = startP - i*G  , if (x,y) = i*G then (x,-y) = -i*G
+					dyn.Set(&Gn[i].y);
+					dyn.ModNeg();
+					dyn.ModSub(&pn.y);
+
+					_s.ModMulK1(&dyn,&dx[i]);      // s = (p2.y-p1.y)*inverse(p2.x-p1.x);
+					_p.ModSquareK1(&_s);            // _p = pow2(s)
+					pn.x.ModNeg();
+					pn.x.ModAdd(&_p);
+					pn.x.ModSub(&Gn[i].x);          // rx = pow2(s) - p1.x - p2.x;
+
+					if(FLAGMODE != MODE_XPOINT  )	{
+						pn.y.ModSub(&Gn[i].x,&pn.x);
+						pn.y.ModMulK1(&_s);
+						pn.y.ModAdd(&Gn[i].y);          // ry = - p2.y - s*(ret.x-p2.x);
+					}
+
+					pts[CPU_GRP_SIZE / 2 + (i + 1)] = pp;
+					pts[CPU_GRP_SIZE / 2 - (i + 1)] = pn;
 				}
 
-				// P = startP - i*G  , if (x,y) = i*G then (x,-y) = -i*G
+				// First point (startP - (GRP_SZIE/2)*G)
+				pn = startP;
 				dyn.Set(&Gn[i].y);
 				dyn.ModNeg();
 				dyn.ModSub(&pn.y);
 
-				_s.ModMulK1(&dyn,&dx[i]);      // s = (p2.y-p1.y)*inverse(p2.x-p1.x);
-				_p.ModSquareK1(&_s);            // _p = pow2(s)
+				_s.ModMulK1(&dyn,&dx[i]);
+				_p.ModSquareK1(&_s);
+
 				pn.x.ModNeg();
 				pn.x.ModAdd(&_p);
-				pn.x.ModSub(&Gn[i].x);          // rx = pow2(s) - p1.x - p2.x;
-
+				pn.x.ModSub(&Gn[i].x);
+				
 				if(FLAGMODE != MODE_XPOINT  )	{
 					pn.y.ModSub(&Gn[i].x,&pn.x);
 					pn.y.ModMulK1(&_s);
-					pn.y.ModAdd(&Gn[i].y);          // ry = - p2.y - s*(ret.x-p2.x);
+					pn.y.ModAdd(&Gn[i].y);
 				}
 
-				pts[CPU_GRP_SIZE / 2 + (i + 1)] = pp;
-				pts[CPU_GRP_SIZE / 2 - (i + 1)] = pn;
-			}
-
-			// First point (startP - (GRP_SZIE/2)*G)
-		    pn = startP;
-		    dyn.Set(&Gn[i].y);
-		    dyn.ModNeg();
-		    dyn.ModSub(&pn.y);
-
-		    _s.ModMulK1(&dyn,&dx[i]);
-		    _p.ModSquareK1(&_s);
-
-		    pn.x.ModNeg();
-		    pn.x.ModAdd(&_p);
-		    pn.x.ModSub(&Gn[i].x);
-			
-			if(FLAGMODE != MODE_XPOINT  )	{
-			    pn.y.ModSub(&Gn[i].x,&pn.x);
-			    pn.y.ModMulK1(&_s);
-			    pn.y.ModAdd(&Gn[i].y);
-			}
-
-		    pts[0] = pn;
-
-
-				for(j = 0; j < CPU_GRP_SIZE;j++){
-					switch(FLAGMODE)	{
-						case MODE_ADDRESS:
-						case MODE_RMD160:
-							switch(FLAGSEARCH)	{
-								case SEARCH_UNCOMPRESS:
-									public_key_uncompressed = secp->GetPublicKeyRaw(false,pts[j]);
-								break;
-								case SEARCH_COMPRESS:
-									public_key_compressed = secp->GetPublicKeyRaw(true,pts[j]);
-								break;
-								case SEARCH_BOTH:
-									public_key_uncompressed = secp->GetPublicKeyRaw(false,pts[j]);
-									public_key_compressed = secp->GetPublicKeyRaw(true,pts[j]);
-								break;
-							}
-						break;
+				pts[0] = pn;
+				for(j = 0; j < CPU_GRP_SIZE/4;j++){
+					if(FLAGCRYPTO == CRYPTO_BTC){
+						switch(FLAGMODE)	{
+							case MODE_ADDRESS:
+							case MODE_RMD160:
+								switch(FLAGSEARCH)	{
+									case SEARCH_UNCOMPRESS:
+										secp->GetHash160(P2PKH,false,pts[(j*4)],pts[(j*4)+1],pts[(j*4)+2],pts[(j*4)+3],(uint8_t*)publickeyhashrmd160_uncompress[0],(uint8_t*)publickeyhashrmd160_uncompress[1],(uint8_t*)publickeyhashrmd160_uncompress[2],(uint8_t*)publickeyhashrmd160_uncompress[3]);
+									break;
+									case SEARCH_COMPRESS:
+										secp->GetHash160(P2PKH,true,pts[(j*4)],pts[(j*4)+1],pts[(j*4)+2],pts[(j*4)+3],(uint8_t*)publickeyhashrmd160_compress[0],(uint8_t*)publickeyhashrmd160_compress[1],(uint8_t*)publickeyhashrmd160_compress[2],(uint8_t*)publickeyhashrmd160_compress[3]);
+									break;
+									case SEARCH_BOTH:
+										secp->GetHash160(P2PKH,true,pts[(j*4)],pts[(j*4)+1],pts[(j*4)+2],pts[(j*4)+3],(uint8_t*)publickeyhashrmd160_compress[0],(uint8_t*)publickeyhashrmd160_compress[1],(uint8_t*)publickeyhashrmd160_compress[2],(uint8_t*)publickeyhashrmd160_compress[3]);
+										secp->GetHash160(P2PKH,false,pts[(j*4)],pts[(j*4)+1],pts[(j*4)+2],pts[(j*4)+3],(uint8_t*)publickeyhashrmd160_uncompress[0],(uint8_t*)publickeyhashrmd160_uncompress[1],(uint8_t*)publickeyhashrmd160_uncompress[2],(uint8_t*)publickeyhashrmd160_uncompress[3]);
+									break;
+								}
+							break;
+						}
 					}
 					switch(FLAGMODE)	{
 						case MODE_ADDRESS:
-							if( (FLAGCRYPTO | CRYPTO_BTC) != 0) {
-								
+							if( FLAGCRYPTO  == CRYPTO_BTC) {
 								switch(FLAGSEARCH)	{
 									case SEARCH_UNCOMPRESS:
-										public_address_uncompressed = pubkeytopubaddress(public_key_uncompressed,65);
+										for(k = 0; k < 4;k++)	{
+											rmd160toaddress_dst(publickeyhashrmd160_uncompress[k],address_uncompressed[k]);
+										}
 									break;
 									case SEARCH_COMPRESS:
-										public_address_compressed = pubkeytopubaddress(public_key_compressed,33);
+										for(k = 0; k < 4;k++)	{
+											rmd160toaddress_dst(publickeyhashrmd160_compress[k],address_compressed[k]);
+										}
 									break;
 									case SEARCH_BOTH:
-										public_address_compressed = pubkeytopubaddress(public_key_compressed,33);
-										public_address_uncompressed = pubkeytopubaddress(public_key_uncompressed,65);
+										for(k = 0; k < 4;k++)	{
+											rmd160toaddress_dst(publickeyhashrmd160_uncompress[k],address_uncompressed[k]);
+											rmd160toaddress_dst(publickeyhashrmd160_compress[k],address_compressed[k]);
+										}
 									break;
 								}
 								if(FLAGVANITY)	{
-									i_vanity = 0;
-									while(i_vanity < COUNT_VANITIES)	{
-										if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH){
-											if(strncmp(public_address_uncompressed,vanities[i_vanity],len_vanities[i_vanity]) == 0)	{
-												hextemp = key_mpz.GetBase16();
-												vanityKeys = fopen("vanitykeys.txt","a+");
-												if(vanityKeys != NULL)	{
-													fprintf(vanityKeys,"PrivKey: %s\nAddress uncompressed: %s\n",hextemp,public_address_uncompressed);
-													fclose(vanityKeys);
+									for(k = 0; k < 4;k++)	{
+										i_vanity = 0;
+										while(i_vanity < COUNT_VANITIES)	{
+											if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH){
+												if(strncmp(address_uncompressed[k],vanities[i_vanity],len_vanities[i_vanity]) == 0)	{
+													keyfound.SetInt32(k);
+													keyfound.Mult(&stride);
+													keyfound.Add(&key_mpz);
+													hextemp = keyfound.GetBase16();
+													vanityKeys = fopen("vanitykeys.txt","a+");
+													if(vanityKeys != NULL)	{
+														fprintf(vanityKeys,"PrivKey: %s\nAddress uncompressed: %s\n",hextemp,address_uncompressed[k]);
+														fclose(vanityKeys);
+													}
+													printf("\nVanity privKey: %s\nAddress uncompressed:	%s\n",hextemp,address_uncompressed[k]);
+													free(hextemp);
 												}
-												printf("\nVanity privKey: %s\nAddress uncompressed:	%s\n",hextemp,public_address_uncompressed);
-												free(hextemp);
 											}
-										}
-										if(FLAGSEARCH == SEARCH_COMPRESS || FLAGSEARCH == SEARCH_BOTH){
-											if(strncmp(public_address_compressed,vanities[i_vanity],len_vanities[i_vanity]) == 0)	{
-												hextemp = key_mpz.GetBase16();
-												vanityKeys = fopen("vanitykeys.txt","a+");
-												if(vanityKeys != NULL)	{
-													fprintf(vanityKeys,"PrivKey: %s\nAddress compressed:	%s\n",hextemp,public_address_compressed);
-													fclose(vanityKeys);
+											if(FLAGSEARCH == SEARCH_COMPRESS || FLAGSEARCH == SEARCH_BOTH){
+												if(strncmp(address_compressed[k],vanities[i_vanity],len_vanities[i_vanity]) == 0)	{
+													keyfound.SetInt32(k);
+													keyfound.Mult(&stride);
+													keyfound.Add(&key_mpz);
+													hextemp = keyfound.GetBase16();
+													vanityKeys = fopen("vanitykeys.txt","a+");
+													if(vanityKeys != NULL)	{
+														fprintf(vanityKeys,"PrivKey: %s\nAddress compressed:	%s\n",hextemp,address_compressed[k]);
+														fclose(vanityKeys);
+													}
+													printf("\nVanity privKey: %s\nAddress compressed: %s\n",hextemp,address_compressed[k]);
+													free(hextemp);
 												}
-												printf("\nVanity privKey: %s\nAddress compressed: %s\n",hextemp,public_address_compressed);
-												free(hextemp);
 											}
+											i_vanity ++;
 										}
-										i_vanity ++;
 									}
 								}
 								if(FLAGSEARCH == SEARCH_COMPRESS || FLAGSEARCH == SEARCH_BOTH){
-									r = bloom_check(&bloom,public_address_compressed,MAXLENGTHADDRESS);
-									if(r) {
-										r = searchbinary(addressTable,public_address_compressed,N);
+									for(k = 0; k < 4;k++)	{
+										r = bloom_check(&bloom,address_compressed[k],MAXLENGTHADDRESS);
 										if(r) {
-											found++;
-											hextemp = key_mpz.GetBase16();
-											public_key_compressed_hex = tohex(public_key_compressed,33);
+											r = searchbinary(addressTable,address_compressed[k],N);
+											if(r) {
+												keyfound.SetInt32(k);
+												keyfound.Mult(&stride);
+												keyfound.Add(&key_mpz);
+												hextemp = keyfound.GetBase16();
+												secp->GetPublicKeyHex(true,pts[(4*j)+k],public_key_compressed_hex);
+
 #ifdef _WIN64
-											WaitForSingleObject(write_keys, INFINITE);
+												WaitForSingleObject(write_keys, INFINITE);
 #else
-											pthread_mutex_lock(&write_keys);
+												pthread_mutex_lock(&write_keys);
 #endif
 
-											keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
-											if(keys != NULL)	{
-												fprintf(keys,"PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_compressed_hex,public_address_compressed);
-												fclose(keys);
+												keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
+												if(keys != NULL)	{
+													fprintf(keys,"PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_compressed_hex,address_compressed[k]);
+													fclose(keys);
+												}
+												printf("\nHIT!! PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_compressed_hex,address_compressed[k]);
+#ifdef _WIN64
+												ReleaseMutex(write_keys);
+#else
+												pthread_mutex_unlock(&write_keys);
+#endif
+
+												free(hextemp);
 											}
-											printf("\nHIT!! PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_compressed_hex,public_address_compressed);
-#ifdef _WIN64
-											ReleaseMutex(write_keys);
-#else
-											pthread_mutex_unlock(&write_keys);
-#endif
-
-											free(public_key_compressed_hex);
-											free(hextemp);
 										}
 									}
-									free(public_address_compressed);
 								}
 
 								if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH){
-									r = bloom_check(&bloom,public_address_uncompressed,MAXLENGTHADDRESS);
-									if(r) {
-										r = searchbinary(addressTable,public_address_uncompressed,N);
+									for(k = 0; k < 4;k++)	{
+										r = bloom_check(&bloom,address_uncompressed[k],MAXLENGTHADDRESS);
 										if(r) {
-											found++;
-											hextemp = key_mpz.GetBase16();
-											public_key_uncompressed_hex = tohex(public_key_uncompressed,65);
+											r = searchbinary(addressTable,address_uncompressed[k],N);
+											if(r) {
+												keyfound.SetInt32(k);
+												keyfound.Mult(&stride);
+												keyfound.Add(&key_mpz);
+												hextemp = keyfound.GetBase16();
+												secp->GetPublicKeyHex(false,pts[(4*j)+k],public_key_uncompressed_hex);
+#ifdef _WIN64
+												WaitForSingleObject(write_keys, INFINITE);
+#else
+												pthread_mutex_lock(&write_keys);
+#endif
+
+												keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
+												if(keys != NULL)	{
+													fprintf(keys,"PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,address_uncompressed[k]);
+													fclose(keys);
+												}
+												printf("\nHIT!! PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,address_uncompressed[k]);
+#ifdef _WIN64
+												ReleaseMutex(write_keys);
+#else
+												pthread_mutex_unlock(&write_keys);
+#endif
+												free(hextemp);
+											}
+										}
+									}
+
+								}
+							}
+							if( FLAGCRYPTO == CRYPTO_ETH) {
+								for(k = 0; k < 4;k++)	{
+									generate_binaddress_eth(pts[(4*j)+k],(unsigned char*)rawvalue);
+									/*
+									hextemp = tohex(rawvalue+12,20);
+									printf("Eth Address 0x%s\n",hextemp);
+									free(hextemp);
+									*/
+									r = bloom_check(&bloom,rawvalue+12,MAXLENGTHADDRESS);
+									if(r) {
+										r = searchbinary(addressTable,rawvalue+12,N);
+										if(r) {
+											keyfound.SetInt32(k);
+											keyfound.Mult(&stride);
+											keyfound.Add(&key_mpz);
+											hextemp = keyfound.GetBase16();
+											hexstrpoint[0] = '0';
+											hexstrpoint[1] = 'x';
+											tohex_dst(rawvalue+12,20,hexstrpoint+2);
+
 #ifdef _WIN64
 											WaitForSingleObject(write_keys, INFINITE);
 #else
@@ -2397,84 +2737,105 @@ void *thread_process(void *vargp)	{
 
 											keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
 											if(keys != NULL)	{
-												fprintf(keys,"PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,public_address_uncompressed);
+												fprintf(keys,"PrivKey: %s\naddress: %s\n",hextemp,hexstrpoint);
 												fclose(keys);
 											}
-											printf("\nHIT!! PrivKey: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,public_address_uncompressed);
+											printf("\n Hit!!!! PrivKey: %s\naddress: %s\n",hextemp,hexstrpoint);
 #ifdef _WIN64
 											ReleaseMutex(write_keys);
 #else
 											pthread_mutex_unlock(&write_keys);
 #endif
-											free(public_key_uncompressed_hex);
+
 											free(hextemp);
 										}
-									}
-									free(public_address_uncompressed);
-								}
-							}
-							if( ( FLAGCRYPTO | CRYPTO_ETH ) != 0) {
-							
-								generate_binaddress_eth(&pts[j],(unsigned char*)rawvalue);
-								
-								r = bloom_check(&bloom,rawvalue+12,MAXLENGTHADDRESS);
-								if(r) {
-									r = searchbinary(addressTable,rawvalue+12,N);
-									if(r) {
-										found++;
-										hextemp = key_mpz.GetBase16();
-										hexstrpoint[0] = '0';
-										hexstrpoint[1] = 'x';
-										tohex_dst(rawvalue+12,20,hexstrpoint+2);
-										
-#ifdef _WIN64
-									WaitForSingleObject(write_keys, INFINITE);
-#else
-										pthread_mutex_lock(&write_keys);
-#endif
-
-										keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
-										if(keys != NULL)	{
-											fprintf(keys,"PrivKey: %s\naddress: %s\n",hextemp,hexstrpoint);
-											fclose(keys);
-										}
-										printf("\n Hit!!!! PrivKey: %s\naddress: %s\n",hextemp,hexstrpoint);
-#ifdef _WIN64
-									ReleaseMutex(write_keys);
-#else
-										pthread_mutex_unlock(&write_keys);
-#endif
-
-										free(hextemp);
 									}
 								}
 
 							}
 						break;
 						case MODE_RMD160:
-							switch(FLAGSEARCH)	{
-								case SEARCH_UNCOMPRESS:
-									publickeyhashrmd160_uncompress = publickeytohashrmd160(public_key_uncompressed,65);
-								break;
-								case SEARCH_COMPRESS:
-									publickeyhashrmd160_compress = publickeytohashrmd160(public_key_compressed,33);
-								break;
-								case SEARCH_BOTH:
-									publickeyhashrmd160_compress = publickeytohashrmd160(public_key_compressed,33);
-									publickeyhashrmd160_uncompress = publickeytohashrmd160(public_key_uncompressed,65);
-								break;
-							}
-
-							if(FLAGSEARCH == SEARCH_COMPRESS || FLAGSEARCH == SEARCH_BOTH){
-								r = bloom_check(&bloom,publickeyhashrmd160_compress,MAXLENGTHADDRESS);
-								if(r) {
-									r = searchbinary(addressTable,publickeyhashrmd160_compress,N);
+							for(k = 0; k < 4;k++)	{
+								if(FLAGSEARCH == SEARCH_COMPRESS || FLAGSEARCH == SEARCH_BOTH){
+									r = bloom_check(&bloom,publickeyhashrmd160_compress[k],MAXLENGTHADDRESS);
 									if(r) {
-										found++;
-										hextemp = key_mpz.GetBase16();
-										public_key_compressed_hex = tohex(public_key_compressed,33);
+										r = searchbinary(addressTable,publickeyhashrmd160_compress[k],N);
+										if(r) {
+											keyfound.SetInt32(k);
+											keyfound.Mult(&stride);
+											keyfound.Add(&key_mpz);
+											hextemp = keyfound.GetBase16();
+											secp->GetPublicKeyHex(true,pts[(4*j)+k],public_key_compressed_hex);
 #ifdef _WIN64
-									WaitForSingleObject(write_keys, INFINITE);
+											WaitForSingleObject(write_keys, INFINITE);
+#else
+											pthread_mutex_lock(&write_keys);
+#endif
+
+											keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
+											if(keys != NULL)	{
+												fprintf(keys,"PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
+												fclose(keys);
+											}
+											printf("\nHIT!! PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
+#ifdef _WIN64
+											ReleaseMutex(write_keys);
+#else
+											pthread_mutex_unlock(&write_keys);
+#endif
+											free(hextemp);
+										}
+									}
+								}
+								if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH)	{
+									r = bloom_check(&bloom,publickeyhashrmd160_uncompress[k],MAXLENGTHADDRESS);
+									if(r) {
+										r = searchbinary(addressTable,publickeyhashrmd160_uncompress[k],N);
+										if(r) {
+											keyfound.SetInt32(k);
+											keyfound.Mult(&stride);
+											keyfound.Add(&key_mpz);
+											hextemp = keyfound.GetBase16();
+
+											secp->GetPublicKeyHex(false,pts[(4*j)+k],public_key_uncompressed_hex);
+#ifdef _WIN64
+											WaitForSingleObject(write_keys, INFINITE);
+#else
+											pthread_mutex_lock(&write_keys);
+#endif
+											keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
+											if(keys != NULL)	{
+												fprintf(keys,"PrivKey: %s\npubkey: %s\n",hextemp,public_key_uncompressed_hex);
+												fclose(keys);
+											}
+											printf("\nHIT!! PrivKey: %s\npubkey: %s\n",hextemp,public_key_uncompressed_hex);
+#ifdef _WIN64
+											ReleaseMutex(write_keys);
+#else
+											pthread_mutex_unlock(&write_keys);
+#endif
+											free(hextemp);
+										}
+									}
+								}
+							}
+						break;
+						case MODE_XPOINT:
+							for(k = 0; k < 4;k++)	{
+								pts[(4*j)+k].x.Get32Bytes((unsigned char *)rawvalue);
+								r = bloom_check(&bloom,rawvalue,MAXLENGTHADDRESS);
+								if(r) {
+									r = searchbinary(addressTable,rawvalue,N);
+									if(r) {
+										keyfound.SetInt32(k);
+										keyfound.Mult(&stride);
+										keyfound.Add(&key_mpz);
+										hextemp = keyfound.GetBase16();
+										R = secp->ComputePublicKey(&keyfound);
+										secp->GetPublicKeyHex(true,R,public_key_compressed_hex);
+										printf("\nHIT!! PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
+#ifdef _WIN64
+										WaitForSingleObject(write_keys, INFINITE);
 #else
 										pthread_mutex_lock(&write_keys);
 #endif
@@ -2484,129 +2845,47 @@ void *thread_process(void *vargp)	{
 											fprintf(keys,"PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
 											fclose(keys);
 										}
-										printf("\nHIT!! PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
-#ifdef _WIN64
-									ReleaseMutex(write_keys);
-#else
-										pthread_mutex_unlock(&write_keys);
-#endif
-
-										free(public_key_compressed_hex);
-										free(hextemp);
-									}
-								}
-								free(publickeyhashrmd160_compress);
-							}
-							if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH){
-								r = bloom_check(&bloom,publickeyhashrmd160_uncompress,MAXLENGTHADDRESS);
-								if(r) {
-									r = searchbinary(addressTable,publickeyhashrmd160_uncompress,N);
-									if(r) {
-										found++;
-										hextemp = key_mpz.GetBase16();
-										public_key_uncompressed_hex = tohex(public_key_uncompressed,65);
-#ifdef _WIN64
-										WaitForSingleObject(write_keys, INFINITE);
-#else
-										pthread_mutex_lock(&write_keys);
-#endif
-										keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
-										if(keys != NULL)	{
-											fprintf(keys,"PrivKey: %s\npubkey: %s\n",hextemp,public_key_uncompressed_hex);
-											fclose(keys);
-										}
-										printf("\nHIT!! PrivKey: %s\npubkey: %s\n",hextemp,public_key_uncompressed_hex);
 #ifdef _WIN64
 										ReleaseMutex(write_keys);
 #else
 										pthread_mutex_unlock(&write_keys);
 #endif
 
-										free(public_key_uncompressed_hex);
 										free(hextemp);
 									}
 								}
-								free(publickeyhashrmd160_uncompress);
-							}
-						break;
-						case MODE_XPOINT:
-							pts[j].x.Get32Bytes((unsigned char *)rawvalue);
-							r = bloom_check(&bloom,rawvalue,MAXLENGTHADDRESS);
-							if(r) {
-								r = searchbinary(addressTable,rawvalue,N);
-								if(r) {
-									found++;
-									hextemp = key_mpz.GetBase16();
-									R = secp->ComputePublicKey(&key_mpz);
-									public_key_compressed = secp->GetPublicKeyHex(true,R);
-									printf("\nHIT!! PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed);
-#ifdef _WIN64
-									WaitForSingleObject(write_keys, INFINITE);
-#else
-									pthread_mutex_lock(&write_keys);
-#endif
-
-									keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
-									if(keys != NULL)	{
-										fprintf(keys,"PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed);
-										fclose(keys);
-									}
-#ifdef _WIN64
-									ReleaseMutex(write_keys);
-#else
-									pthread_mutex_unlock(&write_keys);
-#endif
-
-									free(public_key_compressed);
-									free(hextemp);
-								}
 							}
 						break;
 					}
-					if(FLAGMODE == MODE_ADDRESS || FLAGMODE == MODE_RMD160)	{
-						switch(FLAGSEARCH)	{
-							case SEARCH_UNCOMPRESS:
-								free(public_key_uncompressed);
-							break;
-							case SEARCH_COMPRESS:
-								free(public_key_compressed);
-							break;
-							case SEARCH_BOTH:
-								free(public_key_compressed);
-								free(public_key_uncompressed);
-							break;
-						}
-					}
-					count++;
-					if(count % DEBUGCOUNT == 0 )	{
-						steps[thread_number]++;
-					}
-					key_mpz.AddOne();
+					count+=4;
+					temp_stride.SetInt32(4);
+					temp_stride.Mult(&stride);
+					key_mpz.Add(&temp_stride);
 				}
-
-
+				steps[thread_number]++;
 
 				// Next start point (startP + GRP_SIZE*G)
-		    pp = startP;
-		    dy.ModSub(&_2Gn.y,&pp.y);
+				pp = startP;
+				dy.ModSub(&_2Gn.y,&pp.y);
 
-		    _s.ModMulK1(&dy,&dx[i + 1]);
-		    _p.ModSquareK1(&_s);
+				_s.ModMulK1(&dy,&dx[i + 1]);
+				_p.ModSquareK1(&_s);
 
-		    pp.x.ModNeg();
-		    pp.x.ModAdd(&_p);
-		    pp.x.ModSub(&_2Gn.x);
+				pp.x.ModNeg();
+				pp.x.ModAdd(&_p);
+				pp.x.ModSub(&_2Gn.x);
 
-		    pp.y.ModSub(&_2Gn.x,&pp.x);
-		    pp.y.ModMulK1(&_s);
-		    pp.y.ModSub(&_2Gn.y);
-		    startP = pp;
-			}while(count <= N_SECUENTIAL_MAX && continue_flag);
+				pp.y.ModSub(&_2Gn.x,&pp.x);
+				pp.y.ModMulK1(&_s);
+				pp.y.ModSub(&_2Gn.y);
+				startP = pp;
+			}while(count < N_SECUENTIAL_MAX && continue_flag);
 		}
 	} while(continue_flag);
 	ends[thread_number] = 1;
 	return NULL;
 }
+
 
 void _swap(struct address_value *a,struct address_value *b)	{
 	struct address_value t;
@@ -3133,7 +3412,6 @@ void *thread_process_bsgs(void *vargp)	{
 				}// end else
 			}// End if 
 		}
-			
 		steps[thread_number]++;
 #ifdef _WIN64
 		WaitForSingleObject(bsgs_thread, INFINITE);
@@ -3684,7 +3962,7 @@ void *thread_pub2rmd(void *vargp)	{
 			}
 			for(i = 0 ; i < limit ; i++) {
 				pub.parity = 0x02;
-				sha256((char*)&pub, 33, digest256);
+				sha256((uint8_t*)&pub, 33, (uint8_t*)digest256);
 				RMD160Data((const unsigned char*)digest256,32, digest160);
 				r = bloom_check(&bloom,digest160,MAXLENGTHADDRESS);
 				if(r)  {
@@ -3717,7 +3995,7 @@ void *thread_pub2rmd(void *vargp)	{
 						}
 				}
 				pub.parity = 0x03;
-				sha256((char*)&pub, 33, digest256);
+				sha256((uint8_t*)&pub, 33,(uint8_t*) digest256);
 				RMD160Data((const unsigned char*)digest256,32, digest160);
 				r = bloom_check(&bloom,digest160,MAXLENGTHADDRESS);
 				if(r)  {
@@ -3753,21 +4031,23 @@ void *thread_pub2rmd(void *vargp)	{
 				if(pub.X.data32[7] % DEBUGCOUNT == 0)  {
 					steps[thread_number]++;
 				}
-			}	/* End for */
-		}	/* End if */
+			}	
+		}	
 	}while(pub2rmd_continue);
 	ends[thread_number] = 1;
 	return NULL;
 }
 
 void init_generator()	{
-	Point g = secp->G;
+	Point G = secp->ComputePublicKey(&stride);
+	Point g;
+	g.Set(G);
 	Gn.reserve(CPU_GRP_SIZE / 2);
 	Gn[0] = g;
 	g = secp->DoubleDirect(g);
 	Gn[1] = g;
 	for(int i = 2; i < CPU_GRP_SIZE / 2; i++) {
-		g = secp->AddDirect(g,secp->G);
+		g = secp->AddDirect(g,G);
 		Gn[i] = g;
 	}
 	_2Gn = secp->DoubleDirect(Gn[CPU_GRP_SIZE / 2 - 1]);
@@ -3974,13 +4254,10 @@ void KECCAK_256(uint8_t *source, size_t size,uint8_t *dst)	{
 	KECCAK_256_Final(dst,&ctx);
 }
 
-void generate_binaddress_eth(Point *publickey,unsigned char *dst_address)	{
+void generate_binaddress_eth(Point &publickey,unsigned char *dst_address)	{
 	unsigned char bin_publickey[64];
-	unsigned char bin_sha256[32];
-	size_t pubaddress_size = 50;
-	memset(dst_address,0,32);
-	publickey->x.Get32Bytes(bin_publickey);
-	publickey->y.Get32Bytes(bin_publickey+32);
+	publickey.x.Get32Bytes(bin_publickey);
+	publickey.y.Get32Bytes(bin_publickey+32);
 	KECCAK_256(bin_publickey, 64, dst_address);	
 }
 
@@ -5005,7 +5282,7 @@ void memorycheck_bsgs()	{
 	char current_checksum[32];
 	char *hextemp,*aux_c;
 	//if(FLAGDEBUG )printf("[D] Performing Memory checksum  \n");
-	sha256((char*)bPtable,bytes,current_checksum);
+	sha256((uint8_t*)bPtable,bytes,(uint8_t*)current_checksum);
 	if(memcmp(current_checksum,checksum,32) != 0 || memcmp(current_checksum,checksum_backup,32) != 0)	{
 		fprintf(stderr,"[E] Memory checksum mismatch, this should not happen but actually happened\nA bit in the memory was flipped by : electrical malfuntion, radiation or a cosmic ray\n");
 		hextemp = tohex(current_checksum,32);
@@ -5017,3 +5294,297 @@ void memorycheck_bsgs()	{
 		exit(0);
 	}
 }
+
+#ifdef _WIN64
+DWORD WINAPI thread_rmdcustom(LPVOID vargp) {
+#else
+void *thread_rmdcustom(void *vargp)	{
+#endif
+	struct tothread *tt;
+	Point pts[CPU_GRP_SIZE];
+	Int dx[CPU_GRP_SIZE / 2 + 1];
+	IntGroup *grp = new IntGroup(CPU_GRP_SIZE / 2 + 1);
+	Point startP;
+	Int dy;
+	Int dyn;
+	Int _s;
+	Int _p;
+	Point pp;
+	Point pn;
+	int hLength = (CPU_GRP_SIZE / 2 - 1);
+	char *ptr_u64range;
+	uint64_t i,j,count;
+	Point R,temporal;
+	int r,thread_number,continue_flag = 1,i_vanity,k;
+	char public_key_compressed[33],publickeyhashrmd160_compress[4][20],public_key_compressed_hex[68];
+	char *public_key_uncompressed = NULL,hexstrpoint[65],rawvalue[32];
+	char *publickeyhashrmd160_uncompress = NULL;
+	char *hextemp = NULL,*public_key_uncompressed_hex = NULL;
+	char *eth_address = NULL;
+	char *public_address_compressed = NULL,*public_address_uncompressed = NULL;
+	unsigned long longtemp;
+	FILE *keys,*vanityKeys;
+	Int key_mpz,mpz_bit_range_min,mpz_bit_range_max,mpz_bit_range_diff;
+	tt = (struct tothread *)vargp;
+	thread_number = tt->nt;
+	free(tt);
+	grp->Set(dx);
+	/*
+	ptr_u64range = (char*) &u64range;
+	
+	pthread_mutex_lock(&write_random);
+	ptr_u64range[0] = n_range_start.GetByte(3);
+	ptr_u64range[1] = n_range_start.GetByte(4);
+	ptr_u64range[2] = n_range_start.GetByte(5);
+	ptr_u64range[3] = n_range_start.GetByte(6);
+	ptr_u64range[4] = n_range_start.GetByte(7);
+	pthread_mutex_unlock(&write_random);
+	
+	pthread_mutex_lock(&write_random);
+	next_average(&u64range,0.45,0.65,0x10000000000,40);
+	pthread_mutex_unlock(&write_random);
+	printf("[+] u64range : %p\n",(void*)u64range);
+	*/
+	
+	do {
+		if(FLAGRANDOM){
+			key_mpz.Rand(&n_range_start,&n_range_end);
+		}
+		else	{
+			if(n_range_start.IsLower(&n_range_end))	{
+#ifdef _WIN64
+				WaitForSingleObject(write_random, INFINITE);
+#else
+				pthread_mutex_lock(&write_random);
+#endif
+				key_mpz.Set(&n_range_start);
+				n_range_start.Add(N_SECUENTIAL_MAX);
+
+#ifdef _WIN64
+				ReleaseMutex(write_random);
+#else
+				pthread_mutex_unlock(&write_random);
+#endif
+
+			}
+			else	{
+				continue_flag = 0;
+			}
+		}
+		if(continue_flag)	{
+			count = 0;
+			do {
+				/*
+				key_mpz.SetByte(0,0);
+				key_mpz.SetByte(1,0);
+				key_mpz.SetByte(2,0);
+				*/
+				if(FLAGMATRIX)	{
+					hextemp = key_mpz.GetBase16();
+					printf("Base key: %s\n",hextemp);
+					fflush(stdout);
+					free(hextemp);
+				}
+				else	{
+					if(FLAGQUIET == 0){
+						hextemp = key_mpz.GetBase16();
+						printf("\rBase key: %s     \r",hextemp);
+						fflush(stdout);
+						free(hextemp);
+						THREADOUTPUT = 1;
+					}
+				}
+				key_mpz.Add((uint64_t)(CPU_GRP_SIZE / 2));
+	 			startP = secp->ComputePublicKey(&key_mpz);
+				key_mpz.Sub((uint64_t)(CPU_GRP_SIZE / 2));
+
+				for(i = 0; i < hLength; i++) {
+					dx[i].ModSub(&Gn[i].x,&startP.x);
+				}
+			
+				dx[i].ModSub(&Gn[i].x,&startP.x);  // For the first point
+				dx[i + 1].ModSub(&_2Gn.x,&startP.x); // For the next center point
+				grp->ModInv();
+
+				pts[CPU_GRP_SIZE / 2] = startP;
+
+				for(i = 0; i<hLength; i++) {
+					pp = startP;
+					pn = startP;
+
+					// P = startP + i*G
+					dy.ModSub(&Gn[i].y,&pp.y);
+
+					_s.ModMulK1(&dy,&dx[i]);        // s = (p2.y-p1.y)*inverse(p2.x-p1.x);
+					_p.ModSquareK1(&_s);            // _p = pow2(s)
+
+					pp.x.ModNeg();
+					pp.x.ModAdd(&_p);
+					pp.x.ModSub(&Gn[i].x);           // rx = pow2(s) - p1.x - p2.x;
+
+					
+					pp.y.ModSub(&Gn[i].x,&pp.x);
+					pp.y.ModMulK1(&_s);
+					pp.y.ModSub(&Gn[i].y);           // ry = - p2.y - s*(ret.x-p2.x);
+				
+
+					// P = startP - i*G  , if (x,y) = i*G then (x,-y) = -i*G
+					dyn.Set(&Gn[i].y);
+					dyn.ModNeg();
+					dyn.ModSub(&pn.y);
+
+					_s.ModMulK1(&dyn,&dx[i]);      // s = (p2.y-p1.y)*inverse(p2.x-p1.x);
+					_p.ModSquareK1(&_s);            // _p = pow2(s)
+					pn.x.ModNeg();
+					pn.x.ModAdd(&_p);
+					pn.x.ModSub(&Gn[i].x);          // rx = pow2(s) - p1.x - p2.x;
+
+					pn.y.ModSub(&Gn[i].x,&pn.x);
+					pn.y.ModMulK1(&_s);
+					pn.y.ModAdd(&Gn[i].y);          // ry = - p2.y - s*(ret.x-p2.x);
+
+
+					pts[CPU_GRP_SIZE / 2 + (i + 1)] = pp;
+					pts[CPU_GRP_SIZE / 2 - (i + 1)] = pn;
+				}
+
+				// First point (startP - (GRP_SZIE/2)*G)
+				pn = startP;
+				dyn.Set(&Gn[i].y);
+				dyn.ModNeg();
+				dyn.ModSub(&pn.y);
+
+				_s.ModMulK1(&dyn,&dx[i]);
+				_p.ModSquareK1(&_s);
+
+				pn.x.ModNeg();
+				pn.x.ModAdd(&_p);
+				pn.x.ModSub(&Gn[i].x);
+				
+				pn.y.ModSub(&Gn[i].x,&pn.x);
+				pn.y.ModMulK1(&_s);
+				pn.y.ModAdd(&Gn[i].y);
+
+				pts[0] = pn;
+
+
+				for(j = 0; j < CPU_GRP_SIZE/4;j++){
+					//secp->GetPublicKeyRaw(true,pts[j],public_key_compressed);
+					/*
+					void Secp256K1::GetHash160(int type,bool compressed,
+  Point &k0,Point &k1,Point &k2,Point &k3,
+  uint8_t *h0,uint8_t *h1,uint8_t *h2,uint8_t *h3) {
+					*/
+					secp->GetHash160(P2PKH,true,pts[(j*4)],pts[(j*4)+1],pts[(j*4)+2],pts[(j*4)+3],(uint8_t*)publickeyhashrmd160_compress[0],(uint8_t*)publickeyhashrmd160_compress[1],(uint8_t*)publickeyhashrmd160_compress[2],(uint8_t*)publickeyhashrmd160_compress[3]);
+					for(k=0;k < 4;k++)	{
+					
+						r = bloom_check(&bloom,publickeyhashrmd160_compress[k],MAXLENGTHADDRESS);
+						if(r) {
+							r = searchbinary(addressTable,publickeyhashrmd160_compress[k],N);
+							if(r) {
+								secp->GetPublicKeyRaw(true,pts[(j*4)+k],public_key_compressed);
+								hextemp = key_mpz.GetBase16();
+								tohex_dst(public_key_compressed,33,public_key_compressed_hex);
+#ifdef _WIN64
+								WaitForSingleObject(write_keys, INFINITE);
+#else
+								pthread_mutex_lock(&write_keys);
+#endif
+								keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
+								if(keys != NULL)	{
+									fprintf(keys,"PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
+									fclose(keys);
+								}
+								printf("\nHIT!! PrivKey: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
+#ifdef _WIN64
+								ReleaseMutex(write_keys);
+#else
+								pthread_mutex_unlock(&write_keys);
+#endif
+
+								free(hextemp);
+								}
+							}
+						key_mpz.AddOne();
+						count++;
+					}
+				}
+				/* 
+					This increment the step counter for the speed calculations
+					each steps is goin to be 1024 keys more to the counter
+				*/
+				steps[thread_number]++;	
+				
+				
+				// Next start point (startP + GRP_SIZE*G)
+				pp = startP;
+				dy.ModSub(&_2Gn.y,&pp.y);
+
+				_s.ModMulK1(&dy,&dx[i + 1]);
+				_p.ModSquareK1(&_s);
+
+				pp.x.ModNeg();
+				pp.x.ModAdd(&_p);
+				pp.x.ModSub(&_2Gn.x);
+
+				pp.y.ModSub(&_2Gn.x,&pp.x);
+				pp.y.ModMulK1(&_s);
+				pp.y.ModSub(&_2Gn.y);
+				startP = pp;
+			}while(count < N_SECUENTIAL_MAX && continue_flag);
+			/*
+			pthread_mutex_lock(&write_random);
+			next_average(&u64range,0.40,0.65,0x10000000000,40);
+			pthread_mutex_unlock(&write_random);
+			printf("[+] u64range : %p\n",(void*)u64range);
+			*/
+		}
+	} while(continue_flag);
+	ends[thread_number] = 1;
+	return NULL;
+}
+
+/*
+bool next_average(uint64_t *value,float min,float max, uint64_t value_max,int bits)	{
+	char buffer[20];
+	uint64_t counter;
+	uint8_t *values;
+	int bytes,i,repeated,len;
+	int ones;
+	float ratio;
+	bytes = bits/8;
+	values = (uint8_t *)value;
+	counter = 0;
+	do	{
+		do{
+			do	{
+				ones = 0;
+				value[0]++;
+				for(i = 0; i < bytes; i++)	{
+					ones+= one_counter[values[i]];
+				}
+				ratio = (float)((float)ones/(float)bits);
+				counter++;
+			}while( (ratio < min || ratio > max ) && value[0]  < value_max );
+			repeated = 0;
+			for(i = 0; i < bytes-1 && !repeated; i++)	{
+				if(values[i] == values[i+1])	{
+					repeated = 1;
+				}
+			}
+		}while(repeated && value[0] < value_max);
+		
+		snprintf(buffer,20,"%p",value[0]);
+		len = strlen(buffer);
+		for(i = 2; i < len-2 && !repeated; i++)	{
+			if(buffer[i] == buffer[i+1] && buffer[i+1] == buffer[i+2])	{
+				repeated = 1;
+			}
+		}
+	}while(repeated && value[0] < value_max);
+	
+	if(value[0] < value_max)
+		return true;
+	else
+		return false;
+}*/

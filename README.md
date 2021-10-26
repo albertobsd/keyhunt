@@ -1109,58 +1109,6 @@ Output:
 
 Please note that total keys tested at the moment are only 141312, those are the valid keys that pass the check-test.
 
-the input file need to be a list of the RMD160 hash from the target address, example `tests/minikeys.txt`
-
-```
-da88f47133b93a1cc0c9dcf0163b2b48e2e0a20a
-24b6ed321b3ccfe1fc2e6860e3f89d4d5ab257da
-2312e3b76db5b91c5ad34eaea194c2ee6ece6f13
-```
-
-command
-
-```
-./keyhunt -m minikeys -f tests/minikeys.txt -r 1:100000000000000000000000000000000 -n 0x1000000 -M
-```
-
-output:
-
-```
-[+] Version 0.2.211024 Chocolate ¡Beta!, developed by AlbertoBSD
-[+] Mode minikeys
-[+] Matrix screen
-[+] Stride : 1
-[+] Opening file tests/minikeys.txt
-[+] N = 0x1000000
-[+] Range
-[+] -- from : 0x1
-[+] -- to   : 0x100000000000000000000000000000000
-[+] Allocating memory for 3 elements: 0.00 MB
-[+] Bloom filter for 3 elements.
-[+] Loading data to the bloomfilter total: 0.00 MB
-[+] Bloomfilter completed
-[+] Sorting data ... done! 3 values were loaded and sorted
-[+] Base key: 0x1  => S8AQGAut7N92awznwCnjuR
-
-HIT!! PrivKey: c4302796060742e218520bc5a4d3282ad4b8e3bf32ea2faeb1cc75cbbda33eed
-pubkey: 04fe4fee3a7f5fbc9289e1857cb2a84e0fc532a470b37635f419fdfcac9379c4c7fe2c29d36add668f38ddc18e0064a18f22467dd02a902406b7aa61112eec5249
-minikey: SUCsVzCwXiNaW4bnBuzx8Q
-address: 14CTHBV5S2fd9DPbKmMhrAe5se54Q85wqN
-
-HIT!! PrivKey: 3711a88da553ea782f9f8935cc10a9642191041e6d8e22ba1e48b7abf613047d
-pubkey: 04c5180db6ad25ba53d0c39ca95925f8554e71fbf15024f64cd105be307633975bc54ad824fcb85682053158a4a22ea4c61267a4d53b23b0c114d32ad581a5fe30
-minikey: SUpxjSMeoHoXuTVhy9VYQm
-address: 14M8TsBG3ntFiTm8XcDiBmHaECfZarfSw8
-
-HIT!! PrivKey: 82d02f3df7b73d7e6d8be2e3636461d3680263a07bd2e63e92e855840ecc2740
-pubkey: 04e6ebe21d214d13e547c74c8bf81fdf85cee2ba5d80e3ff1d4d0ef2d4542da9f938ae79f4c6f07f7ad4205794fc5e6e613146e6d218d5ddcb06377765a00baf7e
-minikey: SNQeNHzJXCJ3PcFUKB7bNv
-address: 1LvWNcKf4LuWcyCmZkEev8hMusQ4qr55L8
-^C
-```
-
-
-
 # Ethereum
 
 Finally ethreum address are supported, for ethreum there are no modes exect for address.

@@ -1070,7 +1070,7 @@ This mode is some experimental.
 
 For the moment only Minikeys of 22 characters are available
 
-The minikey are generated from a 16 byte buffer using the base58 encode funtion using the next string `S23456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz` any sugestion please let me know.
+The minikey are generated from a 16 byte buffer using the base58 encode funtion using the bitcoin  string `123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz` any sugestion please let me know.
 
 
 
@@ -1108,6 +1108,7 @@ Output:
 ```
 
 Please note that total keys tested at the moment are only 141312, those are the valid keys that pass the check-test.
+
 
 # Ethereum
 

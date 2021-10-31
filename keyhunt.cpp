@@ -27,7 +27,6 @@ email: alberto.bsd@gmail.com
 #include "hash/sha256.h"
 #include "hash/ripemd160.h"
 
-
 #if defined(_WIN64) && !defined(__CYGWIN__)
 #include "getopt.h"
 #include <windows.h>
@@ -81,7 +80,9 @@ struct bPload	{
 	uint64_t from;
 	uint64_t to;
 	uint64_t counter;
+	uint64_t workload;
 	uint32_t aux;
+	uint32_t finished;
 };
 
 #if defined(_WIN64) && !defined(__CYGWIN__)
@@ -106,9 +107,12 @@ struct __attribute__((__packed__)) publickey {
 };
 #endif
 
-const char *Ccoinbuffer = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+const char *Ccoinbuffer_default = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+char *Ccoinbuffer = (char*) Ccoinbuffer_default;
 	
-const char *version = "0.2.211026 Chocolate ¡Beta!";
+const char *version = "0.2.211031 Trick or treat ¡Beta!";
 
 #define CPU_GRP_SIZE 1024
 
@@ -142,6 +146,8 @@ int64_t bsgs_partition(struct bsgs_xvalue *arr, int64_t n);
 int bsgs_searchbinary(struct bsgs_xvalue *arr,char *data,int64_t array_length,uint64_t *r_value);
 int bsgs_secondcheck(Int *start_range,uint32_t a,uint32_t k_index,Int *privatekey);
 
+void sha256sse_22(uint8_t *src0, uint8_t *src1, uint8_t *src2, uint8_t *src3, uint8_t *dst0, uint8_t *dst1, uint8_t *dst2, uint8_t *dst3);
+
 #if defined(_WIN64) && !defined(__CYGWIN__)
 DWORD WINAPI thread_process_minikeys(LPVOID vargp);
 DWORD WINAPI thread_process(LPVOID vargp);
@@ -166,13 +172,13 @@ void *thread_bPloadFile(void *vargp);
 void *thread_pub2rmd(void *vargp);
 #endif
 
-
 char *publickeytohashrmd160(char *pkey,int length);
 void publickeytohashrmd160_dst(char *pkey,int length,char *dst);
 char *pubkeytopubaddress(char *pkey,int length);
 void pubkeytopubaddress_dst(char *pkey,int length,char *dst);
 void rmd160toaddress_dst(char *rmd,char *dst);
-
+void set_minikey(char *buffer,char *rawbuffer,int length);
+bool increment_minikey_index(char *buffer,char *rawbuffer,int index);
 
 void KECCAK_256(uint8_t *source, size_t size,uint8_t *dst);
 void generate_binaddress_eth(Point &publickey,unsigned char *dst_address);
@@ -194,13 +200,13 @@ HANDLE* tid = NULL;
 HANDLE write_keys;
 HANDLE write_random;
 HANDLE bsgs_thread;
-HANDLE bPload_mutex;
+HANDLE *bPload_mutex;
 #else
 pthread_t *tid = NULL;
 pthread_mutex_t write_keys;
 pthread_mutex_t write_random;
 pthread_mutex_t bsgs_thread;
-pthread_mutex_t bPload_mutex;
+pthread_mutex_t *bPload_mutex;
 #endif
 
 
@@ -210,8 +216,10 @@ uint64_t THREADCYCLES = 0;
 uint64_t THREADCOUNTER = 0;
 uint64_t FINISHED_ITEMS = 0;
 uint64_t OLDFINISHED_ITEMS = -1;
-int AVAILABLE_THREADS;
 
+
+uint8_t byte_encode_crypto = 0x00;		/* Bitcoin  */
+//uint8_t byte_encode_crypto = 0x1E;	/* Dogecoin */
 
 struct bloom bloom;
 
@@ -296,9 +304,6 @@ pthread_mutex_t *bloom_bP_mutex;
 pthread_mutex_t bloom_bPx2nd_mutex;
 #endif
 
-
-
-
 struct bloom bloom_bPx2nd; //Second Bloom filter check
 struct checksumsha256 bloom_bPx2nd_checksum;
 
@@ -360,9 +365,10 @@ int main(int argc, char **argv)	{
 	char *str_pretotal = NULL;
 	char *str_divpretotal = NULL;
 	char *bf_ptr = NULL;
-
+	char *bPload_threads_available;
 	FILE *fd,*fd_aux1,*fd_aux2,*fd_aux3;
 	uint64_t j,total_precalculated,i,PERTHREAD,BASE,PERTHREAD_R,itemsbloom,itemsbloom2;
+	uint32_t finished;
 	int readed,continue_flag,check_flag,r,lenaux,lendiff,c,salir,index_value;
 	Int total,pretotal,debugcount_mpz,seconds,div_pretotal;
 	struct bPload *bPload_temp_ptr;
@@ -393,7 +399,7 @@ int main(int argc, char **argv)	{
 #endif
 	
 
-	while ((c = getopt(argc, argv, "dehMqRwzSB:b:c:E:f:I:k:l:m:N:n:p:r:s:t:v:V:G:")) != -1) {
+	while ((c = getopt(argc, argv, "dehMqRwzSB:b:c:E:f:I:k:l:m:N:n:p:r:s:t:v:V:G:8:")) != -1) {
 		switch(c) {
 			case 'h':
 				printf("\nUsage:\n-h\t\tshow this help\n");
@@ -401,11 +407,13 @@ int main(int argc, char **argv)	{
 				printf("-b bits\t\tFor some puzzles you only need some numbers of bits in the test keys.\n");
 				printf("\t\tThis option only is valid with the Random option -R\n");
 				printf("-c crypto\tSearch for specific crypo. < btc, eth, all > valid only w/ -m address \n");
+				printf("-C mini\t\tSet the minikey Base also from:to only 22 character minikeys");
+				printf("-8 alpha\t\tSet the bas58 alphabet for minikeys");
 				printf("\t\tYour file MUST be sordted if no you are going to lose collisions\n");
 				printf("-f file\t\tSpecify filename with addresses or xpoints or uncompressed public keys\n");
 				printf("-I stride\tStride for xpoint, rmd160 and address, this option don't work with bsgs	\n");
 				printf("-k value\tUse this only with bsgs mode, k value is factor for M, more speed but more RAM use wisely\n");
-				printf("-l look\tWhat type of address/hash160 are you looking for < compress , uncompress , both>\n");
+				printf("-l look\tWhat type of address/hash160 are you looking for < compress , uncompress , both> Only for rmd160 and address\n");
 				printf("-m mode\t\tmode of search for cryptos. ( bsgs , xpoint , rmd160 , address ) default: address (more slow)\n");
 				printf("-M\t\tMatrix screen, feel like a h4x0r, but performance will droped\n");
 				printf("-n uptoN\tCheck for N secuential numbers before the random chossen this only work with -R option\n");
@@ -724,8 +732,17 @@ int main(int argc, char **argv)	{
 				fd = NULL;
 			break;
 			case 'w':
-			printf("[+] Data marked as RAW\n");
+				printf("[+] Data marked as RAW\n");
 				FLAGRAWDATA = 1;
+			break;
+			case '8':
+				if(strlen(optarg) != 58)	{
+					fprintf(stderr,"[W] The base58 alphabet must be 58 characters long.\n");
+				}
+				else	{
+					Ccoinbuffer = optarg; 
+					printf("[+] Base58 for Minikeys %s\n",Ccoinbuffer);
+				}
 			break;
 			default:
 				fprintf(stderr,"[E] Unknow opcion -%c\n",c);
@@ -741,7 +758,7 @@ int main(int argc, char **argv)	{
 			stride.SetBase16(str_stride+2);
 		}
 		else{
-			stride.SetBase16(str_stride);
+			stride.SetBase10(str_stride);
 		}
 		printf("[+] Stride : %s\n",stride.GetBase10());
 	}
@@ -960,7 +977,6 @@ int main(int argc, char **argv)	{
 		else	{
 			if(bloom_init2(&bloom,N,0.000001)	== 1){
 				fprintf(stderr,"[E] error bloom_init for %" PRIu64 " elements.\n",N);
-				fprintf(stderr,"[+] man enough is enough stop it\n");
 				exit(0);
 			}
 		}
@@ -1351,16 +1367,19 @@ int main(int argc, char **argv)	{
 		BSGS_M2.Div(&BSGS_AUX);
 
 		if(!BSGS_R.IsZero())	{ /* If BSGS_M modulo 20 is not 0*/
-
 			BSGS_M2.AddOne();
 		}
+		
 		bsgs_m2 =  BSGS_M2.GetInt64();
+		
 		BSGS_AUX.Set(&BSGS_N);
 		BSGS_AUX.Div(&BSGS_M);
+		
 		BSGS_R.Set(&BSGS_N);
 		BSGS_R.Mod(&BSGS_M);
 
 		if(!BSGS_R.IsZero())	{ /* if BSGS_N modulo BSGS_M is not 0*/
+		
 			BSGS_N.Set(&BSGS_M);
 			BSGS_N.Mult(&BSGS_AUX);
 		}
@@ -1368,6 +1387,9 @@ int main(int argc, char **argv)	{
 
 		bsgs_m = BSGS_M.GetInt64();
 		bsgs_aux = BSGS_AUX.GetInt64();
+		
+		
+		
 		hextemp = BSGS_N.GetBase16();
 		printf("[+] N = 0x%s\n",hextemp);
 		free(hextemp);
@@ -1690,7 +1712,7 @@ int main(int argc, char **argv)	{
 		}
 		
 		if(!FLAGREADEDFILE1 || !FLAGREADEDFILE2 || !FLAGREADEDFILE3)	{	/*If just one of the files were not readed, then we need to calculate the content of all because bloom*/
-			AVAILABLE_THREADS = NTHREADS;
+
 			FINISHED_THREADS_COUNTER = 0;
 			FINISHED_THREADS_BP = 0;
 			FINISHED_ITEMS = 0;
@@ -1699,10 +1721,10 @@ int main(int argc, char **argv)	{
 			THREADCOUNTER = 0;
 			THREADCYCLES = bsgs_m /THREADBPWORKLOAD;
 			PERTHREAD_R = bsgs_m % THREADBPWORKLOAD;
-			//if(FLAGDEBUG) printf("[D] THREADCYCLES: %lu\n",THREADCYCLES);
+			if(FLAGDEBUG) printf("[D] THREADCYCLES: %lu\n",THREADCYCLES);
 			if(PERTHREAD_R != 0)	{
 				THREADCYCLES++;
-				//if(FLAGDEBUG) printf("[D] PERTHREAD_R: %lu\n",PERTHREAD_R);
+				if(FLAGDEBUG) printf("[D] PERTHREAD_R: %lu\n",PERTHREAD_R);
 			}
 			
 			printf("\r[+] processing %lu/%lu bP points : %i%%\r",FINISHED_ITEMS,bsgs_m,(int) (((double)FINISHED_ITEMS/(double)bsgs_m)*100));
@@ -1710,108 +1732,141 @@ int main(int argc, char **argv)	{
 			
 #if defined(_WIN64) && !defined(__CYGWIN__)
 			tid = (HANDLE*)calloc(NTHREADS, sizeof(HANDLE));
+			bPload_mutex = (HANDLE*) calloc(NTHREADS,sizeof(HANDLE));
 #else
 			tid = (pthread_t *) calloc(NTHREADS,sizeof(pthread_t));
+			bPload_mutex = (pthread_mutex_t*) calloc(NTHREADS,sizeof(pthread_mutex_t));
 #endif
+			bPload_temp_ptr = (struct bPload*) calloc(NTHREADS,sizeof(struct bPload));
+			bPload_threads_available = (char*) calloc(NTHREADS,sizeof(char));
+			
+			if(tid == NULL || bPload_temp_ptr == NULL || bPload_threads_available == NULL || bPload_mutex == NULL)	{
+				fprintf(stderr,"[E] error calloc()\n");
+				exit(0);
+			}
+			memset(bPload_threads_available,1,NTHREADS);
 			if(FLAGPRECALCUTED_P_FILE)	{
 				do	{
-					for(i = 0; i < AVAILABLE_THREADS && !salir; i++)	{
-						bPload_temp_ptr = (struct bPload*) calloc(1,sizeof(struct bPload));
-						bPload_temp_ptr->from = BASE +1;
-						bPload_temp_ptr->threadid = THREADCOUNTER;
-						if( THREADCOUNTER < THREADCYCLES-1)	{
-							bPload_temp_ptr->to = BASE + THREADBPWORKLOAD;
-						}
-						else	{
-							bPload_temp_ptr->to = BASE + THREADBPWORKLOAD + PERTHREAD_R;
-							salir = 1;
-						}
-						//if(FLAGDEBUG) printf("[I] %lu to %lu\n",bPload_temp_ptr->from,bPload_temp_ptr->to);
+					for(i = 0; i < NTHREADS && !salir; i++)	{
+
+						if(bPload_threads_available[i] && !salir)	{
+							bPload_threads_available[i] = 0;
+							bPload_temp_ptr[i].from = BASE +1;
+							bPload_temp_ptr[i].threadid = i;
+							bPload_temp_ptr[i].finished = 0;
+							if( THREADCOUNTER < THREADCYCLES-1)	{
+								bPload_temp_ptr[i].to = BASE + THREADBPWORKLOAD;
+							}
+							else	{
+								bPload_temp_ptr[i].to = BASE + THREADBPWORKLOAD + PERTHREAD_R;
+								salir = 1;
+							}
+							if(FLAGDEBUG) printf("[I] %lu to %lu\n",bPload_temp_ptr[i].from,bPload_temp_ptr[i].to);
 #if defined(_WIN64) && !defined(__CYGWIN__)
-						tid[0] = CreateThread(NULL, 0, thread_bPloadFile, (void*)bPload_temp_ptr, 0, &s);
+							tid[i] = CreateThread(NULL, 0, thread_bPloadFile, (void*)&bPload_temp_ptr[i], 0, &s);
 #else
-						s = pthread_create(&tid[0],NULL,thread_bPloadFile,(void*)bPload_temp_ptr);
+							s = pthread_create(&tid[i],NULL,thread_bPloadFile,(void*)&bPload_temp_ptr[i]);
+							pthread_detach(tid[i]);
 #endif
-						BASE+=THREADBPWORKLOAD;
-						THREADCOUNTER++;
+							BASE+=THREADBPWORKLOAD;
+							THREADCOUNTER++;
+						}
 					}
-					AVAILABLE_THREADS = 0;
 					
 					if(OLDFINISHED_ITEMS != FINISHED_ITEMS)	{
 						printf("\r[+] processing %lu/%lu bP points : %i%%\r",FINISHED_ITEMS,bsgs_m,(int) (((double)FINISHED_ITEMS/(double)bsgs_m)*100));
 						fflush(stdout);
 						OLDFINISHED_ITEMS = FINISHED_ITEMS;
 					}
-					sleep_ms(10);
+
+
+					for(i = 0 ; i < NTHREADS ; i++)	{
+
 #if defined(_WIN64) && !defined(__CYGWIN__)
-					WaitForSingleObject(bPload_mutex, INFINITE);
-					AVAILABLE_THREADS = FINISHED_THREADS_BP;
-					FINISHED_THREADS_BP = 0;
-					ReleaseMutex(bPload_mutex);
-#else	
-					pthread_mutex_lock(&bPload_mutex);
-					AVAILABLE_THREADS = FINISHED_THREADS_BP;
-					FINISHED_THREADS_BP = 0;
-					pthread_mutex_unlock(&bPload_mutex);
+						WaitForSingleObject(bPload_mutex[i], INFINITE);
+						finished = bPload_temp_ptr[i].finished;
+						ReleaseMutex(bPload_mutex[i]);
+#else
+						pthread_mutex_lock(&bPload_mutex[i]);
+						finished = bPload_temp_ptr[i].finished;
+						pthread_mutex_unlock(&bPload_mutex[i]);
 #endif
-					FINISHED_THREADS_COUNTER+= AVAILABLE_THREADS;
-					FINISHED_ITEMS+= AVAILABLE_THREADS * THREADBPWORKLOAD;
+						if(finished)	{
+							bPload_temp_ptr[i].finished = 0;
+							bPload_threads_available[i] = 1;
+							FINISHED_ITEMS += bPload_temp_ptr[i].workload;
+							FINISHED_THREADS_COUNTER++;
+						}
+					}
 
-
+					//if(FLAGDEBUG) printf("[I] %lu < %lu ? \n",FINISHED_THREADS_COUNTER,THREADCYCLES);
+					
 				}while(FINISHED_THREADS_COUNTER < THREADCYCLES);
 				printf("\r[+] processing %lu/%lu bP points : 100%%     \n",bsgs_m,bsgs_m);
 			}
 			else	{
 				do	{
-					for(i = 0; i < AVAILABLE_THREADS && !salir; i++)	{
-						bPload_temp_ptr = (struct bPload*) calloc(1,sizeof(struct bPload));
-						bPload_temp_ptr->from = BASE +1;
-						bPload_temp_ptr->threadid = THREADCOUNTER;
-						if( THREADCOUNTER < THREADCYCLES-1)	{
-							bPload_temp_ptr->to = BASE + THREADBPWORKLOAD;
-						}
-						else	{
-							bPload_temp_ptr->to = BASE + THREADBPWORKLOAD + PERTHREAD_R;
-							salir = 1;
-							//if(FLAGDEBUG) printf("[D] Salir OK\n");
-						}
-						//if(FLAGDEBUG) printf("[I] %lu to %lu\n",bPload_temp_ptr->from,bPload_temp_ptr->to);
+					for(i = 0; i < NTHREADS && !salir; i++)	{
+
+						if(bPload_threads_available[i] && !salir)	{
+							bPload_threads_available[i] = 0;
+							bPload_temp_ptr[i].from = BASE +1;
+							bPload_temp_ptr[i].threadid = i;
+							bPload_temp_ptr[i].finished = 0;
+							if( THREADCOUNTER < THREADCYCLES-1)	{
+								bPload_temp_ptr[i].to = BASE + THREADBPWORKLOAD;
+								bPload_temp_ptr[i].workload = THREADBPWORKLOAD;
+							}
+							else	{
+								bPload_temp_ptr[i].to = BASE + THREADBPWORKLOAD + PERTHREAD_R;
+								bPload_temp_ptr[i].workload = THREADBPWORKLOAD + PERTHREAD_R;
+								salir = 1;
+								//if(FLAGDEBUG) printf("[D] Salir OK\n");
+							}
+							//if(FLAGDEBUG) printf("[I] %lu to %lu\n",bPload_temp_ptr[i].from,bPload_temp_ptr[i].to);
 #if defined(_WIN64) && !defined(__CYGWIN__)
-						tid[0] = CreateThread(NULL, 0, thread_bPload, (void*)bPload_temp_ptr, 0, &s);
+							tid[i] = CreateThread(NULL, 0, thread_bPload, (void*) &bPload_temp_ptr[i], 0, &s);
 #else
-						s = pthread_create(&tid[0],NULL,thread_bPload,(void*)bPload_temp_ptr);
+							s = pthread_create(&tid[i],NULL,thread_bPload,(void*) &bPload_temp_ptr[i]);
+							pthread_detach(tid[i]);
 #endif
-						BASE+=THREADBPWORKLOAD;
-						THREADCOUNTER++;
+							BASE+=THREADBPWORKLOAD;
+							THREADCOUNTER++;
+						}
 					}
-					AVAILABLE_THREADS = 0;
 					if(OLDFINISHED_ITEMS != FINISHED_ITEMS)	{
 						printf("\r[+] processing %lu/%lu bP points : %i%%\r",FINISHED_ITEMS,bsgs_m,(int) (((double)FINISHED_ITEMS/(double)bsgs_m)*100));
 						fflush(stdout);
 						OLDFINISHED_ITEMS = FINISHED_ITEMS;
 					}
-					sleep_ms(10);
-#if defined(_WIN64) && !defined(__CYGWIN__)
-					WaitForSingleObject(bPload_mutex, INFINITE);
-					AVAILABLE_THREADS = FINISHED_THREADS_BP;
-					FINISHED_THREADS_BP = 0;
-					FINISHED_THREADS_COUNTER+= AVAILABLE_THREADS;
-					FINISHED_ITEMS+= AVAILABLE_THREADS * THREADBPWORKLOAD;
-					ReleaseMutex(bPload_mutex);
-#else	
-					pthread_mutex_lock(&bPload_mutex);
-					AVAILABLE_THREADS = FINISHED_THREADS_BP;
-					FINISHED_THREADS_BP = 0;
-					FINISHED_THREADS_COUNTER+= AVAILABLE_THREADS;
-					FINISHED_ITEMS+= AVAILABLE_THREADS * THREADBPWORKLOAD;
-					pthread_mutex_unlock(&bPload_mutex);
-#endif
+					
+					for(i = 0 ; i < NTHREADS ; i++)	{
 
+#if defined(_WIN64) && !defined(__CYGWIN__)
+						WaitForSingleObject(bPload_mutex[i], INFINITE);
+						finished = bPload_temp_ptr[i].finished;
+						ReleaseMutex(bPload_mutex[i]);
+#else
+						pthread_mutex_lock(&bPload_mutex[i]);
+						finished = bPload_temp_ptr[i].finished;
+						pthread_mutex_unlock(&bPload_mutex[i]);
+#endif
+						if(finished)	{
+							bPload_temp_ptr[i].finished = 0;
+							bPload_threads_available[i] = 1;
+							FINISHED_ITEMS += bPload_temp_ptr[i].workload;
+							FINISHED_THREADS_COUNTER++;
+						}
+					}
+					
 				}while(FINISHED_THREADS_COUNTER < THREADCYCLES);
 				printf("\r[+] processing %lu/%lu bP points : 100%%     \n",bsgs_m,bsgs_m);
-			}			
-
-			free(tid);			
+			}
+			free(tid);
+			free(bPload_mutex);
+			free(bPload_temp_ptr);
+			free(bPload_threads_available);
+			
 		}
 		
 		if(!FLAGREADEDFILE1 || !FLAGREADEDFILE2 )	{
@@ -2195,7 +2250,7 @@ void pubkeytopubaddress_dst(char *pkey,int length,char *dst)	{
 void rmd160toaddress_dst(char *rmd,char *dst){
 	char digest[60];
 	size_t pubaddress_size = 40;
-	digest[0] = 0;
+	digest[0] = byte_encode_crypto;
 	memcpy(digest+1,rmd,20);
 	sha256((uint8_t*)digest, 21,(uint8_t*) digest+21);
 	sha256((uint8_t*)digest+21, 32,(uint8_t*) digest+21);
@@ -2340,7 +2395,6 @@ void *thread_process_minikeys(void *vargp)	{
 		}
 		if(continue_flag)	{
 			count = 0;
-			//b58enc_custom( minikeys[0] + 1, &len_dst, rawbuffer, 32,(char*)Ccoinbuffer);
 			if(FLAGMATRIX)	{
 					hextemp = counter.GetBase16();
 					printf("[+] Base key: 0x%s\n",hextemp);
@@ -2357,7 +2411,6 @@ void *thread_process_minikeys(void *vargp)	{
 				}
 			}
 			do {
-
 				b58enc_custom(buffer, &len_dst, rawbuffer, len_source,(char*)Ccoinbuffer);
 				sha256((uint8_t*)rawbuffer,32,(uint8_t*)digest);
 				len_current =len_dst-1;
@@ -2399,18 +2452,19 @@ void *thread_process_minikeys(void *vargp)	{
 							sha256((uint8_t*)minikeys[k],23,(uint8_t*)rawvalue[k]);
 							offset_buffer++;
 						}while(rawvalue[k][0] != 0x00);
-						sha256((uint8_t*)minikeys[k],22,(uint8_t*)rawvalue[k]);
+					}	
+					sha256sse_22((uint8_t*)minikeys[0],(uint8_t*)minikeys[1],(uint8_t*)minikeys[2],(uint8_t*)minikeys[3],(uint8_t*)rawvalue[0],(uint8_t*)rawvalue[1],(uint8_t*)rawvalue[2],(uint8_t*)rawvalue[3]);
+					
+					for(k = 0; k < 4; k++)	{
+						//if(FLAGDEBUG){ printf("%s\n",minikeys[k]);}
 						key_mpz[k].Set32Bytes((uint8_t*)rawvalue[k]);
 						publickey[k] = secp->ComputePublicKey(&key_mpz[k]);
-						//if(FLAGDEBUG) { printf("minikeys: %s\n",minikeys[k]); }
-					}					
-
+					}
 					secp->GetHash160(P2PKH,false,publickey[0],publickey[1],publickey[2],publickey[3],(uint8_t*)publickeyhashrmd160_uncompress[0],(uint8_t*)publickeyhashrmd160_uncompress[1],(uint8_t*)publickeyhashrmd160_uncompress[2],(uint8_t*)publickeyhashrmd160_uncompress[3]);
 					for(k = 0; k < 4; k++)	{
 						r = bloom_check(&bloom,publickeyhashrmd160_uncompress[k],20);
 						if(r) {
 							r = searchbinary(addressTable,publickeyhashrmd160_uncompress[k],N);
-
 							if(r) {
 								/* hit */
 								hextemp = key_mpz[k].GetBase16();
@@ -2453,6 +2507,149 @@ void *thread_process_minikeys(void *vargp)	{
 	return NULL;
 }
 
+
+#if defined(_WIN64) && !defined(__CYGWIN__)
+DWORD WINAPI thread_process_minikeys_(LPVOID vargp) {
+#else
+void *thread_process_minikeys_(void *vargp)	{
+#endif
+	FILE *keys;
+	Point publickey[4];
+	Int key_mpz[4];
+	struct tothread *tt;
+	uint64_t count;
+	char publickeyhashrmd160_uncompress[4][20];
+	char public_key_compressed_hex[67],public_key_uncompressed_hex[131];
+	char hexstrpoint[65],rawvalue[4][32];
+	char address[4][40],minikey[40],minikeys[4][24], buffer[1024],digest[32],buffer_b58[21];
+	char *hextemp,*rawbuffer;
+	int r,thread_number,continue_flag = 1,k,j,offset_buffer = 0;
+	Int counter;
+	tt = (struct tothread *)vargp;
+	thread_number = tt->nt;
+	free(tt);
+	rawbuffer = (char*) &counter.bits64 ;
+	minikey[0] = 'S';
+	minikey[22] = '?';
+	minikey[23] = 0x00;
+	do	{
+		if(FLAGRANDOM){
+#if defined(_WIN64) && !defined(__CYGWIN__)
+			WaitForSingleObject(write_random, INFINITE);
+			counter.Rand(256);
+			ReleaseMutex(write_random);
+#else
+			pthread_mutex_lock(&write_random);
+			counter.Rand(256);
+			n_range_start.Add(N_SECUENTIAL_MAX);
+			pthread_mutex_unlock(&write_random);
+#endif
+			for(k = 0; k < 21; k++)	{
+				buffer_b58[k] =(uint8_t)((uint8_t) rawbuffer[k] % 58);
+			}
+		}
+		else	{
+			if(n_range_start.IsLower(&n_range_end))	{
+#if defined(_WIN64) && !defined(__CYGWIN__)
+				WaitForSingleObject(write_random, INFINITE);
+				counter.Set(&n_range_start);
+				n_range_start.Add(N_SECUENTIAL_MAX);
+				ReleaseMutex(write_random);
+#else
+				pthread_mutex_lock(&write_random);
+				counter.Set(&n_range_start);
+				n_range_start.Add(N_SECUENTIAL_MAX);
+				pthread_mutex_unlock(&write_random);
+#endif
+			}
+			else	{
+				continue_flag = 0;
+			}
+		}
+		set_minikey(minikey+1,buffer_b58,21);
+		if(continue_flag)	{
+			count = 0;
+			if(FLAGMATRIX)	{
+					//hextemp = counter.GetBase16();
+					printf("[+] Base minikey: %s     \n",minikey);
+					fflush(stdout);
+					//free(hextemp);
+			}
+			else	{
+				if(FLAGQUIET == 0){
+					//hextemp = counter.GetBase16();
+					printf("\r[+] Base minikey: %s     \r",minikey);
+					fflush(stdout);
+					//free(hextemp);
+					//THREADOUTPUT = 1;
+				}
+			}
+			do {
+				for(j = 0;j<256; j++)	{
+					for(k = 0; k < 4; k++){
+						do	{
+							increment_minikey_index(minikey+1,buffer_b58,20);
+							sha256((uint8_t*)minikey,23,(uint8_t*)rawvalue[k]);
+						}while(rawvalue[k][0] != 0x00);
+						memcpy(minikeys[k],minikey,22);
+					}
+					sha256sse_22((uint8_t*)minikeys[0],(uint8_t*)minikeys[1],(uint8_t*)minikeys[2],(uint8_t*)minikeys[3],(uint8_t*)rawvalue[0],(uint8_t*)rawvalue[1],(uint8_t*)rawvalue[2],(uint8_t*)rawvalue[3]);
+					
+					for(k = 0; k < 4; k++)	{
+						key_mpz[k].Set32Bytes((uint8_t*)rawvalue[k]);
+						publickey[k] = secp->ComputePublicKey(&key_mpz[k]);
+					}
+					
+					secp->GetHash160(P2PKH,false,publickey[0],publickey[1],publickey[2],publickey[3],(uint8_t*)publickeyhashrmd160_uncompress[0],(uint8_t*)publickeyhashrmd160_uncompress[1],(uint8_t*)publickeyhashrmd160_uncompress[2],(uint8_t*)publickeyhashrmd160_uncompress[3]);
+					
+					for(k = 0; k < 4; k++)	{
+						r = bloom_check(&bloom,publickeyhashrmd160_uncompress[k],20);
+						if(r) {
+							r = searchbinary(addressTable,publickeyhashrmd160_uncompress[k],N);
+							if(r) {
+								/* hit */
+								hextemp = key_mpz[k].GetBase16();
+								secp->GetPublicKeyHex(false,publickey[k],public_key_uncompressed_hex);
+#if defined(_WIN64) && !defined(__CYGWIN__)
+								WaitForSingleObject(write_keys, INFINITE);
+#else
+								pthread_mutex_lock(&write_keys);
+#endif
+							
+								keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
+								rmd160toaddress_dst(publickeyhashrmd160_uncompress[k],address[k]);
+								minikeys[k][22] = '\0';
+								if(keys != NULL)	{
+									fprintf(keys,"PrivKey: %s\npubkey: %s\nminikey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,minikeys[k],address[k]);
+									fclose(keys);
+								}
+								printf("\nHIT!! PrivKey: %s\npubkey: %s\nminikey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,minikeys[k],address[k]);
+#if defined(_WIN64) && !defined(__CYGWIN__)
+								ReleaseMutex(write_keys);
+#else
+								pthread_mutex_unlock(&write_keys);
+#endif
+								
+								free(hextemp);
+							}
+						}
+					}
+				}
+				/*
+				if(FLAGDEBUG)	{
+					for(k = 0; k < 4; k++)	{
+						printf("Current minikey %s\n",minikeys[k]);
+					}
+				}
+				*/
+				steps[thread_number]++;
+				counter.AddOne();
+				count++;
+			}while(count < N_SECUENTIAL_MAX && continue_flag);
+		}
+	}while(continue_flag);
+	return NULL;
+}
 
 #if defined(_WIN64) && !defined(__CYGWIN__)
 DWORD WINAPI thread_process(LPVOID vargp) {
@@ -3882,7 +4079,7 @@ void *thread_bPloadFile(void *vargp)	{
 	i = tt->from -1;
 	j = tt->from -1;
 	to = tt->to;
-	free(tt);
+
 	if(fseek(fd,(uint64_t)(i*32),SEEK_SET) != 0)	{
 		fprintf(stderr,"Can't seek the file at index %" PRIu64 ", offset %" PRIu64 "\n",i,(uint64_t)(i*32));
 		exit(0);
@@ -3926,21 +4123,20 @@ void *thread_bPloadFile(void *vargp)	{
 			exit(0);
 		}
 	} while( i < to );
+
 #if defined(_WIN64) && !defined(__CYGWIN__)
-	WaitForSingleObject(bPload_mutex, INFINITE);
-	FINISHED_THREADS_BP++;
-	ReleaseMutex(bPload_mutex);
+	WaitForSingleObject(bPload_mutex[tt->threadid], INFINITE);
+	tt->finished = 1;
+	ReleaseMutex(bPload_mutex[tt->threadid]);
 #else	
-	pthread_mutex_lock(&bPload_mutex);
-	FINISHED_THREADS_BP++;
-	pthread_mutex_unlock(&bPload_mutex);
+	pthread_mutex_lock(&bPload_mutex[tt->threadid]);
+	tt->finished = 1;
+	pthread_mutex_unlock(&bPload_mutex[tt->threadid]);
 #endif
-	
-	
-	
 #if !defined(_WIN64) 
 	pthread_exit(NULL);
 #endif
+	return NULL;
 }
 
 void sleep_ms(int milliseconds)	{ // cross-platform sleep function
@@ -4111,21 +4307,16 @@ DWORD WINAPI thread_bPload(LPVOID vargp) {
 void *thread_bPload(void *vargp)	{
 #endif
 
-	char *hextemp,rawvalue[32];
+	char rawvalue[32];
 	struct bPload *tt;
-	uint64_t j_counter,i_counter;
-	uint64_t i,j,nbStep,to;
+	uint64_t j_counter,i_counter,i,j,nbStep,to;
 	IntGroup *grp = new IntGroup(CPU_GRP_SIZE / 2 + 1);
 	Point startP;
 	Int dx[CPU_GRP_SIZE / 2 + 1];
 	Point pts[CPU_GRP_SIZE];
-	Int dy;
-	Int dyn;
-	Int _s;
-	Int _p;
-	Point pp;
-	Point pn;
-	int hLength = (CPU_GRP_SIZE / 2 - 1) ,threadid;
+	Int dy,dyn,_s,_p;
+	Point pp,pn;
+	int bloom_bP_index,hLength = (CPU_GRP_SIZE / 2 - 1) ,threadid;
 	tt = (struct bPload *)vargp;
 	Int km(tt->from);
 	threadid = tt->threadid;
@@ -4141,11 +4332,10 @@ void *thread_bPload(void *vargp)	{
 	}
 	//if(FLAGDEBUG) printf("[D] thread %i nbStep %" PRIu64 "\n",threadid,nbStep);
 	to = tt->to;
-	free(tt);
+	
 	km.Add((uint64_t)(CPU_GRP_SIZE / 2));
 	startP = secp->ComputePublicKey(&km);
 	grp->Set(dx);
-
 	for(uint64_t s=0;s<nbStep;s++) {
 		for(i = 0; i < hLength; i++) {
 			dx[i].ModSub(&Gn[i].x,&startP.x);
@@ -4246,14 +4436,15 @@ void *thread_bPload(void *vargp)	{
 			}
 			if(i_counter < to)	{
 				if(!FLAGREADEDFILE1)	{
+					bloom_bP_index = (uint8_t)rawvalue[0];
 #if defined(_WIN64) && !defined(__CYGWIN__)
-					WaitForSingleObject(bloom_bP_mutex[((uint8_t)rawvalue[0])], INFINITE);
-					bloom_add(&bloom_bP[((uint8_t)rawvalue[0])], rawvalue ,BSGS_BUFFERXPOINTLENGTH);
-					ReleaseMutex(bloom_bP_mutex[((uint8_t)rawvalue[0])]);
+					WaitForSingleObject(bloom_bP_mutex[bloom_bP_index], INFINITE);
+					bloom_add(&bloom_bP[bloom_bP_index], rawvalue ,BSGS_BUFFERXPOINTLENGTH);
+					ReleaseMutex(bloom_bP_mutex[bloom_bP_index);
 #else
-					pthread_mutex_lock(&bloom_bP_mutex[((uint8_t)rawvalue[0])]);
-					bloom_add(&bloom_bP[((uint8_t)rawvalue[0])], rawvalue ,BSGS_BUFFERXPOINTLENGTH);
-					pthread_mutex_unlock(&bloom_bP_mutex[((uint8_t)rawvalue[0])]);
+					pthread_mutex_lock(&bloom_bP_mutex[bloom_bP_index]);
+					bloom_add(&bloom_bP[bloom_bP_index], rawvalue ,BSGS_BUFFERXPOINTLENGTH);
+					pthread_mutex_unlock(&bloom_bP_mutex[bloom_bP_index]);
 #endif
 				}
 				i_counter++;
@@ -4275,24 +4466,21 @@ void *thread_bPload(void *vargp)	{
 		pp.y.ModSub(&_2Gn.y);
 		startP = pp;
 	}
-	//if(FLAGDEBUG) printf("[D] thread %i finished\n",threadid);
 	delete grp;
-	
 #if defined(_WIN64) && !defined(__CYGWIN__)
-	WaitForSingleObject(bPload_mutex, INFINITE);
-	FINISHED_THREADS_BP++;
-	ReleaseMutex(bPload_mutex);
+	WaitForSingleObject(bPload_mutex[tt->threadid], INFINITE);
+	tt->finished = 1;
+	ReleaseMutex(bPload_mutex[tt->threadid]);
 #else	
-	pthread_mutex_lock(&bPload_mutex);
-	FINISHED_THREADS_BP++;
-	pthread_mutex_unlock(&bPload_mutex);
+	pthread_mutex_lock(&bPload_mutex[tt->threadid]);
+	tt->finished = 1;
+	pthread_mutex_unlock(&bPload_mutex[tt->threadid]);
 #endif
-	
+
 #ifndef _WIN64
 	pthread_exit(NULL);
 #endif
 	return NULL;
-
 }
 
 void KECCAK_256(uint8_t *source, size_t size,uint8_t *dst)	{
@@ -5353,4 +5541,60 @@ void str_rotate(char *dst,char *source,int length)	{
 		dst[i] = source[length-i];
 	}
 	dst[i] = '\0';
+}
+
+void set_minikey(char *buffer,char *rawbuffer,int length)	{
+	for(int i = 0;  i < length; i++)	{
+		
+		buffer[i] = Ccoinbuffer[(uint8_t)rawbuffer[i]];
+	}
+}
+
+bool increment_minikey_index(char *buffer,char *rawbuffer,int index)	{
+	if(rawbuffer[index] < 57){
+		rawbuffer[index]++;
+		buffer[index] = Ccoinbuffer[rawbuffer[index]];
+	}
+	else	{
+		rawbuffer[index] = 0x00;
+		buffer[index] = Ccoinbuffer[0];
+		if(index>0)	{
+			return increment_minikey_index(buffer,rawbuffer,index-1);
+		}
+		else	{
+			return false;
+		}
+	}
+	return true;
+}
+
+#define BUFFMINIKEY(buff,src) \
+(buff)[ 0] = (uint32_t)src[ 0] << 24 | (uint32_t)src[ 1] << 16 | (uint32_t)src[ 2] << 8 | (uint32_t)src[ 3]; \
+(buff)[ 1] = (uint32_t)src[ 4] << 24 | (uint32_t)src[ 5] << 16 | (uint32_t)src[ 6] << 8 | (uint32_t)src[ 7]; \
+(buff)[ 2] = (uint32_t)src[ 8] << 24 | (uint32_t)src[ 9] << 16 | (uint32_t)src[10] << 8 | (uint32_t)src[11]; \
+(buff)[ 3] = (uint32_t)src[12] << 24 | (uint32_t)src[13] << 16 | (uint32_t)src[14] << 8 | (uint32_t)src[15]; \
+(buff)[ 4] = (uint32_t)src[16] << 24 | (uint32_t)src[17] << 16 | (uint32_t)src[18] << 8 | (uint32_t)src[19]; \
+(buff)[ 5] = (uint32_t)src[20] << 24 | (uint32_t)src[21] << 16 | 0x8000; \
+(buff)[ 6] = 0; \
+(buff)[ 7] = 0; \
+(buff)[ 8] = 0; \
+(buff)[ 9] = 0; \
+(buff)[10] = 0; \
+(buff)[11] = 0; \
+(buff)[12] = 0; \
+(buff)[13] = 0; \
+(buff)[14] = 0; \
+(buff)[15] = 0xB0;
+
+
+void sha256sse_22(uint8_t *src0, uint8_t *src1, uint8_t *src2, uint8_t *src3, uint8_t *dst0, uint8_t *dst1, uint8_t *dst2, uint8_t *dst3)	{
+  uint32_t b0[16];
+  uint32_t b1[16];
+  uint32_t b2[16];
+  uint32_t b3[16];
+  BUFFMINIKEY(b0, src0);
+  BUFFMINIKEY(b1, src1);
+  BUFFMINIKEY(b2, src2);
+  BUFFMINIKEY(b3, src3);
+  sha256sse_1B(b0, b1, b2, b3, dst0, dst1, dst2, dst3);
 }

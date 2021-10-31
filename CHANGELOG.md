@@ -1,4 +1,12 @@
-# Version 0.2.211018 Chocolate ¡Beta!
+# Version 0.2.211031 Trick or treat ¡Beta!
+- Minikeys improvements in speed
+- Test to try solve the https://github.com/albertobsd/keyhunt/issues/139 issue
+
+# Version 0.2.211026 Chocolate ¡Beta!
+- Solved https://github.com/albertobsd/keyhunt/issues/130
+- Minikeys new generator improvements in speed
+
+# Version 0.2.211024 Chocolate ¡Beta!
 - Ethereum support
 - Double speed for rmd160 mode
 - Minikeys mode support

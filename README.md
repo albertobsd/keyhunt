@@ -12,6 +12,14 @@ Work for Bitcoin
 Work for Ethereum
 - address
 
+## Free Code
+
+This code is free of charge, see the licence for more details. https://github.com/albertobsd/keyhunt/blob/main/LICENSE
+
+This is a hobby for me but is still a lot of work.
+https://github.com/albertobsd/keyhunt#donations
+
+
 ## For regulars users
 
 Please read the CHANGELOG.md to see the new changes
@@ -967,32 +975,35 @@ To get optimal performance the k values need to be base 2^x values, this is 1,2,
 ### Valid n and k values
 
 ```
-+---------------------------+-------------+---------------------------+
-| bits | n in hexadecimal   | k max value | Amount of RAM with k = 1  |
-+---------------------------+-------------+---------------------------+
-|   20 |           0x100000 | 1 (default) |                           |
-|   22 |           0x400000 | 2           |                           |
-|   24 |          0x1000000 | 4           |                           |
-|   26 |          0x4000000 | 8           |                           |
-|   28 |         0x10000000 | 16          |                           |
-|   30 |         0x40000000 | 32          |                           |
-|   32 |        0x100000000 | 64          |                           |
-|   34 |        0x400000000 | 128         |                           |
-|   36 |       0x1000000000 | 256         |                           |
-|   38 |       0x4000000000 | 512         |                           |
-|   40 |      0x10000000000 | 1024        |                           |
-|   42 |      0x40000000000 | 2048        |                           |
-|   44 |     0x100000000000 | 4096        |                  ~17 MB   |
-|   46 |     0x400000000000 | 8192        |                  ~34 MB   |
-|   48 |    0x1000000000000 | 16384       |                           |
-|   50 |    0x4000000000000 | 32768       |                           |
-|   52 |   0x10000000000000 | 65536       |                           |
-|   54 |   0x40000000000000 | 131072      |                           |
-|   56 |  0x100000000000000 | 262144      |                           |
-|   58 |  0x400000000000000 | 524288      |                           |
-|   60 | 0x1000000000000000 | 1048576     |                 ~4.5 GB   |
-|   62 | 0x4000000000000000 | 2097152     |                   ~9 GB   |
-+---------------------------+-------------+---------------------------+
++------+----------------------+-------------+---------------------------+
+| bits |  n in hexadecimal    | k max value | Amount of RAM with k = 1  |
++------+----------------------+-------------+---------------------------+
+|   20 |             0x100000 | 1 (default) |                           |
+|   22 |             0x400000 | 2           |                           |
+|   24 |            0x1000000 | 4           |                           |
+|   26 |            0x4000000 | 8           |                           |
+|   28 |           0x10000000 | 16          |                           |
+|   30 |           0x40000000 | 32          |                           |
+|   32 |          0x100000000 | 64          |                           |
+|   34 |          0x400000000 | 128         |                           |
+|   36 |         0x1000000000 | 256         |                           |
+|   38 |         0x4000000000 | 512         |                           |
+|   40 |        0x10000000000 | 1024        |                           |
+|   42 |        0x40000000000 | 2048        |                           |
+|   44 |       0x100000000000 | 4096        |                  ~17 MB   |
+|   46 |       0x400000000000 | 8192        |                  ~34 MB   |
+|   48 |      0x1000000000000 | 16384       |                           |
+|   50 |      0x4000000000000 | 32768       |                           |
+|   52 |     0x10000000000000 | 65536       |                           |
+|   54 |     0x40000000000000 | 131072      |                           |
+|   56 |    0x100000000000000 | 262144      |                           |
+|   58 |    0x400000000000000 | 524288      |                           |
+|   60 |   0x1000000000000000 | 1048576     |                 ~4.5 GB   |
+|   62 |   0x4000000000000000 | 2097152     |                   ~9 GB   |
+|   64 |  0x10000000000000000 | 4194304     |                           |
+|   66 |  0x40000000000000000 | 8388608     |                           |
+|   68 | 0x100000000000000000 | 16777216    |                           |
++------+----------------------+-------------+---------------------------+
 ```
  
 **if you exceed the Max value of K the program can have a unknow behavior, the program can have a suboptimal performance, or in the wrong cases you can missing some hits and have an incorrect SPEED.**
@@ -1064,6 +1075,50 @@ user    2m15.706s
 sys     0m13.009s
 ```
 
+## Is my speed real?
+
+Since this is still a beta version we can have some doubt about the speed showed in the bsgs mode.
+
+To check this  i prepare a set of test publickeys to be found at some specific time according to your speed.
+
+With  1 Petakeys/s the publickey will be found in 2 minutes:
+Privatekey: 8000000000000001aa535d3d0c0000
+Publickey : 02af4535880d694d660031a161c53a6889c45d2de513454858e94739f9c790768b
+
+With 10 Petakeys/s the publickey will be found in 2 minutes:
+Privatekey: 8000000000000010a741a462780000
+Publickey : 025deee1657cd5d363cff23ec1b14781e504cbb6292c273e515d73f98065131d40
+
+With 50 Petakeys/s the publickey will be found in 2 minutes:
+Privatekey: 8000000000000053444835ec580000
+Publickey : 03c13e9c6e5cbe2ac06817e4d8fd0a3e836f1a121aab91bb67ef44747b25c7d791
+
+With  1 Exakey/s the publickey will be found in 2 minutes:
+Privatekey: 800000000000068155a43676e00000
+Publickey : 022b6a74badcc4c3d8fab7d01ddc1854b9d8f262172789b2aa1bb7fd42cc1b2817
+
+With  5 Exakeys/s the publickey will be found in 2 minutes
+Privatekey: 8000000000002086ac351052600000
+Publickey : 024cf9e44f808e7b0bbb12a57ff63e3a8407cba1816f5e31e815d33d70e4a95a7f
+
+With 10 Exakeys/s the publickey will be found in 2 minutes
+Privatekey: 800000000000410d586a20a4c00000
+Publickey : 02ee0cf78d13b4aae9c8777a0f93dff7f5be3855bd2c0f85370f861c69bb5b533a
+
+Select one publickey that fit to your current speed save it in a file `testpublickey.txt` and test it with:
+
+```
+./keyhunt -m bsgs -f testpublickey.txt -b 120 -q
+```
+
+Change the values of k, n and t
+
+
+The publickeys should be found in some 2 minutes after the load of the files
+
+Change your n or k values according to your current memory and remember not exceed the k value of each N please check the table https://github.com/albertobsd/keyhunt#valid-n-and-k-values
+
+
 ## minikeys Mode
 
 This mode is some experimental.
@@ -1112,7 +1167,7 @@ Please note that total keys tested at the moment are only 141312, those are the 
 
 # Ethereum
 
-Finally ethreum address are supported, for ethreum there are no modes exect for address.
+Finally ethereum address are supported, for ethereum there are no modes exect for address.
 
 if you have publickeys for ethereum you can use xpoint or bsgs mode.
 
@@ -1190,7 +1245,7 @@ R: No, is just to help to speed up a little the load process and no more, but th
 
 ## Dependencies
 - pthread
-Tested under Debian, Ubuntu Shell for windows 10
+Tested under Debian and WSL Ubuntu Shell for windows 10
 
 ## Thanks
 
@@ -1206,4 +1261,3 @@ This program was possible thanks to
 - BTC: 1Coffee1jV4gB5gaXfHgSHDz9xx9QSECVW
 - ETH: 0x6222978c984C22d21b11b5b6b0Dd839C75821069
 - DOGE: DKAG4g2HwVFCLzs7YWdgtcsK6v5jym1ErV
-- BCB: bcb_3rf4pzhrdeziygir8t5pmep4xdwqwyk1xgmytzyo991gdez1sgq1ehb3a8jh

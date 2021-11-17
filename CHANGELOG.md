@@ -1,3 +1,7 @@
+# 0.2.211117 SSE Trick or treat ¡Beta!
+- Minikeys new sequential generator and x2 times more speed
+- third bloom filter check for bsgs 20% less memory usage
+
 # Version 0.2.211031 Trick or treat ¡Beta!
 - Minikeys improvements in speed
 - Test to try solve the https://github.com/albertobsd/keyhunt/issues/139 issue

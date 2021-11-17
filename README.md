@@ -57,7 +57,7 @@ This version is still a **beta** version, there are a lot of things that can be 
 
 # Modes
 
-Keyhunt can work in diferents ways at different speeds.
+Keyhunt can work in diferent ways at different speeds.
 
 The current availables modes are:
 - address
@@ -145,7 +145,7 @@ address: 1EhqbyUMvvs7BfL8goY6qcPbD6YKfPqb7e
 
 In this mode you can specify to seach only address compressed or uncompressed with `-l compress` or  `-l uncompress`
 
-Test your look with the random parameter `-R` againts the puzzle #64
+Test your luck with the random parameter `-R` againts the puzzle #64
 
 ```
 ./keyhunt -m address -f tests/64.txt -b 64 -l compress -R -q -s 10
@@ -975,42 +975,79 @@ To get optimal performance the k values need to be base 2^x values, this is 1,2,
 ### Valid n and k values
 
 ```
-+------+----------------------+-------------+---------------------------+
-| bits |  n in hexadecimal    | k max value | Amount of RAM with k = 1  |
-+------+----------------------+-------------+---------------------------+
-|   20 |             0x100000 | 1 (default) |                           |
-|   22 |             0x400000 | 2           |                           |
-|   24 |            0x1000000 | 4           |                           |
-|   26 |            0x4000000 | 8           |                           |
-|   28 |           0x10000000 | 16          |                           |
-|   30 |           0x40000000 | 32          |                           |
-|   32 |          0x100000000 | 64          |                           |
-|   34 |          0x400000000 | 128         |                           |
-|   36 |         0x1000000000 | 256         |                           |
-|   38 |         0x4000000000 | 512         |                           |
-|   40 |        0x10000000000 | 1024        |                           |
-|   42 |        0x40000000000 | 2048        |                           |
-|   44 |       0x100000000000 | 4096        |                  ~17 MB   |
-|   46 |       0x400000000000 | 8192        |                  ~34 MB   |
-|   48 |      0x1000000000000 | 16384       |                           |
-|   50 |      0x4000000000000 | 32768       |                           |
-|   52 |     0x10000000000000 | 65536       |                           |
-|   54 |     0x40000000000000 | 131072      |                           |
-|   56 |    0x100000000000000 | 262144      |                           |
-|   58 |    0x400000000000000 | 524288      |                           |
-|   60 |   0x1000000000000000 | 1048576     |                 ~4.5 GB   |
-|   62 |   0x4000000000000000 | 2097152     |                   ~9 GB   |
-|   64 |  0x10000000000000000 | 4194304     |                           |
-|   66 |  0x40000000000000000 | 8388608     |                           |
-|   68 | 0x100000000000000000 | 16777216    |                           |
-+------+----------------------+-------------+---------------------------+
++------+----------------------+-------------+
+| bits |  n in hexadecimal    | k max value |
++------+----------------------+-------------+
+|   20 |             0x100000 | 1 (default) |
+|   22 |             0x400000 | 2           |
+|   24 |            0x1000000 | 4           |
+|   26 |            0x4000000 | 8           |
+|   28 |           0x10000000 | 16          |
+|   30 |           0x40000000 | 32          |
+|   32 |          0x100000000 | 64          |
+|   34 |          0x400000000 | 128         |
+|   36 |         0x1000000000 | 256         |
+|   38 |         0x4000000000 | 512         |
+|   40 |        0x10000000000 | 1024        |
+|   42 |        0x40000000000 | 2048        |
+|   44 |       0x100000000000 | 4096        |
+|   46 |       0x400000000000 | 8192        |
+|   48 |      0x1000000000000 | 16384       |
+|   50 |      0x4000000000000 | 32768       |
+|   52 |     0x10000000000000 | 65536       |
+|   54 |     0x40000000000000 | 131072      |
+|   56 |    0x100000000000000 | 262144      |
+|   58 |    0x400000000000000 | 524288      |
+|   60 |   0x1000000000000000 | 1048576     |
+|   62 |   0x4000000000000000 | 2097152     |
+|   64 |  0x10000000000000000 | 4194304     |
++------+----------------------+-------------+
 ```
  
 **if you exceed the Max value of K the program can have a unknow behavior, the program can have a suboptimal performance, or in the wrong cases you can missing some hits and have an incorrect SPEED.**
 
-Of course you can use a bigger number N  like 2^64 or 2^70 if you have enough memory for it.
-
 Note for user that want use it with SWAP memory. IT DON'T WORK swap memory was made to small chucks of memory also is slowly.   
+
+### What values use according to my current RAM:
+
+2 G
+-k 128
+
+4 G
+-k 256
+
+8 GB
+-k 512
+
+16 GB
+-k 1024
+
+32 GB
+-k 2048
+
+64 GB
+-n 0x100000000000 -k 4096
+
+128 GB
+-n 0x400000000000 -k 4096
+
+256 GB
+-n 0x400000000000 -k 8192
+
+512 GB
+-n 0x1000000000000 -k 8192
+
+1 TB
+-n 0x1000000000000 -k 16384
+
+2 TB
+-n 0x4000000000000 -k 16384
+
+4 TB
+-n 0x4000000000000 -k 32768
+
+8 TB
+-n 0x10000000000000 -k 32768
 
 
 ### Testing puzzle 63 bits
@@ -1128,41 +1165,54 @@ For the moment only Minikeys of 22 characters are available
 The minikey are generated from a 16 byte buffer using the base58 encode funtion using the bitcoin  string `123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz` any sugestion please let me know.
 
 
-
-This minikeys are generated in a deterministic way using one Intenger number from `1` to `0x100000000000000000000000000000000` that is why the range is from `-r 1:100000000000000000000000000000000`
-
-
-
-Command:
+Command example:
 
 ```
-./keyhunt -m minikeys -f minkey_h160.txt -r 1:100000000000000000000000000000000 -n 0x1000000 -M
+./keyhunt -m minikeys -f minkey_h160.txt -C SG64GZqySYwBm9KxE1wJ28 -n 0x10000
 ```
 
 Output:
 
 ```
-[+] Version 0.2.211024 Chocolate ¡Beta!, developed by AlbertoBSD
+[+] Version 0.2.211117 SSE Trick or treat ¡Beta!, developed by AlbertoBSD
 [+] Mode minikeys
-[+] Matrix screen
-[+] Stride : 1
-[+] Opening file minkey_h160.txt
-[+] N = 0x1000000
-[+] Range
-[+] -- from : 0x1
-[+] -- to   : 0x100000000000000000000000000000000
+[+] Opening file /home/albertobsd/keyhunt/minkey_h160.txt
+[+] N = 0x10000
+[+] Base Minikey : SG64GZqySYwBm9KxE1wJ28
 [+] Allocating memory for 61560 elements: 1.17 MB
 [+] Bloom filter for 61560 elements.
 [+] Loading data to the bloomfilter total: 0.21 MB
 [+] Bloomfilter completed
 [+] Sorting data ... done! 61560 values were loaded and sorted
-[+] Base key: 0x1  => S8AQGAut7N92awznwCnjuR
-[+] Base key: 0x1000001  => S8AQGFk5PpkiBMwcrkM943
-[+] Base key: 0x2000001  => S8AQGLaGgHNPmmtSnHuYCf
-[+] Total 141312 keys in 30 seconds: 4710 keys/s
+[+] Base minikey: SG64GZqySYwBm9KxE3QGrg?
+HIT!! Private Key: d1a4fc1f83b2f3b31dcd999acd8288ff346f7df46401596d53964e0c69d5b4d
+pubkey: 048722093a2b5dd05a84c28a18b2a6601320c9eaab9db99e76b850f9574cd3d5c987bf0c9c9ed3bd0f52124a57d9ef292b529536b225b90f8760d9c67cc3aa1c32
+minikey: SG64GZqySYwBm9KxE3wJ29
+address: 15azScMmHvFPAQfQafrKr48E9MqRRXSnVv
+^C
 ```
 
-Please note that total keys tested at the moment are only 141312, those are the valid keys that pass the check-test.
+random minikeys command
+
+```
+./keyhunt -m minikeys -f ~/keyhunt/minkey_h160.txt -q -R -n 0x1000
+```
+
+```
+[+] Version 0.2.211117 SSE Trick or treat ¡Beta!, developed by AlbertoBSD
+[+] Mode minikeys
+[+] Quiet thread output
+[+] Random mode
+[+] Opening file /home/albertobsd/keyhunt/minkey_h160.txt
+[+] N = 0x1000
+[+] Allocating memory for 61560 elements: 1.17 MB
+[+] Bloom filter for 61560 elements.
+[+] Loading data to the bloomfilter total: 0.21 MB
+[+] Bloomfilter completed
+[+] Sorting data ... done! 61560 values were loaded and sorted
+^C] Total 2296832 keys in 120 seconds: 19140 keys/s
+
+```
 
 
 # Ethereum
@@ -1235,14 +1285,6 @@ Also thanks to @XopMC
 Available in: https://github.com/XopMC/keyhunt-win
 
 
-- Why i need the bPfile.bin ?
-R: Usually you don't need it, but if you are going to run and stop the program several times is faster load the data from a file.
-**NOTE: bPfile.bin will discontinued in some future version, the current versios have the `-S` to SAVE the FILES or READ from IT if they already exist**
-
-- The bPfile gives me extra speed?
-R: No, is just to help to speed up a little the load process and no more, but the final speed of keys per second is going to be the same without this file.
-
-
 ## Dependencies
 - pthread
 Tested under Debian and WSL Ubuntu Shell for windows 10
@@ -1261,3 +1303,11 @@ This program was possible thanks to
 - BTC: 1Coffee1jV4gB5gaXfHgSHDz9xx9QSECVW
 - ETH: 0x6222978c984C22d21b11b5b6b0Dd839C75821069
 - DOGE: DKAG4g2HwVFCLzs7YWdgtcsK6v5jym1ErV
+
+
+All the donations will be use only for two things:
+
+- Native Windows version with 0 external dependencies.
+- Get an affordable desktop computer with decent GPU, not highend, just to start the GPU version.
+
+All the donators will have first access to the privates versions of keyhunt, direct support, custom scripts and quick bug fixes.

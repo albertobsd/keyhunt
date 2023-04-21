@@ -219,7 +219,7 @@ static uint64_t inline __shiftleft128(uint64_t a, uint64_t b,unsigned char n) {
   return  c;
 }
 
-#define _subborrow_u64(a,b,c,d) __builtin_ia32_sbb_u64(a,b,c,(long long unsigned int*)d);
+#define _subborrow_u64(a,b,c,d) __builtin_ia32_subborrow_u64(a,b,c,(long long unsigned int*)d);
 #define _addcarry_u64(a,b,c,d) __builtin_ia32_addcarryx_u64(a,b,c,(long long unsigned int*)d);
 #define _byteswap_uint64 __builtin_bswap64
 #else

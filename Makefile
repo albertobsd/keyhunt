@@ -18,7 +18,7 @@ default:
 	g++ -m64 -mssse3 -Wno-write-strings -O2 -o hash/sha256.o -c hash/sha256.cpp
 	g++ -m64 -mssse3 -Wno-write-strings -O2 -o hash/ripemd160_sse.o -c hash/ripemd160_sse.cpp
 	g++ -m64 -mssse3 -Wno-write-strings -O2 -o hash/sha256_sse.o -c hash/sha256_sse.cpp
-	g++ -o keyhunt keyhunt.cpp base58.o rmd160.o  hash/ripemd160.o hash/ripemd160_sse.o hash/sha256.o hash/sha256_sse.o bloom.o oldbloom.o xxhash.o util.o Int.o  Point.o SECP256K1.o  IntMod.o  Random.o IntGroup.o sha3.o keccak.o  -lm -lpthread
+	g++ -o keyhunt keyhunt.cpp base58.o rmd160.o  hash/ripemd160.o hash/ripemd160_sse.o hash/sha256.o hash/sha256_sse.o bloom.o oldbloom.o xxhash.o util.o Int.o  Point.o SECP256K1.o  IntMod.o  Random.o IntGroup.o sha3.o keccak.o  -lm -lpthread -pthreads
 	rm -r *.o
 clean:
 	rm keyhunt

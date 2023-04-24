@@ -668,6 +668,8 @@ void Secp256K1::GetHash160(int type,bool compressed,
   }
 }
 
+
+
 void Secp256K1::GetHash160(int type, bool compressed, Point &pubKey, unsigned char *hash) {
 
   unsigned char shapk[64];
@@ -718,5 +720,71 @@ void Secp256K1::GetHash160(int type, bool compressed, Point &pubKey, unsigned ch
 
   }
 
+}
+
+
+#define KEYBUFFPREFIX(buff,k,fix) \
+(buff)[0] = (k->bits[7] >> 8) | ((uint32_t)(fix) << 24); \
+(buff)[1] = (k->bits[6] >> 8) | (k->bits[7] <<24); \
+(buff)[2] = (k->bits[5] >> 8) | (k->bits[6] <<24); \
+(buff)[3] = (k->bits[4] >> 8) | (k->bits[5] <<24); \
+(buff)[4] = (k->bits[3] >> 8) | (k->bits[4] <<24); \
+(buff)[5] = (k->bits[2] >> 8) | (k->bits[3] <<24); \
+(buff)[6] = (k->bits[1] >> 8) | (k->bits[2] <<24); \
+(buff)[7] = (k->bits[0] >> 8) | (k->bits[1] <<24); \
+(buff)[8] = 0x00800000 | (k->bits[0] <<24); \
+(buff)[9] = 0; \
+(buff)[10] = 0; \
+(buff)[11] = 0; \
+(buff)[12] = 0; \
+(buff)[13] = 0; \
+(buff)[14] = 0; \
+(buff)[15] = 0x108;
+
+
+
+void Secp256K1::GetHash160_fromX(int type,unsigned char prefix,
+  Int *k0,Int *k1,Int *k2,Int *k3,
+  uint8_t *h0,uint8_t *h1,uint8_t *h2,uint8_t *h3) {
+
+#ifdef WIN64
+  __declspec(align(16)) unsigned char sh0[64];
+  __declspec(align(16)) unsigned char sh1[64];
+  __declspec(align(16)) unsigned char sh2[64];
+  __declspec(align(16)) unsigned char sh3[64];
+#else
+  unsigned char sh0[64] __attribute__((aligned(16)));
+  unsigned char sh1[64] __attribute__((aligned(16)));
+  unsigned char sh2[64] __attribute__((aligned(16)));
+  unsigned char sh3[64] __attribute__((aligned(16)));
+#endif
+
+  switch (type) {
+
+  case P2PKH:
+  {
+      uint32_t b0[16];
+      uint32_t b1[16];
+      uint32_t b2[16];
+      uint32_t b3[16];
+
+      KEYBUFFPREFIX(b0, k0, prefix);
+      KEYBUFFPREFIX(b1, k1, prefix);
+      KEYBUFFPREFIX(b2, k2, prefix);
+      KEYBUFFPREFIX(b3, k3, prefix);
+
+      sha256sse_1B(b0, b1, b2, b3, sh0, sh1, sh2, sh3);
+      ripemd160sse_32(sh0, sh1, sh2, sh3, h0, h1, h2, h3);
+  }
+  break;
+
+  case P2SH:
+  {
+	fprintf(stderr,"[E] Fixme unsopported case");
+	exit(0);
+  }
+  break;
+
+  }
 }
 

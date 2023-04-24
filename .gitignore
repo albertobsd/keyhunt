@@ -3,6 +3,7 @@ hexcharstoraw
 *.bin
 keyhunt
 KEYFOUNDKEYFOUND.txt
+VANITYKEYFOUND.txt
 *.tbl
 *.blm
 

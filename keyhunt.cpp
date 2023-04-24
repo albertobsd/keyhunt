@@ -1,6 +1,7 @@
 /*
-Develop by Luis Alberto
-email: alberto.bsd@gmail.com
+/*
+Develop by Alberto
+email: albertobsd@gmail.com
 */
 
 #include <stdio.h>
@@ -46,16 +47,11 @@ email: alberto.bsd@gmail.com
 #define MODE_RMD160 3
 #define MODE_PUB2RMD 4
 #define MODE_MINIKEYS 5
-//#define MODE_CHECK 6
-
-
+#define MODE_VANITY 6
 
 #define SEARCH_UNCOMPRESS 0
 #define SEARCH_COMPRESS 1
 #define SEARCH_BOTH 2
-
-
-#define FLIPBITLIMIT 10000000
 
 uint32_t  THREADBPWORKLOAD = 1048576;
 
@@ -119,7 +115,7 @@ char *raw_baseminikey = NULL;
 char *minikeyN = NULL;
 int minikey_n_limit;
 	
-const char *version = "0.2.211117 SSE Trick or treat ¡Beta!";
+const char *version = "0.2.23 Satoshi Quest";
 
 #define CPU_GRP_SIZE 1024
 
@@ -136,6 +132,7 @@ std::vector<Point> GSn3;
 Point _2GSn3;
 
 
+void menu();
 void init_generator();
 
 int searchbinary(struct address_value *buffer,char *data,int64_t array_length);
@@ -164,7 +161,19 @@ int bsgs_thirdcheck(Int *start_range,uint32_t a,uint32_t k_index,Int *privatekey
 void sha256sse_22(uint8_t *src0, uint8_t *src1, uint8_t *src2, uint8_t *src3, uint8_t *dst0, uint8_t *dst1, uint8_t *dst2, uint8_t *dst3);
 void sha256sse_23(uint8_t *src0, uint8_t *src1, uint8_t *src2, uint8_t *src3, uint8_t *dst0, uint8_t *dst1, uint8_t *dst2, uint8_t *dst3);
 
+bool vanityrmdmatch(unsigned char *rmdhash);
+void writevanitykey(bool compress,Int *key);
+int addvanity(char *target);
+int minimum_same_bytes(unsigned char* A,unsigned char* B, int length);
+
+void writekey(bool compressed,Int *key);
+void checkpointer(void *ptr,const char *file,const char *function,const  char *name,int line);
+
+bool isBase58(char c);
+bool isValidBase58String(char *str);
+
 #if defined(_WIN64) && !defined(__CYGWIN__)
+DWORD WINAPI thread_process_vanity(LPVOID vargp);
 DWORD WINAPI thread_process_minikeys(LPVOID vargp);
 DWORD WINAPI thread_process(LPVOID vargp);
 DWORD WINAPI thread_process_bsgs(LPVOID vargp);
@@ -175,8 +184,8 @@ DWORD WINAPI thread_process_bsgs_dance(LPVOID vargp);
 DWORD WINAPI thread_bPload(LPVOID vargp);
 DWORD WINAPI thread_bPload_2blooms(LPVOID vargp);
 DWORD WINAPI thread_pub2rmd(LPVOID vargp);
-//DWORD WINAPI thread_process_check_file_btc(LPVOID vargp);
 #else
+void *thread_process_vanity(void *vargp);
 void *thread_process_minikeys(void *vargp);	
 void *thread_process(void *vargp);
 void *thread_process_bsgs(void *vargp);
@@ -187,7 +196,6 @@ void *thread_process_bsgs_dance(void *vargp);
 void *thread_bPload(void *vargp);
 void *thread_bPload_2blooms(void *vargp);
 void *thread_pub2rmd(void *vargp);
-//void *thread_process_check_file_btc(void *vargp);
 #endif
 
 char *publickeytohashrmd160(char *pkey,int length);
@@ -201,14 +209,13 @@ void increment_minikey_N(char *rawbuffer);
 	
 void KECCAK_256(uint8_t *source, size_t size,uint8_t *dst);
 void generate_binaddress_eth(Point &publickey,unsigned char *dst_address);
-void memorycheck_bsgs();
 
 int THREADOUTPUT = 0;
 char *bit_range_str_min;
 char *bit_range_str_max;
 
-const char *bsgs_modes[5] {"secuential","backward","both","random","dance"};
-const char *modes[6] = {"xpoint","address","bsgs","rmd160","pub2rmd","minikeys"};
+const char *bsgs_modes[5] = {"secuential","backward","both","random","dance"};
+const char *modes[7] = {"xpoint","address","bsgs","rmd160","pub2rmd","minikeys","vanity"};
 const char *cryptos[3] = {"btc","eth","all"};
 const char *publicsearch[3] = {"uncompress","compress","both"};
 const char *default_filename = "addresses.txt";
@@ -227,7 +234,6 @@ pthread_mutex_t bsgs_thread;
 pthread_mutex_t *bPload_mutex;
 #endif
 
-
 uint64_t FINISHED_THREADS_COUNTER = 0;
 uint64_t FINISHED_THREADS_BP = 0;
 uint64_t THREADCYCLES = 0;
@@ -235,9 +241,16 @@ uint64_t THREADCOUNTER = 0;
 uint64_t FINISHED_ITEMS = 0;
 uint64_t OLDFINISHED_ITEMS = -1;
 
-
 uint8_t byte_encode_crypto = 0x00;		/* Bitcoin  */
-//uint8_t byte_encode_crypto = 0x1E;	/* Dogecoin */
+
+
+
+int vanity_rmd_targets = 0;
+int vanity_rmd_total = 0;
+int *vanity_rmd_limits = NULL;
+uint8_t ***vanity_rmd_limit_values_A = NULL,***vanity_rmd_limit_values_B = NULL;
+int vanity_rmd_minimun_bytes_check_length = 999999;
+char **vanity_address_targets = NULL;
 
 struct bloom bloom;
 
@@ -245,13 +258,15 @@ uint64_t *steps = NULL;
 unsigned int *ends = NULL;
 uint64_t N = 0;
 
-
 uint64_t N_SECUENTIAL_MAX = 0x100000000;
 uint64_t DEBUGCOUNT = 0x400;
 uint64_t u64range;
 
 Int OUTPUTSECONDS;
 
+int FLAGENDOMORPHISM = 0;
+
+int FLAGVANITY = 0;
 int FLAGBASEMINIKEY = 0;
 int FLAGBSGSMODE = 0;
 int FLAGDEBUG = 0;
@@ -275,20 +290,17 @@ int FLAGSEARCH = 2;
 int FLAGBITRANGE = 0;
 int FLAGRANGE = 0;
 int FLAGFILE = 0;
-int FLAGVANITY = 0;
 int FLAGMODE = MODE_ADDRESS;
 int FLAGCRYPTO = 0;
-int FLAGALREADYSORTED = 0;
 int FLAGRAWDATA	= 0;
 int FLAGRANDOM = 0;
 int FLAG_N = 0;
 int FLAGPRECALCUTED_P_FILE = 0;
-int COUNT_VANITIES = 0;
+//int COUNT_VANITIES = 0;
 
-int *len_vanities;
+
 int bitrange;
 char *str_N;
-char **vanities;
 char *range_start;
 char *range_end;
 char *str_stride;
@@ -377,6 +389,8 @@ Int n_range_end;
 Int n_range_diff;
 Int n_range_aux;
 
+Int lambda,lambda2,beta,beta2;
+
 Secp256K1 *secp;
 
 int main(int argc, char **argv)	{
@@ -404,6 +418,7 @@ int main(int argc, char **argv)	{
 	int readed,continue_flag,check_flag,r,lenaux,lendiff,c,salir,index_value;
 	Int total,pretotal,debugcount_mpz,seconds,div_pretotal,int_aux,int_r,int_q,int58;
 	struct bPload *bPload_temp_ptr;
+	size_t rsize;
 	
 #if defined(_WIN64) && !defined(__CYGWIN__)
 	DWORD s;
@@ -417,7 +432,7 @@ int main(int argc, char **argv)	{
 	int s;
 #endif
 
-	srand (time(NULL));
+	srand(time(NULL));
 
 	secp = new Secp256K1();
 	secp->Init();
@@ -437,35 +452,7 @@ int main(int argc, char **argv)	{
 	while ((c = getopt(argc, argv, "dehMqRwzSB:b:c:C:E:f:I:k:l:m:N:n:p:r:s:t:v:V:G:8:")) != -1) {
 		switch(c) {
 			case 'h':
-				printf("\nUsage:\n-h\t\tshow this help\n");
-				printf("-B Mode\t\tBSGS now have some modes <secuential,backward,both,random,dance>\n");
-				printf("-b bits\t\tFor some puzzles you only need some numbers of bits in the test keys.\n");
-				printf("-c crypto\tSearch for specific crypo. < btc, eth, all > valid only w/ -m address \n");
-				printf("-C mini\t\tSet the minikey Base only 22 character minikeys, ex: SRPqx8QiwnW4WNWnTVa2W5\n");
-				printf("-8 alpha\t\tSet the bas58 alphabet for minikeys");
-				printf("-f file\t\tSpecify filename with addresses or xpoints or uncompressed public keys\n");
-				printf("-I stride\tStride for xpoint, rmd160 and address, this option don't work with bsgs	\n");
-				printf("-k value\tUse this only with bsgs mode, k value is factor for M, more speed but more RAM use wisely\n");
-				printf("-l look\tWhat type of address/hash160 are you looking for < compress , uncompress , both> Only for rmd160 and address\n");
-				printf("-m mode\t\tmode of search for cryptos. ( bsgs , xpoint , rmd160 , address ) default: address (more slow)\n");
-				printf("-M\t\tMatrix screen, feel like a h4x0r, but performance will droped\n");
-				printf("-n uptoN\tCheck for N secuential numbers before the random chossen this only work with -R option\n");
-				printf("\t\tUse -n to set the N for the BSGS process. Bigger N more RAM needed\n");
-				printf("-q\t\tQuiet the thread output\n");
-				printf("-r SR:EN\tStarRange:EndRange, the end range can be omited for search from start range to N-1 ECC value\n");
-				printf("-R\t\tRandom this is the default behaivor\n");
-				printf("-s ns\t\tNumber of seconds for the stats output, 0 to omit output.\n");
-				printf("-S\t\tCapital S is for SAVING in files BSGS data (Bloom filters and bPtable)\n");
-				printf("-t tn\t\tThreads number, must be positive integer\n");
-				printf("-v va\t\tSearch for vanity Address, only with -m address\n");
-				printf("-V file\t\tFile with vanity Address to search, only with -m address");
-				printf("-w\t\tMark the input file as RAW data xpoint fixed 32 byte each point. Valid only with -m xpoint\n");
-				printf("\nExample\n\n");
-				printf("%s -t 16 -r 1:FFFFFFFF -s 0\n\n",argv[0]);
-				printf("This line run the program with 16 threads from the range 1 to FFFFFFFF without stats output\n\n");
-				printf("Developed by AlbertoBSD\tTips BTC: 1ABSD1rMTmNZHJrJP8AJhDNG1XbQjWcRz7\n");
-				printf("Thanks to Iceland always helping and sharing his ideas.\nTips to Iceland: bc1q39meky2mn5qjq704zz0nnkl0v7kj4uz6r529at\n\n");
-				exit(0);
+				menu();
 			break;
 			case 'B':
 				index_value = indexOf(optarg,bsgs_modes,5);
@@ -542,7 +529,7 @@ int main(int argc, char **argv)	{
 					}
 				}
 				else	{
-					fprintf(stderr,"[E] Invalid Minikey length %i : %s\n",strlen(optarg),optarg);
+					fprintf(stderr,"[E] Invalid Minikey length %li : %s\n",strlen(optarg),optarg);
 					exit(0);
 				}
 				
@@ -553,7 +540,13 @@ int main(int argc, char **argv)	{
 			break;
 
 			case 'e':
-				FLAGALREADYSORTED = 1;
+				FLAGENDOMORPHISM = 1;
+				
+				lambda.SetBase16("5363ad4cc05c30e0a5261c028812645a122e22ea20816678df02967c1b23bd72");
+				lambda2.SetBase16("ac9c52b33fa3cf1f5ad9e3fd77ed9ba4a880b9fc8ec739c2e0cfc810b51283ce");
+				beta.SetBase16("7ae96a2b657c07106e64479eac3434e99cf0497512f58995c1396c28719501ee");
+				beta2.SetBase16("851695d49a83f8ef919bb86153cbcb16630fb68aed0a766a3ec693d68e6afa40");
+				
 			break;
 			case 'f':
 				FLAGFILE = 1;
@@ -594,7 +587,7 @@ int main(int argc, char **argv)	{
 				printf("[+] Matrix screen\n");
 			break;
 			case 'm':
-				switch(indexOf(optarg,modes,6)) {
+				switch(indexOf(optarg,modes,7)) {
 					case MODE_XPOINT: //xpoint
 						FLAGMODE = MODE_XPOINT;
 						printf("[+] Mode xpoint\n");
@@ -620,12 +613,10 @@ int main(int argc, char **argv)	{
 						FLAGMODE = MODE_MINIKEYS;
 						printf("[+] Mode minikeys\n");
 					break;
-					/*
-					case MODE_CHECK:
-						FLAGMODE = MODE_CHECK;
-						printf("[+] Mode CHECK\n");
+					case MODE_VANITY:
+						FLAGMODE = MODE_VANITY;
+						printf("[+] Mode vanity\n");
 					break;
-					*/
 					default:
 						fprintf(stderr,"[E] Unknow mode value %s\n",optarg);
 						exit(0);
@@ -636,7 +627,6 @@ int main(int argc, char **argv)	{
 				FLAG_N = 1;
 				str_N = optarg;
 			break;
-
 			case 'q':
 				FLAGQUIET	= 1;
 				printf("[+] Quiet thread output\n");
@@ -707,28 +697,21 @@ int main(int argc, char **argv)	{
 			break;
 			case 'v':
 				FLAGVANITY = 1;
-				if(COUNT_VANITIES > 0)	{
-					vanities = (char**)realloc(vanities,(COUNT_VANITIES +1 ) * sizeof(char*));
-					len_vanities = (int*)realloc(len_vanities,(COUNT_VANITIES +1 ) * sizeof(int));
+				if(isValidBase58String(optarg)){
+
+					if(addvanity(optarg) > 0)	{
+						printf("[+] Added Vanity search : %s\n",optarg);
+					}
+					else	{
+						printf("[+] Vanity search \"%s\" was NOT Added\n",optarg);
+					}
 				}
-				else	{
-					vanities = (char**)malloc(sizeof(char*));
-					len_vanities = (int*)malloc(sizeof(int));
+				else {
+					fprintf(stderr,"[+] The string \"%s\" is not Valid Base58\n",optarg);
 				}
-				if(vanities == NULL || len_vanities == NULL)	{
-					fprintf(stderr,"[E] malloc!\n");
-					exit(0);
-				}
-				len_vanities[COUNT_VANITIES] = strlen(optarg);
-				vanities[COUNT_VANITIES] = (char*)malloc(len_vanities[COUNT_VANITIES]+2);
-				if(vanities[COUNT_VANITIES] == NULL)	{
-					fprintf(stderr,"[E] malloc!\n");
-					exit(0);
-				}
-				snprintf(vanities[COUNT_VANITIES],len_vanities[COUNT_VANITIES]+1 ,"%s",optarg);
-				printf("[+] Added Vanity search : %s\n",vanities[COUNT_VANITIES]);
-				COUNT_VANITIES++;
+				
 			break;
+			/*
 			case 'V':
 				FLAGVANITY = 1;
 				printf("[+] Added Vanity file : %s\n",optarg);
@@ -739,58 +722,17 @@ int main(int argc, char **argv)	{
 				}
 				r = 0;
 				do	{
-					fgets(buffer,1024,fd);
+					hextemp = fgets(buffer,1024,fd);
 					trim(buffer,"\n\t\r ");
-					if(strlen(buffer) > 0)	{
-						r++;
+					if(addvanity(buffer) > 0)	{
+						printf("[+] Added Vanity search : %s\n",optarg);
+					}
+					else	{
+						printf("[+] Vanity search \"%s\" was NOT Added\n",optarg);
 					}
 					memset(buffer,0,1024);
 				}while(!feof(fd));
-				
-				if(r > 0)	{
-					if(COUNT_VANITIES > 0)	{
-						vanities = (char**)realloc(vanities,(COUNT_VANITIES + r ) * sizeof(char*));
-						len_vanities = (int*)realloc(len_vanities,(COUNT_VANITIES + r )* sizeof(int));
-					}
-					else	{
-						vanities = (char**)malloc( r  * sizeof(char*));
-						len_vanities = (int*)malloc(r * sizeof(int));
-					}
-					if(vanities == NULL || len_vanities == NULL)	{
-						fprintf(stderr,"[E] malloc!\n");
-						exit(0);
-					}
-					
-					fseek(fd,0,SEEK_SET);
-					
-					index_value = 0;
-					while(index_value < r){
-						fgets(buffer,1024,fd);
-						trim(buffer,"\n\t\r ");
-						if(strlen(buffer) > 0)	{
-							len_vanities[COUNT_VANITIES+index_value] = strlen(buffer);
-							vanities[COUNT_VANITIES+index_value] = (char*) malloc(len_vanities[COUNT_VANITIES+index_value]+2);
-							if(vanities[COUNT_VANITIES+index_value] == NULL)	{
-								fprintf(stderr,"[E] malloc!\n");
-								exit(0);
-							}
-							snprintf(vanities[COUNT_VANITIES+index_value],len_vanities[COUNT_VANITIES+index_value]+1 ,"%s",buffer);
-							printf("[D] Added Vanity search : %s\n",vanities[COUNT_VANITIES+index_value]);
-						}
-						memset(buffer,0,1024);
-						index_value++;
-					}
-					COUNT_VANITIES+= r;
-				}
-				else	{
-					fprintf(stderr,"[W] file %s is emptied\n",optarg);
-					if(COUNT_VANITIES == 0)	{
-						FLAGVANITY = 0;
-					}
-				}
-				fclose(fd);
-				fd = NULL;
-			break;
+			*/
 			case 'w':
 				printf("[+] Data marked as RAW\n");
 				FLAGRAWDATA = 1;
@@ -926,12 +868,6 @@ int main(int argc, char **argv)	{
 			BSGS_N.SetInt32(DEBUGCOUNT);
 			if(FLAGBASEMINIKEY)	{
 				printf("[+] Base Minikey : %s\n",str_baseminikey);
-				/*
-				for(i = 0; i < 21;i ++)	{
-					printf("%i ",(uint8_t) raw_baseminikey[i]);
-				}
-				printf("\n");
-				*/
 			}
 			minikeyN = (char*) malloc(22);
 			if(minikeyN == NULL)	{
@@ -961,17 +897,10 @@ int main(int argc, char **argv)	{
 				}
 			}while(!salir && i > 0);
 			minikey_n_limit = 21 -i;
-			/*
-			for(i = 0; i < 21;i ++)	{
-				printf("%i ",(uint8_t) minikeyN[i]);
-			}
-			printf(": minikey_n_limit %i\n",minikey_n_limit);
-			*/
 		}
 		else	{
 			if(FLAGBITRANGE)	{	// Bit Range
 				printf("[+] Bit Range %i\n",bitrange);
-
 			}
 			else	{
 				printf("[+] Range \n");
@@ -985,7 +914,6 @@ int main(int argc, char **argv)	{
 			printf("[+] -- to   : 0x%s\n",hextemp);
 			free(hextemp);
 		}
-		
 		aux =(char*) malloc(1000);
 		if(aux == NULL)	{
 			fprintf(stderr,"[E] error malloc()\n");
@@ -1013,7 +941,6 @@ int main(int argc, char **argv)	{
 						MAXLENGTHADDRESS = 20;		/*20 bytes beacuase we only need the data in binary*/
 					}				
 			break;
-			//case MODE_CHECK:
 			case MODE_MINIKEYS:
 			case MODE_PUB2RMD:
 			case MODE_RMD160:
@@ -1061,6 +988,25 @@ int main(int argc, char **argv)	{
 				}
 				MAXLENGTHADDRESS = 32;
 			break;
+			case MODE_VANITY:
+				while(!feof(fd))	{
+					hextemp = fgets(aux,998,fd);
+					if(hextemp == aux)	{
+						trim(aux," \t\n\r");
+						if(strlen(aux) > 0){
+							if(isValidBase58String(aux))	{
+								addvanity(aux);
+							}
+							else	{
+								fprintf(stderr,"[E] the string \"%s\" is not valid Base58, omiting it\n",aux);
+							}
+						}
+					}
+				}
+				if(FLAGDEBUG) printf("[D] vanity_rmd_minimun_bytes_check_length: %i\n",vanity_rmd_minimun_bytes_check_length);
+				N = vanity_rmd_total;
+			break;
+			
 		}
 		free(aux);
 		if(N == 0)	{
@@ -1069,16 +1015,18 @@ int main(int argc, char **argv)	{
 		}
 		fseek(fd,0,SEEK_SET);
 
-		printf("[+] Allocating memory for %" PRIu64 " elements: %.2f MB\n",N,(double)(((double) sizeof(struct address_value)*N)/(double)1048576));
-		i = 0;
-		addressTable = (struct address_value*) malloc(sizeof(struct address_value)*N);
-		if(addressTable == NULL)	{
-			fprintf(stderr,"[E] Can't alloc memory for %" PRIu64 " elements\n",N);
-			exit(0);
+		if(FLAGMODE != MODE_VANITY )	{
+			printf("[+] Allocating memory for %" PRIu64 " elements: %.2f MB\n",N,(double)(((double) sizeof(struct address_value)*N)/(double)1048576));
+			i = 0;
+			addressTable = (struct address_value*) malloc(sizeof(struct address_value)*N);
+			if(addressTable == NULL)	{
+				fprintf(stderr,"[E] Can't alloc memory for %" PRIu64 " elements\n",N);
+				exit(0);
+			}
 		}
 		printf("[+] Bloom filter for %" PRIu64 " elements.\n",N);
-		if(N <= 1000)	{
-			if(bloom_init2(&bloom,1000,0.000001)	== 1){
+		if(N <= 10000)	{
+			if(bloom_init2(&bloom,10000,0.000001)	== 1){
 				fprintf(stderr,"[E] error bloom_init for 10000 elements.\n");
 				exit(0);
 			}
@@ -1091,7 +1039,26 @@ int main(int argc, char **argv)	{
 		}
 		printf("[+] Loading data to the bloomfilter total: %.2f MB\n",(double)(((double) bloom.bytes)/(double)1048576));
 		i = 0;
+		
 		switch (FLAGMODE) {
+			case MODE_VANITY:
+				aux =(char*) malloc(1); //To avoid "free(): double free detected in tcache 2" is this or chage more code
+				while(i < vanity_rmd_targets)	{
+					if(FLAGDEBUG)	{
+						printf("[D] Next cycle up to %i\n",vanity_rmd_limits[i]);
+					}
+					for(int k = 0; k < vanity_rmd_limits[i]; k++)	{
+						if(FLAGDEBUG)	{	
+							hextemp = tohex((char*)vanity_rmd_limit_values_A[i][k],vanity_rmd_minimun_bytes_check_length);
+							printf("[D] Adding to the bloom filter %s for prefix %s\n",hextemp,vanity_address_targets[i]);
+							free(hextemp);
+						}
+						bloom_add(&bloom, vanity_rmd_limit_values_A[i][k] ,vanity_rmd_minimun_bytes_check_length);
+					}
+					i++;
+				}
+			
+			break;
 			case MODE_ADDRESS:
 				if(FLAGCRYPTO == CRYPTO_BTC)	{  // BTC address
 					aux =(char*) malloc(2*MAXLENGTHADDRESS);
@@ -1147,7 +1114,9 @@ int main(int argc, char **argv)	{
 										fprintf(stderr,"[E] Omiting line : %s\n",aux);
 									}
 								break;
-								
+								default:
+									fprintf(stderr,"[E] Omiting line : %s\n",aux);
+								break;
 							}
 						}
 						else	{
@@ -1156,7 +1125,6 @@ int main(int argc, char **argv)	{
 						}
 						i++;
 					}
-					
 				}
 			break;
 			case MODE_XPOINT:
@@ -1184,7 +1152,6 @@ int main(int argc, char **argv)	{
 						memset(aux,0,5*MAXLENGTHADDRESS);
 						hextemp = fgets(aux,(5*MAXLENGTHADDRESS) -2,fd);
 						memset((void *)&addressTable[i],0,sizeof(struct address_value));
-
 						if(hextemp == aux)	{
 							trim(aux," \t\n\r");
 							stringtokenizer(aux,&tokenizer_xpoint);
@@ -1242,7 +1209,6 @@ int main(int argc, char **argv)	{
 					}
 				}
 			break;
-			//case MODE_CHECK:
 			case MODE_MINIKEYS:
 			case MODE_PUB2RMD:
 			case MODE_RMD160:
@@ -1301,12 +1267,8 @@ int main(int argc, char **argv)	{
 		free(aux);
 		fclose(fd);
 		printf("[+] Bloomfilter completed\n");
-		if(FLAGALREADYSORTED)	{
-			printf("[+] File mark already sorted, skipping sort proccess\n");
-			printf("[+] %" PRIu64 " values were loaded\n",N);
-			_sort(addressTable,N);
-		}
-		else	{
+		
+		if(FLAGMODE != MODE_VANITY )	{
 			printf("[+] Sorting data ...");
 			_sort(addressTable,N);
 			printf(" done! %" PRIu64 " values were loaded and sorted\n",N);
@@ -1800,6 +1762,7 @@ int main(int argc, char **argv)	{
 					for(i = 0; i < 256;i++)	{
 						bf_ptr = (char*) bloom_bP[i].bf;	/*We need to save the current bf pointer*/
 						readed = fread(&oldbloom_bP,sizeof(struct oldbloom),1,fd_aux1);
+						
 						/*
 						if(FLAGDEBUG)	{
 							printf("old Bloom filter %i\n",i);
@@ -1916,12 +1879,12 @@ int main(int argc, char **argv)	{
 			if(fd_aux3 != NULL)	{
 				printf("[+] Reading bP Table from file %s .",buffer_bloom_file);
 				fflush(stdout);
-				fread(bPtable,bytes,1,fd_aux3);
+				rsize = fread(bPtable,bytes,1,fd_aux3);
 				if(readed != 1)	{
 					fprintf(stderr,"[E] Error reading the file %s\n",buffer_bloom_file);
 					exit(0);
 				}
-				fread(checksum,32,1,fd_aux3);
+				rsize = fread(checksum,32,1,fd_aux3);
 				sha256((uint8_t*)bPtable,bytes,(uint8_t*)checksum_backup);
 				if(memcmp(checksum,checksum_backup,32) != 0)	{
 					fprintf(stderr,"[E] Checksum from file %s mismatch!!\n",buffer_bloom_file);
@@ -2527,11 +2490,9 @@ int main(int argc, char **argv)	{
 				case MODE_MINIKEYS:
 					s = pthread_create(&tid[i],NULL,thread_process_minikeys,(void *)tt);
 				break;
-				/*
-				case MODE_CHECK:
-					s = pthread_create(&tid[i],NULL,thread_process_check_file_btc,(void *)tt);
+				case MODE_VANITY:
+					s = pthread_create(&tid[i],NULL,thread_process_vanity,(void *)tt);
 				break;
-				*/
 #endif
 			}
 			if(s != 0)	{
@@ -2552,6 +2513,11 @@ int main(int argc, char **argv)	{
 	pretotal.SetInt32(0);
 	debugcount_mpz.Set(&BSGS_N);
 	seconds.SetInt32(0);
+	if(FLAGDEBUG)	{
+		hextemp = debugcount_mpz.GetBase16();
+		printf("\n[D] debugcount_mpz = %s\n",hextemp);
+		free(hextemp);
+	}
 	do	{
 		sleep_ms(1000);
 		seconds.AddOne();
@@ -2571,6 +2537,16 @@ int main(int argc, char **argv)	{
 				while(i < NTHREADS) {
 					pretotal.Set(&debugcount_mpz);
 					pretotal.Mult(steps[i]);
+					
+					if(FLAGENDOMORPHISM)	{
+						if(FLAGMODE == MODE_XPOINT)	{
+							pretotal.Mult(3);
+						}
+						else	{
+							pretotal.Mult(6);
+						}
+					}
+					
 					total.Add(&pretotal);
 					i++;
 				}
@@ -2932,7 +2908,6 @@ void *thread_process_minikeys(void *vargp)	{
 }
 
 
-
 #if defined(_WIN64) && !defined(__CYGWIN__)
 DWORD WINAPI thread_process(LPVOID vargp) {
 #else
@@ -2940,6 +2915,10 @@ void *thread_process(void *vargp)	{
 #endif
 	struct tothread *tt;
 	Point pts[CPU_GRP_SIZE];
+	Point endomorphism_beta[CPU_GRP_SIZE];
+	Point endomorphism_beta2[CPU_GRP_SIZE];
+	Point endomorphism_negeted_point[4];
+	
 	Int dx[CPU_GRP_SIZE / 2 + 1];
 	IntGroup *grp = new IntGroup(CPU_GRP_SIZE / 2 + 1);
 	Point startP;
@@ -2949,9 +2928,10 @@ void *thread_process(void *vargp)	{
 	Int _p;
 	Point pp;
 	Point pn;
+	int l,pp_offset,pn_offset;
 	int hLength = (CPU_GRP_SIZE / 2 - 1);
 	uint64_t i,j,count;
-	Point R,temporal;
+	Point R,temporal,publickey;
 	int r,thread_number,continue_flag = 1,i_vanity,k;
 	char *hextemp = NULL;
 	char *eth_address = NULL;
@@ -2961,7 +2941,9 @@ void *thread_process(void *vargp)	{
 	char hexstrpoint[65],rawvalue[32];
 	char address_compressed[4][40],address_uncompressed[4][40];
 	
-	unsigned long longtemp;
+	char publickeyhashrmd160_endomorphism[12][4][20],address[50],address2[50];
+	
+	bool calculate_y = FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH;
 	FILE *keys,*vanityKeys;
 	Int key_mpz,keyfound,temp_stride;
 	tt = (struct tothread *)vargp;
@@ -3040,7 +3022,7 @@ void *thread_process(void *vargp)	{
 					pp.x.ModAdd(&_p);
 					pp.x.ModSub(&Gn[i].x);           // rx = pow2(s) - p1.x - p2.x;
 
-					if(FLAGMODE != MODE_XPOINT  )	{
+					if(calculate_y)	{
 						pp.y.ModSub(&Gn[i].x,&pp.x);
 						pp.y.ModMulK1(&_s);
 						pp.y.ModSub(&Gn[i].y);           // ry = - p2.y - s*(ret.x-p2.x);
@@ -3057,14 +3039,51 @@ void *thread_process(void *vargp)	{
 					pn.x.ModAdd(&_p);
 					pn.x.ModSub(&Gn[i].x);          // rx = pow2(s) - p1.x - p2.x;
 
-					if(FLAGMODE != MODE_XPOINT  )	{
+					if(calculate_y)	{
 						pn.y.ModSub(&Gn[i].x,&pn.x);
 						pn.y.ModMulK1(&_s);
 						pn.y.ModAdd(&Gn[i].y);          // ry = - p2.y - s*(ret.x-p2.x);
 					}
 
-					pts[CPU_GRP_SIZE / 2 + (i + 1)] = pp;
-					pts[CPU_GRP_SIZE / 2 - (i + 1)] = pn;
+					pp_offset = CPU_GRP_SIZE / 2 + (i + 1);
+					pn_offset = CPU_GRP_SIZE / 2 - (i + 1);
+
+					pts[pp_offset] = pp;
+					pts[pn_offset] = pn;
+					
+					if(FLAGENDOMORPHISM)	{
+						/*
+							Q = (x,y)
+							For any point Q
+							Q*lambda = (x*beta mod p ,y)
+							Q*lambda is a Scalar Multiplication
+							x*beta is just a Multiplication (Very fast)
+						*/
+						
+						if( calculate_y  )	{
+							endomorphism_beta[pp_offset].y.Set(&pp.y);
+							endomorphism_beta[pn_offset].y.Set(&pn.y);
+							endomorphism_beta2[pp_offset].y.Set(&pp.y);
+							endomorphism_beta2[pn_offset].y.Set(&pn.y);
+						}
+						endomorphism_beta[pp_offset].x.ModMulK1(&pp.x, &beta);
+						endomorphism_beta[pn_offset].x.ModMulK1(&pn.x, &beta);
+						endomorphism_beta2[pp_offset].x.ModMulK1(&pp.x, &beta2);
+						endomorphism_beta2[pn_offset].x.ModMulK1(&pn.x, &beta2);
+					}
+				}
+				
+				/*
+					Half point for endomorphism because pts[CPU_GRP_SIZE / 2] was not calcualte in the previous cycle
+				*/
+				if(FLAGENDOMORPHISM)	{
+					if( calculate_y  )	{
+
+						endomorphism_beta[CPU_GRP_SIZE / 2].y.Set(&pts[CPU_GRP_SIZE / 2].y);
+						endomorphism_beta2[CPU_GRP_SIZE / 2].y.Set(&pts[CPU_GRP_SIZE / 2].y);
+					}
+					endomorphism_beta[CPU_GRP_SIZE / 2].x.ModMulK1(&pts[CPU_GRP_SIZE / 2].x, &beta);
+					endomorphism_beta2[CPU_GRP_SIZE / 2].x.ModMulK1(&pts[CPU_GRP_SIZE / 2].x, &beta2);
 				}
 
 				// First point (startP - (GRP_SZIE/2)*G)
@@ -3080,171 +3099,229 @@ void *thread_process(void *vargp)	{
 				pn.x.ModAdd(&_p);
 				pn.x.ModSub(&Gn[i].x);
 				
-				if(FLAGMODE != MODE_XPOINT  )	{
+				if(calculate_y)	{
 					pn.y.ModSub(&Gn[i].x,&pn.x);
 					pn.y.ModMulK1(&_s);
 					pn.y.ModAdd(&Gn[i].y);
 				}
 
 				pts[0] = pn;
+				
+				/*
+					First point for endomorphism because pts[0] was not calcualte previously
+				*/
+				if(FLAGENDOMORPHISM)	{
+					if( calculate_y  )	{
+						endomorphism_beta[0].y.Set(&pn.y);
+						endomorphism_beta2[0].y.Set(&pn.y);
+					}
+					endomorphism_beta[0].x.ModMulK1(&pn.x, &beta);
+					endomorphism_beta2[0].x.ModMulK1(&pn.x, &beta2);
+				}
+				
+				
+				
 				for(j = 0; j < CPU_GRP_SIZE/4;j++){
-					if(FLAGCRYPTO == CRYPTO_BTC){
-						switch(FLAGMODE)	{
-							case MODE_ADDRESS:
-							case MODE_RMD160:
-								switch(FLAGSEARCH)	{
-									case SEARCH_UNCOMPRESS:
-										secp->GetHash160(P2PKH,false,pts[(j*4)],pts[(j*4)+1],pts[(j*4)+2],pts[(j*4)+3],(uint8_t*)publickeyhashrmd160_uncompress[0],(uint8_t*)publickeyhashrmd160_uncompress[1],(uint8_t*)publickeyhashrmd160_uncompress[2],(uint8_t*)publickeyhashrmd160_uncompress[3]);
-									break;
-									case SEARCH_COMPRESS:
-										secp->GetHash160(P2PKH,true,pts[(j*4)],pts[(j*4)+1],pts[(j*4)+2],pts[(j*4)+3],(uint8_t*)publickeyhashrmd160_compress[0],(uint8_t*)publickeyhashrmd160_compress[1],(uint8_t*)publickeyhashrmd160_compress[2],(uint8_t*)publickeyhashrmd160_compress[3]);
-									break;
-									case SEARCH_BOTH:
-										secp->GetHash160(P2PKH,true,pts[(j*4)],pts[(j*4)+1],pts[(j*4)+2],pts[(j*4)+3],(uint8_t*)publickeyhashrmd160_compress[0],(uint8_t*)publickeyhashrmd160_compress[1],(uint8_t*)publickeyhashrmd160_compress[2],(uint8_t*)publickeyhashrmd160_compress[3]);
-										secp->GetHash160(P2PKH,false,pts[(j*4)],pts[(j*4)+1],pts[(j*4)+2],pts[(j*4)+3],(uint8_t*)publickeyhashrmd160_uncompress[0],(uint8_t*)publickeyhashrmd160_uncompress[1],(uint8_t*)publickeyhashrmd160_uncompress[2],(uint8_t*)publickeyhashrmd160_uncompress[3]);
-									break;
+					switch(FLAGMODE)	{
+						case MODE_RMD160:
+						case MODE_ADDRESS:
+							if(FLAGCRYPTO == CRYPTO_BTC){
+								
+								if(FLAGSEARCH == SEARCH_COMPRESS || FLAGSEARCH == SEARCH_BOTH ){
+									if(FLAGENDOMORPHISM)	{
+										secp->GetHash160_fromX(P2PKH,0x02,&pts[(j*4)].x,&pts[(j*4)+1].x,&pts[(j*4)+2].x,&pts[(j*4)+3].x,(uint8_t*)publickeyhashrmd160_endomorphism[0][0],(uint8_t*)publickeyhashrmd160_endomorphism[0][1],(uint8_t*)publickeyhashrmd160_endomorphism[0][2],(uint8_t*)publickeyhashrmd160_endomorphism[0][3]);
+										secp->GetHash160_fromX(P2PKH,0x03,&pts[(j*4)].x,&pts[(j*4)+1].x,&pts[(j*4)+2].x,&pts[(j*4)+3].x,(uint8_t*)publickeyhashrmd160_endomorphism[1][0],(uint8_t*)publickeyhashrmd160_endomorphism[1][1],(uint8_t*)publickeyhashrmd160_endomorphism[1][2],(uint8_t*)publickeyhashrmd160_endomorphism[1][3]);
+
+										secp->GetHash160_fromX(P2PKH,0x02,&endomorphism_beta[(j*4)].x,&endomorphism_beta[(j*4)+1].x,&endomorphism_beta[(j*4)+2].x,&endomorphism_beta[(j*4)+3].x,(uint8_t*)publickeyhashrmd160_endomorphism[2][0],(uint8_t*)publickeyhashrmd160_endomorphism[2][1],(uint8_t*)publickeyhashrmd160_endomorphism[2][2],(uint8_t*)publickeyhashrmd160_endomorphism[2][3]);
+										secp->GetHash160_fromX(P2PKH,0x03,&endomorphism_beta[(j*4)].x,&endomorphism_beta[(j*4)+1].x,&endomorphism_beta[(j*4)+2].x,&endomorphism_beta[(j*4)+3].x,(uint8_t*)publickeyhashrmd160_endomorphism[3][0],(uint8_t*)publickeyhashrmd160_endomorphism[3][1],(uint8_t*)publickeyhashrmd160_endomorphism[3][2],(uint8_t*)publickeyhashrmd160_endomorphism[3][3]);
+
+										secp->GetHash160_fromX(P2PKH,0x02,&endomorphism_beta2[(j*4)].x,&endomorphism_beta2[(j*4)+1].x,&endomorphism_beta2[(j*4)+2].x,&endomorphism_beta2[(j*4)+3].x,(uint8_t*)publickeyhashrmd160_endomorphism[4][0],(uint8_t*)publickeyhashrmd160_endomorphism[4][1],(uint8_t*)publickeyhashrmd160_endomorphism[4][2],(uint8_t*)publickeyhashrmd160_endomorphism[4][3]);
+										secp->GetHash160_fromX(P2PKH,0x03,&endomorphism_beta2[(j*4)].x,&endomorphism_beta2[(j*4)+1].x,&endomorphism_beta2[(j*4)+2].x,&endomorphism_beta2[(j*4)+3].x,(uint8_t*)publickeyhashrmd160_endomorphism[5][0],(uint8_t*)publickeyhashrmd160_endomorphism[5][1],(uint8_t*)publickeyhashrmd160_endomorphism[5][2],(uint8_t*)publickeyhashrmd160_endomorphism[5][3]);
+									}
+									else	{
+										secp->GetHash160(P2PKH,true,pts[(j*4)],pts[(j*4)+1],pts[(j*4)+2],pts[(j*4)+3],(uint8_t*)publickeyhashrmd160_compress[0],(uint8_t*)publickeyhashrmd160_compress[1],(uint8_t*)publickeyhashrmd160_compress[2],(uint8_t*)publickeyhashrmd160_compress[3]);								
+									}
+									
 								}
-							break;
-						}
+								if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH){
+									if(FLAGENDOMORPHISM)	{
+										for(l = 0; l < 4; l++)	{
+											endomorphism_negeted_point[l] = secp->Negation(pts[(j*4)+l]);
+										}
+										secp->GetHash160(P2PKH,false, pts[(j*4)], pts[(j*4)+1], pts[(j*4)+2], pts[(j*4)+3],(uint8_t*)publickeyhashrmd160_endomorphism[6][0],(uint8_t*)publickeyhashrmd160_endomorphism[6][1],(uint8_t*)publickeyhashrmd160_endomorphism[6][2],(uint8_t*)publickeyhashrmd160_endomorphism[6][3]);
+										secp->GetHash160(P2PKH,false,endomorphism_negeted_point[(j*4)] ,endomorphism_negeted_point[(j*4)+1],endomorphism_negeted_point[(j*4)+2],endomorphism_negeted_point[(j*4)+3],(uint8_t*)publickeyhashrmd160_endomorphism[7][0],(uint8_t*)publickeyhashrmd160_endomorphism[7][1],(uint8_t*)publickeyhashrmd160_endomorphism[7][2],(uint8_t*)publickeyhashrmd160_endomorphism[7][3]);
+										for(l = 0; l < 4; l++)	{
+											endomorphism_negeted_point[l] = secp->Negation(endomorphism_beta[(j*4)+l]);
+										}
+										secp->GetHash160(P2PKH,false,endomorphism_beta[(j*4)],  endomorphism_beta[(j*4)+1], endomorphism_beta[(j*4)+2], endomorphism_beta[(j*4)+3] ,(uint8_t*)publickeyhashrmd160_endomorphism[8][0],(uint8_t*)publickeyhashrmd160_endomorphism[8][1],(uint8_t*)publickeyhashrmd160_endomorphism[8][2],(uint8_t*)publickeyhashrmd160_endomorphism[8][3]);
+										secp->GetHash160(P2PKH,false,endomorphism_negeted_point[(j*4)],endomorphism_negeted_point[(j*4)+1],endomorphism_negeted_point[(j*4)+2],endomorphism_negeted_point[(j*4)+3],(uint8_t*)publickeyhashrmd160_endomorphism[9][0],(uint8_t*)publickeyhashrmd160_endomorphism[9][1],(uint8_t*)publickeyhashrmd160_endomorphism[9][2],(uint8_t*)publickeyhashrmd160_endomorphism[9][3]);
+
+										for(l = 0; l < 4; l++)	{
+											endomorphism_negeted_point[l] = secp->Negation(endomorphism_beta2[(j*4)+l]);
+										}
+										secp->GetHash160(P2PKH,false, endomorphism_beta2[(j*4)],  endomorphism_beta2[(j*4)+1] ,  endomorphism_beta2[(j*4)+2] ,  endomorphism_beta2[(j*4)+3] ,(uint8_t*)publickeyhashrmd160_endomorphism[10][0],(uint8_t*)publickeyhashrmd160_endomorphism[10][1],(uint8_t*)publickeyhashrmd160_endomorphism[10][2],(uint8_t*)publickeyhashrmd160_endomorphism[10][3]);
+										secp->GetHash160(P2PKH,false, endomorphism_negeted_point[(j*4)], endomorphism_negeted_point[(j*4)+1],   endomorphism_negeted_point[(j*4)+2],endomorphism_negeted_point[(j*4)+3],(uint8_t*)publickeyhashrmd160_endomorphism[11][0],(uint8_t*)publickeyhashrmd160_endomorphism[11][1],(uint8_t*)publickeyhashrmd160_endomorphism[11][2],(uint8_t*)publickeyhashrmd160_endomorphism[11][3]);
+
+									}
+									else	{
+										secp->GetHash160(P2PKH,false,pts[(j*4)],pts[(j*4)+1],pts[(j*4)+2],pts[(j*4)+3],(uint8_t*)publickeyhashrmd160_uncompress[0],(uint8_t*)publickeyhashrmd160_uncompress[1],(uint8_t*)publickeyhashrmd160_uncompress[2],(uint8_t*)publickeyhashrmd160_uncompress[3]);
+										
+									}
+								}
+							}
+						break;
 					}
 					switch(FLAGMODE)	{
+						case MODE_RMD160:
 						case MODE_ADDRESS:
 							if( FLAGCRYPTO  == CRYPTO_BTC) {
-								switch(FLAGSEARCH)	{
-									case SEARCH_UNCOMPRESS:
-										for(k = 0; k < 4;k++)	{
-											rmd160toaddress_dst(publickeyhashrmd160_uncompress[k],address_uncompressed[k]);
+								
+								for(k = 0; k < 4;k++)	{
+									if(FLAGSEARCH == SEARCH_COMPRESS || FLAGSEARCH == SEARCH_BOTH){
+										if(FLAGENDOMORPHISM)	{
+											for(l = 0;l < 6; l++)	{
+												r = bloom_check(&bloom,publickeyhashrmd160_endomorphism[l][k],MAXLENGTHADDRESS);
+												if(r) {
+													r = searchbinary(addressTable,publickeyhashrmd160_endomorphism[l][k],N);
+													if(r) {
+														keyfound.SetInt32(k);
+														keyfound.Mult(&stride);
+														keyfound.Add(&key_mpz);
+														publickey = secp->ComputePublicKey(&keyfound);
+														switch(l)	{
+															case 0:	//Original point, prefix 02
+																if(publickey.y.IsOdd())	{	//if the current publickey is odd that means, we need to negate the keyfound to get the correct key
+																	keyfound.Neg();
+																	keyfound.Add(&secp->order);
+																}
+																// else we dont need to chage the current keyfound because it already have prefix 02
+															break;
+															case 1:	//Original point, prefix 03
+																if(publickey.y.IsEven())	{	//if the current publickey is even that means, we need to negate the keyfound to get the correct key
+																	keyfound.Neg();
+																	keyfound.Add(&secp->order);
+																}
+																// else we dont need to chage the current keyfound because it already have prefix 03
+															break;
+															case 2:	//Beta point, prefix 02
+																keyfound.ModMulK1order(&lambda);
+																if(publickey.y.IsOdd())	{	//if the current publickey is odd that means, we need to negate the keyfound to get the correct key
+																	keyfound.Neg();
+																	keyfound.Add(&secp->order);
+																}
+																// else we dont need to chage the current keyfound because it already have prefix 02
+															break;
+															case 3:	//Beta point, prefix 03											
+																keyfound.ModMulK1order(&lambda);
+																if(publickey.y.IsEven())	{	//if the current publickey is even that means, we need to negate the keyfound to get the correct key
+																	keyfound.Neg();
+																	keyfound.Add(&secp->order);
+																}
+																// else we dont need to chage the current keyfound because it already have prefix 02
+															break;
+															case 4:	//Beta^2 point, prefix 02
+																keyfound.ModMulK1order(&lambda2);
+																if(publickey.y.IsOdd())	{	//if the current publickey is odd that means, we need to negate the keyfound to get the correct key
+																	keyfound.Neg();
+																	keyfound.Add(&secp->order);
+																}
+																// else we dont need to chage the current keyfound because it already have prefix 02
+															break;
+															case 5:	//Beta^2 point, prefix 03
+																keyfound.ModMulK1order(&lambda2);
+																if(publickey.y.IsEven())	{	//if the current publickey is even that means, we need to negate the keyfound to get the correct key
+																	keyfound.Neg();
+																	keyfound.Add(&secp->order);
+																}
+																// else we dont need to chage the current keyfound because it already have prefix 02
+															break;
+														}
+														writekey(false,&keyfound);
+													}
+												}
+											}
 										}
-									break;
-									case SEARCH_COMPRESS:
-										for(k = 0; k < 4;k++)	{
-											rmd160toaddress_dst(publickeyhashrmd160_compress[k],address_compressed[k]);
-										}
-									break;
-									case SEARCH_BOTH:
-										for(k = 0; k < 4;k++)	{
-											rmd160toaddress_dst(publickeyhashrmd160_uncompress[k],address_uncompressed[k]);
-											rmd160toaddress_dst(publickeyhashrmd160_compress[k],address_compressed[k]);
-										}
-									break;
-								}
-								if(FLAGVANITY)	{
-									for(k = 0; k < 4;k++)	{
-										i_vanity = 0;
-										while(i_vanity < COUNT_VANITIES)	{
-											if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH){
-												if(strncmp(address_uncompressed[k],vanities[i_vanity],len_vanities[i_vanity]) == 0)	{
+										else	{
+											r = bloom_check(&bloom,publickeyhashrmd160_compress[k],MAXLENGTHADDRESS);
+											if(r) {
+												r = searchbinary(addressTable,publickeyhashrmd160_compress[k],N);
+												if(r) {
 													keyfound.SetInt32(k);
 													keyfound.Mult(&stride);
 													keyfound.Add(&key_mpz);
-													hextemp = keyfound.GetBase16();
-													vanityKeys = fopen("vanitykeys.txt","a+");
-													if(vanityKeys != NULL)	{
-														fprintf(vanityKeys,"Private Key: %s\nAddress uncompressed: %s\n",hextemp,address_uncompressed[k]);
-														fclose(vanityKeys);
-													}
-													printf("\nVanity Private Key: %s\nAddress uncompressed:	%s\n",hextemp,address_uncompressed[k]);
-													free(hextemp);
+													
+													writekey(false,&keyfound);
 												}
 											}
-											if(FLAGSEARCH == SEARCH_COMPRESS || FLAGSEARCH == SEARCH_BOTH){
-												if(strncmp(address_compressed[k],vanities[i_vanity],len_vanities[i_vanity]) == 0)	{
+										}
+									}
+									if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH)	{
+										if(FLAGENDOMORPHISM)	{
+											for(l = 6;l < 12; l++)	{	//We check the array from 6 to 12(excluded) because we save the uncompressed information there
+												r = bloom_check(&bloom,publickeyhashrmd160_endomorphism[l][k],MAXLENGTHADDRESS);	//Check in Bloom filter
+												if(r) {
+													r = searchbinary(addressTable,publickeyhashrmd160_endomorphism[l][k],N);		//Check in Array using Binary search
+													if(r) {
+														keyfound.SetInt32(k);
+														keyfound.Mult(&stride);
+														keyfound.Add(&key_mpz);
+														switch(l)	{
+															case 6:
+															case 7:
+																publickey = secp->ComputePublicKey(&keyfound);
+																secp->GetHash160(P2PKH,false,publickey,(uint8_t*)publickeyhashrmd160_uncompress[0]);
+																if(memcmp(publickeyhashrmd160_endomorphism[l][k],publickeyhashrmd160_uncompress[0],20) != 0){
+																	keyfound.Neg();
+																	keyfound.Add(&secp->order);
+																}
+															break;
+															case 8:
+															case 9:
+																keyfound.ModMulK1order(&lambda);
+																publickey = secp->ComputePublicKey(&keyfound);
+																secp->GetHash160(P2PKH,false,publickey,(uint8_t*)publickeyhashrmd160_uncompress[0]);
+																if(memcmp(publickeyhashrmd160_endomorphism[l][k],publickeyhashrmd160_uncompress[0],20) != 0){
+																	keyfound.Neg();
+																	keyfound.Add(&secp->order);
+																}
+															break;
+															case 10:
+															case 11:
+																keyfound.ModMulK1order(&lambda2);
+																publickey = secp->ComputePublicKey(&keyfound);
+																secp->GetHash160(P2PKH,false,publickey,(uint8_t*)publickeyhashrmd160_uncompress[0]);
+																if(memcmp(publickeyhashrmd160_endomorphism[l][k],publickeyhashrmd160_uncompress[0],20) != 0){
+																	keyfound.Neg();
+																	keyfound.Add(&secp->order);
+																}
+															break;
+														}
+														writekey(false,&keyfound);
+													}
+												}
+											}
+										}
+										else	{
+											r = bloom_check(&bloom,publickeyhashrmd160_uncompress[k],MAXLENGTHADDRESS);
+											if(r) {
+												r = searchbinary(addressTable,publickeyhashrmd160_uncompress[k],N);
+												if(r) {
 													keyfound.SetInt32(k);
 													keyfound.Mult(&stride);
 													keyfound.Add(&key_mpz);
-													hextemp = keyfound.GetBase16();
-													vanityKeys = fopen("vanitykeys.txt","a+");
-													if(vanityKeys != NULL)	{
-														fprintf(vanityKeys,"Private key: %s\nAddress compressed:	%s\n",hextemp,address_compressed[k]);
-														fclose(vanityKeys);
-													}
-													printf("\nVanity Private Key: %s\nAddress compressed: %s\n",hextemp,address_compressed[k]);
-													free(hextemp);
+													
+													writekey(false,&keyfound);
+													
 												}
-											}
-											i_vanity ++;
-										}
-									}
-								}
-								if(FLAGSEARCH == SEARCH_COMPRESS || FLAGSEARCH == SEARCH_BOTH){
-									for(k = 0; k < 4;k++)	{
-										r = bloom_check(&bloom,address_compressed[k],MAXLENGTHADDRESS);
-										if(r) {
-											r = searchbinary(addressTable,address_compressed[k],N);
-											if(r) {
-												keyfound.SetInt32(k);
-												keyfound.Mult(&stride);
-												keyfound.Add(&key_mpz);
-												hextemp = keyfound.GetBase16();
-												secp->GetPublicKeyHex(true,pts[(4*j)+k],public_key_compressed_hex);
-
-#if defined(_WIN64) && !defined(__CYGWIN__)
-												WaitForSingleObject(write_keys, INFINITE);
-#else
-												pthread_mutex_lock(&write_keys);
-#endif
-
-												keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
-												if(keys != NULL)	{
-													fprintf(keys,"Private Key: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_compressed_hex,address_compressed[k]);
-													fclose(keys);
-												}
-												printf("\nHIT!! Private Key: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_compressed_hex,address_compressed[k]);
-#if defined(_WIN64) && !defined(__CYGWIN__)
-												ReleaseMutex(write_keys);
-#else
-												pthread_mutex_unlock(&write_keys);
-#endif
-
-												free(hextemp);
 											}
 										}
 									}
-								}
-
-								if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH){
-									for(k = 0; k < 4;k++)	{
-										r = bloom_check(&bloom,address_uncompressed[k],MAXLENGTHADDRESS);
-										if(r) {
-											r = searchbinary(addressTable,address_uncompressed[k],N);
-											if(r) {
-												keyfound.SetInt32(k);
-												keyfound.Mult(&stride);
-												keyfound.Add(&key_mpz);
-												hextemp = keyfound.GetBase16();
-												secp->GetPublicKeyHex(false,pts[(4*j)+k],public_key_uncompressed_hex);
-#if defined(_WIN64) && !defined(__CYGWIN__)
-												WaitForSingleObject(write_keys, INFINITE);
-#else
-												pthread_mutex_lock(&write_keys);
-#endif
-
-												keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
-												if(keys != NULL)	{
-													fprintf(keys,"Private Key: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,address_uncompressed[k]);
-													fclose(keys);
-												}
-												printf("\nHIT!! Private Key: %s\npubkey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,address_uncompressed[k]);
-#if defined(_WIN64) && !defined(__CYGWIN__)
-												ReleaseMutex(write_keys);
-#else
-												pthread_mutex_unlock(&write_keys);
-#endif
-												free(hextemp);
-											}
-										}
-									}
-
 								}
 							}
 							if( FLAGCRYPTO == CRYPTO_ETH) {
 								for(k = 0; k < 4;k++)	{
 									generate_binaddress_eth(pts[(4*j)+k],(unsigned char*)rawvalue);
-									/*
-									hextemp = tohex(rawvalue+12,20);
-									printf("Eth Address 0x%s\n",hextemp);
-									free(hextemp);
-									*/
+
 									r = bloom_check(&bloom,rawvalue+12,MAXLENGTHADDRESS);
 									if(r) {
 										r = searchbinary(addressTable,rawvalue+12,N);
@@ -3282,104 +3359,60 @@ void *thread_process(void *vargp)	{
 
 							}
 						break;
-						case MODE_RMD160:
-							for(k = 0; k < 4;k++)	{
-								if(FLAGSEARCH == SEARCH_COMPRESS || FLAGSEARCH == SEARCH_BOTH){
-									r = bloom_check(&bloom,publickeyhashrmd160_compress[k],MAXLENGTHADDRESS);
-									if(r) {
-										r = searchbinary(addressTable,publickeyhashrmd160_compress[k],N);
-										if(r) {
-											keyfound.SetInt32(k);
-											keyfound.Mult(&stride);
-											keyfound.Add(&key_mpz);
-											hextemp = keyfound.GetBase16();
-											secp->GetPublicKeyHex(true,pts[(4*j)+k],public_key_compressed_hex);
-#if defined(_WIN64) && !defined(__CYGWIN__)
-											WaitForSingleObject(write_keys, INFINITE);
-#else
-											pthread_mutex_lock(&write_keys);
-#endif
-
-											keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
-											if(keys != NULL)	{
-												fprintf(keys,"Private Key: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
-												fclose(keys);
-											}
-											printf("\nHIT!! Private Key: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
-#if defined(_WIN64) && !defined(__CYGWIN__)
-											ReleaseMutex(write_keys);
-#else
-											pthread_mutex_unlock(&write_keys);
-#endif
-											free(hextemp);
-										}
-									}
-								}
-								if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH)	{
-									r = bloom_check(&bloom,publickeyhashrmd160_uncompress[k],MAXLENGTHADDRESS);
-									if(r) {
-										r = searchbinary(addressTable,publickeyhashrmd160_uncompress[k],N);
-										if(r) {
-											keyfound.SetInt32(k);
-											keyfound.Mult(&stride);
-											keyfound.Add(&key_mpz);
-											hextemp = keyfound.GetBase16();
-
-											secp->GetPublicKeyHex(false,pts[(4*j)+k],public_key_uncompressed_hex);
-#if defined(_WIN64) && !defined(__CYGWIN__)
-											WaitForSingleObject(write_keys, INFINITE);
-#else
-											pthread_mutex_lock(&write_keys);
-#endif
-											keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
-											if(keys != NULL)	{
-												fprintf(keys,"Private Key: %s\npubkey: %s\n",hextemp,public_key_uncompressed_hex);
-												fclose(keys);
-											}
-											printf("\nHIT!! Private Key: %s\npubkey: %s\n",hextemp,public_key_uncompressed_hex);
-#if defined(_WIN64) && !defined(__CYGWIN__)
-											ReleaseMutex(write_keys);
-#else
-											pthread_mutex_unlock(&write_keys);
-#endif
-											free(hextemp);
-										}
-									}
-								}
-							}
-						break;
 						case MODE_XPOINT:
 							for(k = 0; k < 4;k++)	{
-								pts[(4*j)+k].x.Get32Bytes((unsigned char *)rawvalue);
-								r = bloom_check(&bloom,rawvalue,MAXLENGTHADDRESS);
-								if(r) {
-									r = searchbinary(addressTable,rawvalue,N);
+								if(FLAGENDOMORPHISM)	{
+									pts[(4*j)+k].x.Get32Bytes((unsigned char *)rawvalue);
+									r = bloom_check(&bloom,rawvalue,MAXLENGTHADDRESS);
 									if(r) {
-										keyfound.SetInt32(k);
-										keyfound.Mult(&stride);
-										keyfound.Add(&key_mpz);
-										hextemp = keyfound.GetBase16();
-										R = secp->ComputePublicKey(&keyfound);
-										secp->GetPublicKeyHex(true,R,public_key_compressed_hex);
-										printf("\nHIT!! Private Key: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
-#if defined(_WIN64) && !defined(__CYGWIN__)
-										WaitForSingleObject(write_keys, INFINITE);
-#else
-										pthread_mutex_lock(&write_keys);
-#endif
-
-										keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
-										if(keys != NULL)	{
-											fprintf(keys,"Private Key: %s\npubkey: %s\n",hextemp,public_key_compressed_hex);
-											fclose(keys);
+										r = searchbinary(addressTable,rawvalue,N);
+										if(r) {
+											keyfound.SetInt32(k);
+											keyfound.Mult(&stride);
+											keyfound.Add(&key_mpz);
+											
+											writekey(false,&keyfound);
 										}
-#if defined(_WIN64) && !defined(__CYGWIN__)
-										ReleaseMutex(write_keys);
-#else
-										pthread_mutex_unlock(&write_keys);
-#endif
-
-										free(hextemp);
+									}
+									endomorphism_beta[(j*4)+k].x.Get32Bytes((unsigned char *)rawvalue);
+									r = bloom_check(&bloom,rawvalue,MAXLENGTHADDRESS);
+									if(r) {
+										r = searchbinary(addressTable,rawvalue,N);
+										if(r) {
+											keyfound.SetInt32(k);
+											keyfound.Mult(&stride);
+											keyfound.Add(&key_mpz);
+											keyfound.ModMulK1order(&lambda);
+											
+											writekey(false,&keyfound);
+										}
+									}
+									
+									endomorphism_beta2[(j*4)+k].x.Get32Bytes((unsigned char *)rawvalue);
+									r = bloom_check(&bloom,rawvalue,MAXLENGTHADDRESS);
+									if(r) {
+										r = searchbinary(addressTable,rawvalue,N);
+										if(r) {
+											keyfound.SetInt32(k);
+											keyfound.Mult(&stride);
+											keyfound.Add(&key_mpz);
+											keyfound.ModMulK1order(&lambda2);
+											writekey(false,&keyfound);
+										}
+									}
+								}
+								else	{
+									pts[(4*j)+k].x.Get32Bytes((unsigned char *)rawvalue);
+									r = bloom_check(&bloom,rawvalue,MAXLENGTHADDRESS);
+									if(r) {
+										r = searchbinary(addressTable,rawvalue,N);
+										if(r) {
+											keyfound.SetInt32(k);
+											keyfound.Mult(&stride);
+											keyfound.Add(&key_mpz);
+											
+											writekey(false,&keyfound);
+										}
 									}
 								}
 							}
@@ -3403,6 +3436,7 @@ void *thread_process(void *vargp)	{
 				pp.x.ModAdd(&_p);
 				pp.x.ModSub(&_2Gn.x);
 
+				//The Y value for the next start point always need to be calculated
 				pp.y.ModSub(&_2Gn.x,&pp.x);
 				pp.y.ModMulK1(&_s);
 				pp.y.ModSub(&_2Gn.y);
@@ -3414,6 +3448,510 @@ void *thread_process(void *vargp)	{
 	return NULL;
 }
 
+
+#if defined(_WIN64) && !defined(__CYGWIN__)
+DWORD WINAPI thread_process_vanity(LPVOID vargp) {
+#else
+void *thread_process_vanity(void *vargp)	{
+#endif
+	struct tothread *tt;
+	Point pts[CPU_GRP_SIZE];
+	Point endomorphism_beta[CPU_GRP_SIZE];
+	Point endomorphism_beta2[CPU_GRP_SIZE];
+	Point endomorphism_negeted_point[4];
+		
+	Int dx[CPU_GRP_SIZE / 2 + 1];
+	
+	IntGroup *grp = new IntGroup(CPU_GRP_SIZE / 2 + 1);
+	Point startP;
+	Int dy;
+	Int dyn;
+	Int _s;
+	Int _p;
+	Point pp;	//point positive
+	Point pn;	//point negative
+	int hLength = (CPU_GRP_SIZE / 2 - 1);
+	int l,pp_offset,pn_offset;
+	uint64_t i,j,count;
+	Point R,temporal,publickey;
+	int r,thread_number,continue_flag = 1,k;
+	char *hextemp = NULL;
+	char publickeyhashrmd160_uncompress[4][20],publickeyhashrmd160_compress[4][20];
+	
+	char publickeyhashrmd160_endomorphism[12][4][20],address[50],address2[50];
+	
+	char public_key_compressed_hex[67],public_key_uncompressed_hex[131];
+	char public_key_compressed[33],public_key_uncompressed[65];
+	char hexstrpoint[65],rawvalue[32];
+	
+	Int key_mpz,temp_stride,keyfound;
+	tt = (struct tothread *)vargp;
+	thread_number = tt->nt;
+	free(tt);
+	grp->Set(dx);
+	
+	
+	//if FLAGENDOMORPHISM  == 1 and only compress search is enabled then there is no need to calculate the Y value value					
+	
+	bool calculate_y = FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH;
+	
+
+	do {
+		if(FLAGRANDOM){
+			key_mpz.Rand(&n_range_start,&n_range_end);
+		}
+		else	{
+			if(n_range_start.IsLower(&n_range_end))	{
+#if defined(_WIN64) && !defined(__CYGWIN__)
+				WaitForSingleObject(write_random, INFINITE);
+				key_mpz.Set(&n_range_start);
+				n_range_start.Add(N_SECUENTIAL_MAX);
+				ReleaseMutex(write_random);
+#else
+				pthread_mutex_lock(&write_random);
+				key_mpz.Set(&n_range_start);
+				n_range_start.Add(N_SECUENTIAL_MAX);
+				pthread_mutex_unlock(&write_random);
+#endif
+			}
+			else	{
+				continue_flag = 0;
+			}
+		}
+		if(continue_flag)	{
+			count = 0;
+			if(FLAGMATRIX)	{
+					hextemp = key_mpz.GetBase16();
+					printf("Base key: %s thread %i\n",hextemp,thread_number);
+					fflush(stdout);
+					free(hextemp);
+			}
+			else	{
+				if(FLAGQUIET == 0){
+					hextemp = key_mpz.GetBase16();
+					printf("\rBase key: %s     \r",hextemp);
+					fflush(stdout);
+					free(hextemp);
+					THREADOUTPUT = 1;
+				}
+			}
+			do {
+				temp_stride.SetInt32(CPU_GRP_SIZE / 2);
+				temp_stride.Mult(&stride);
+				key_mpz.Add(&temp_stride);
+	 			startP = secp->ComputePublicKey(&key_mpz);
+				key_mpz.Sub(&temp_stride);
+
+				for(i = 0; i < hLength; i++) {
+					dx[i].ModSub(&Gn[i].x,&startP.x);
+				}
+			
+				dx[i].ModSub(&Gn[i].x,&startP.x);  // For the first point
+				dx[i + 1].ModSub(&_2Gn.x,&startP.x); // For the next center point
+				grp->ModInv();
+
+				pts[CPU_GRP_SIZE / 2] = startP;
+
+				for(i = 0; i<hLength; i++) {
+					pp = startP;
+					pn = startP;
+
+					// P = startP + i*G
+					dy.ModSub(&Gn[i].y,&pp.y);
+
+					_s.ModMulK1(&dy,&dx[i]);        // s = (p2.y-p1.y)*inverse(p2.x-p1.x);
+					_p.ModSquareK1(&_s);            // _p = pow2(s)
+
+					pp.x.ModNeg();
+					pp.x.ModAdd(&_p);
+					pp.x.ModSub(&Gn[i].x);           // rx = pow2(s) - p1.x - p2.x;
+
+
+					
+					if(calculate_y)	{
+						pp.y.ModSub(&Gn[i].x,&pp.x);
+						pp.y.ModMulK1(&_s);
+						pp.y.ModSub(&Gn[i].y);           // ry = - p2.y - s*(ret.x-p2.x);
+					}
+
+					// P = startP - i*G  , if (x,y) = i*G then (x,-y) = -i*G
+					dyn.Set(&Gn[i].y);
+					dyn.ModNeg();
+					dyn.ModSub(&pn.y);
+
+					_s.ModMulK1(&dyn,&dx[i]);      // s = (p2.y-p1.y)*inverse(p2.x-p1.x);
+					_p.ModSquareK1(&_s);            // _p = pow2(s)
+					pn.x.ModNeg();
+					pn.x.ModAdd(&_p);
+					pn.x.ModSub(&Gn[i].x);          // rx = pow2(s) - p1.x - p2.x;
+
+					if( calculate_y  )	{
+						pn.y.ModSub(&Gn[i].x,&pn.x);
+						pn.y.ModMulK1(&_s);
+						pn.y.ModAdd(&Gn[i].y);          // ry = - p2.y - s*(ret.x-p2.x);
+					}
+					pp_offset = CPU_GRP_SIZE / 2 + (i + 1);
+					pn_offset = CPU_GRP_SIZE / 2 - (i + 1);
+
+					pts[pp_offset] = pp;
+					pts[pn_offset] = pn;
+					
+					if(FLAGENDOMORPHISM)	{
+						/*
+							Q = (x,y)
+							For any point Q
+							Q*lambda = (x*beta mod p ,y)
+							Q*lambda is a Scalar Multiplication
+							x*beta is just a Multiplication (Very fast)
+						*/
+						
+						if( calculate_y  )	{
+							endomorphism_beta[pp_offset].y.Set(&pp.y);
+							endomorphism_beta[pn_offset].y.Set(&pn.y);
+							endomorphism_beta2[pp_offset].y.Set(&pp.y);
+							endomorphism_beta2[pn_offset].y.Set(&pn.y);
+						}
+						endomorphism_beta[pp_offset].x.ModMulK1(&pp.x, &beta);
+						endomorphism_beta[pn_offset].x.ModMulK1(&pn.x, &beta);
+						endomorphism_beta2[pp_offset].x.ModMulK1(&pp.x, &beta2);
+						endomorphism_beta2[pn_offset].x.ModMulK1(&pn.x, &beta2);
+
+						/*
+						if(FLAGDEBUG)	{
+							hextemp = secp->GetPublicKeyHex(false,pp);
+							secp->GetHash160(P2PKH,false, pp,(uint8_t*)publickeyhashrmd160_uncompress[0]);
+							rmd160toaddress_dst(publickeyhashrmd160_uncompress[0],address);
+							printf("[D] pp[%i] = %s , %s y = %s\n",pp_offset,hextemp,address,pp.y.IsEven() ? "Even" : "Odd");
+							free(hextemp);		
+
+							hextemp = secp->GetPublicKeyHex(false,pn);
+							secp->GetHash160(P2PKH,false, pn,(uint8_t*)publickeyhashrmd160_uncompress[0]);
+							rmd160toaddress_dst(publickeyhashrmd160_uncompress[0],address);
+							printf("[D] pn[%i] = %s , %s y = %s\n",pn_offset,hextemp,address,pn.y.IsEven() ? "Even" : "Odd");
+							free(hextemp);								
+							
+							
+							hextemp = secp->GetPublicKeyHex(false,endomorphism_beta[pp_offset]);
+							secp->GetHash160(P2PKH,false, endomorphism_beta[pp_offset],(uint8_t*)publickeyhashrmd160_uncompress[0]);
+							rmd160toaddress_dst(publickeyhashrmd160_uncompress[0],address);
+							printf("[D] endomorphism_beta[%i] = %s , %s y = %s\n",pp_offset,hextemp,address,endomorphism_beta[pp_offset].y.IsEven() ? "Even" : "Odd");
+							free(hextemp);
+							hextemp = secp->GetPublicKeyHex(false,endomorphism_beta[pn_offset]);
+							secp->GetHash160(P2PKH,false, endomorphism_beta[pn_offset],(uint8_t*)publickeyhashrmd160_uncompress[0]);
+							rmd160toaddress_dst(publickeyhashrmd160_uncompress[0],address);
+
+							printf("[D] endomorphism_beta[%i] = %s , %s y = %s\n",pn_offset,hextemp,address,endomorphism_beta[pn_offset].y.IsEven() ? "Even" : "Odd");
+							free(hextemp);
+							hextemp = secp->GetPublicKeyHex(false,endomorphism_beta2[pp_offset]);
+							secp->GetHash160(P2PKH,false, endomorphism_beta2[pp_offset],(uint8_t*)publickeyhashrmd160_uncompress[0]);
+							rmd160toaddress_dst(publickeyhashrmd160_uncompress[0],address);
+							printf("[D] endomorphism_beta2[%i] = %s , %s y = %s\n",pp_offset,hextemp,address,endomorphism_beta2[pp_offset].y.IsEven() ? "Even" : "Odd");
+							free(hextemp);
+							hextemp = secp->GetPublicKeyHex(false,endomorphism_beta2[pn_offset]);
+							secp->GetHash160(P2PKH,false, endomorphism_beta2[pn_offset],(uint8_t*)publickeyhashrmd160_uncompress[0]);
+							rmd160toaddress_dst(publickeyhashrmd160_uncompress[0],address);
+							printf("[D] endomorphism_beta2[%i] = %s , %s y = %s\n",pn_offset,hextemp,address,endomorphism_beta2[pn_offset].y.IsEven() ? "Even" : "Odd");
+							free(hextemp);
+						}
+						*/
+						
+					}
+				}
+				/*
+					Half point for endomorphism because pts[CPU_GRP_SIZE / 2] was not calcualte in the previous cycle
+				*/
+				if(FLAGENDOMORPHISM)	{
+					if( calculate_y  )	{
+
+						endomorphism_beta[CPU_GRP_SIZE / 2].y.Set(&pts[CPU_GRP_SIZE / 2].y);
+						endomorphism_beta2[CPU_GRP_SIZE / 2].y.Set(&pts[CPU_GRP_SIZE / 2].y);
+					}
+					endomorphism_beta[CPU_GRP_SIZE / 2].x.ModMulK1(&pts[CPU_GRP_SIZE / 2].x, &beta);
+					endomorphism_beta2[CPU_GRP_SIZE / 2].x.ModMulK1(&pts[CPU_GRP_SIZE / 2].x, &beta2);
+				}
+				
+				// First point (startP - (GRP_SZIE/2)*G)
+				pn = startP;
+				dyn.Set(&Gn[i].y);
+				dyn.ModNeg();
+				dyn.ModSub(&pn.y);
+
+				_s.ModMulK1(&dyn,&dx[i]);
+				_p.ModSquareK1(&_s);
+
+				pn.x.ModNeg();
+				pn.x.ModAdd(&_p);
+				pn.x.ModSub(&Gn[i].x);
+				
+				if(calculate_y )	{
+					pn.y.ModSub(&Gn[i].x,&pn.x);
+					pn.y.ModMulK1(&_s);
+					pn.y.ModAdd(&Gn[i].y);
+				}
+				pts[0] = pn;
+				
+				/*
+					First point for endomorphism because pts[0] was not calcualte previously
+				*/
+				if(FLAGENDOMORPHISM)	{
+					if( calculate_y  )	{
+						endomorphism_beta[0].y.Set(&pn.y);
+						endomorphism_beta2[0].y.Set(&pn.y);
+					}
+					endomorphism_beta[0].x.ModMulK1(&pn.x, &beta);
+					endomorphism_beta2[0].x.ModMulK1(&pn.x, &beta2);
+				}
+				
+				
+				for(j = 0; j < CPU_GRP_SIZE/4;j++)	{
+					if(FLAGSEARCH == SEARCH_COMPRESS || FLAGSEARCH == SEARCH_BOTH ){
+						if(FLAGENDOMORPHISM)	{
+							secp->GetHash160_fromX(P2PKH,0x02,&pts[(j*4)].x,&pts[(j*4)+1].x,&pts[(j*4)+2].x,&pts[(j*4)+3].x,(uint8_t*)publickeyhashrmd160_endomorphism[0][0],(uint8_t*)publickeyhashrmd160_endomorphism[0][1],(uint8_t*)publickeyhashrmd160_endomorphism[0][2],(uint8_t*)publickeyhashrmd160_endomorphism[0][3]);
+							secp->GetHash160_fromX(P2PKH,0x03,&pts[(j*4)].x,&pts[(j*4)+1].x,&pts[(j*4)+2].x,&pts[(j*4)+3].x,(uint8_t*)publickeyhashrmd160_endomorphism[1][0],(uint8_t*)publickeyhashrmd160_endomorphism[1][1],(uint8_t*)publickeyhashrmd160_endomorphism[1][2],(uint8_t*)publickeyhashrmd160_endomorphism[1][3]);
+
+							secp->GetHash160_fromX(P2PKH,0x02,&endomorphism_beta[(j*4)].x,&endomorphism_beta[(j*4)+1].x,&endomorphism_beta[(j*4)+2].x,&endomorphism_beta[(j*4)+3].x,(uint8_t*)publickeyhashrmd160_endomorphism[2][0],(uint8_t*)publickeyhashrmd160_endomorphism[2][1],(uint8_t*)publickeyhashrmd160_endomorphism[2][2],(uint8_t*)publickeyhashrmd160_endomorphism[2][3]);
+							secp->GetHash160_fromX(P2PKH,0x03,&endomorphism_beta[(j*4)].x,&endomorphism_beta[(j*4)+1].x,&endomorphism_beta[(j*4)+2].x,&endomorphism_beta[(j*4)+3].x,(uint8_t*)publickeyhashrmd160_endomorphism[3][0],(uint8_t*)publickeyhashrmd160_endomorphism[3][1],(uint8_t*)publickeyhashrmd160_endomorphism[3][2],(uint8_t*)publickeyhashrmd160_endomorphism[3][3]);
+
+							secp->GetHash160_fromX(P2PKH,0x02,&endomorphism_beta2[(j*4)].x,&endomorphism_beta2[(j*4)+1].x,&endomorphism_beta2[(j*4)+2].x,&endomorphism_beta2[(j*4)+3].x,(uint8_t*)publickeyhashrmd160_endomorphism[4][0],(uint8_t*)publickeyhashrmd160_endomorphism[4][1],(uint8_t*)publickeyhashrmd160_endomorphism[4][2],(uint8_t*)publickeyhashrmd160_endomorphism[4][3]);
+							secp->GetHash160_fromX(P2PKH,0x03,&endomorphism_beta2[(j*4)].x,&endomorphism_beta2[(j*4)+1].x,&endomorphism_beta2[(j*4)+2].x,&endomorphism_beta2[(j*4)+3].x,(uint8_t*)publickeyhashrmd160_endomorphism[5][0],(uint8_t*)publickeyhashrmd160_endomorphism[5][1],(uint8_t*)publickeyhashrmd160_endomorphism[5][2],(uint8_t*)publickeyhashrmd160_endomorphism[5][3]);
+
+						}
+						else	{
+							secp->GetHash160(P2PKH,true,pts[(j*4)],pts[(j*4)+1],pts[(j*4)+2],pts[(j*4)+3],(uint8_t*)publickeyhashrmd160_compress[0],(uint8_t*)publickeyhashrmd160_compress[1],(uint8_t*)publickeyhashrmd160_compress[2],(uint8_t*)publickeyhashrmd160_compress[3]);
+						}
+					}
+					if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH)	{
+						if(FLAGENDOMORPHISM)	{
+							for(l = 0; l < 4; l++)	{
+								endomorphism_negeted_point[l] = secp->Negation(pts[(j*4)+l]);
+							}
+							secp->GetHash160(P2PKH,false, pts[(j*4)], pts[(j*4)+1], pts[(j*4)+2], pts[(j*4)+3],(uint8_t*)publickeyhashrmd160_endomorphism[6][0],(uint8_t*)publickeyhashrmd160_endomorphism[6][1],(uint8_t*)publickeyhashrmd160_endomorphism[6][2],(uint8_t*)publickeyhashrmd160_endomorphism[6][3]);
+							secp->GetHash160(P2PKH,false,endomorphism_negeted_point[(j*4)] ,endomorphism_negeted_point[(j*4)+1],endomorphism_negeted_point[(j*4)+2],endomorphism_negeted_point[(j*4)+3],(uint8_t*)publickeyhashrmd160_endomorphism[7][0],(uint8_t*)publickeyhashrmd160_endomorphism[7][1],(uint8_t*)publickeyhashrmd160_endomorphism[7][2],(uint8_t*)publickeyhashrmd160_endomorphism[7][3]);
+							for(l = 0; l < 4; l++)	{
+								endomorphism_negeted_point[l] = secp->Negation(endomorphism_beta[(j*4)+l]);
+							}
+							secp->GetHash160(P2PKH,false,endomorphism_beta[(j*4)],  endomorphism_beta[(j*4)+1], endomorphism_beta[(j*4)+2], endomorphism_beta[(j*4)+3] ,(uint8_t*)publickeyhashrmd160_endomorphism[8][0],(uint8_t*)publickeyhashrmd160_endomorphism[8][1],(uint8_t*)publickeyhashrmd160_endomorphism[8][2],(uint8_t*)publickeyhashrmd160_endomorphism[8][3]);
+							secp->GetHash160(P2PKH,false,endomorphism_negeted_point[(j*4)],endomorphism_negeted_point[(j*4)+1],endomorphism_negeted_point[(j*4)+2],endomorphism_negeted_point[(j*4)+3],(uint8_t*)publickeyhashrmd160_endomorphism[9][0],(uint8_t*)publickeyhashrmd160_endomorphism[9][1],(uint8_t*)publickeyhashrmd160_endomorphism[9][2],(uint8_t*)publickeyhashrmd160_endomorphism[9][3]);
+
+							for(l = 0; l < 4; l++)	{
+								endomorphism_negeted_point[l] = secp->Negation(endomorphism_beta2[(j*4)+l]);
+							}
+							secp->GetHash160(P2PKH,false, endomorphism_beta2[(j*4)],  endomorphism_beta2[(j*4)+1] ,  endomorphism_beta2[(j*4)+2] ,  endomorphism_beta2[(j*4)+3] ,(uint8_t*)publickeyhashrmd160_endomorphism[10][0],(uint8_t*)publickeyhashrmd160_endomorphism[10][1],(uint8_t*)publickeyhashrmd160_endomorphism[10][2],(uint8_t*)publickeyhashrmd160_endomorphism[10][3]);
+							secp->GetHash160(P2PKH,false, endomorphism_negeted_point[(j*4)], endomorphism_negeted_point[(j*4)+1],   endomorphism_negeted_point[(j*4)+2],endomorphism_negeted_point[(j*4)+3],(uint8_t*)publickeyhashrmd160_endomorphism[11][0],(uint8_t*)publickeyhashrmd160_endomorphism[11][1],(uint8_t*)publickeyhashrmd160_endomorphism[11][2],(uint8_t*)publickeyhashrmd160_endomorphism[11][3]);
+						}
+						else	{
+							secp->GetHash160(P2PKH,false,pts[(j*4)],pts[(j*4)+1],pts[(j*4)+2],pts[(j*4)+3],(uint8_t*)publickeyhashrmd160_uncompress[0],(uint8_t*)publickeyhashrmd160_uncompress[1],(uint8_t*)publickeyhashrmd160_uncompress[2],(uint8_t*)publickeyhashrmd160_uncompress[3]);
+							
+						}
+					}
+
+					for(k = 0; k < 4;k++)	{
+						if(FLAGSEARCH == SEARCH_COMPRESS || FLAGSEARCH == SEARCH_BOTH ){
+							if(FLAGENDOMORPHISM)	{
+								for(l = 0;l < 6; l++)	{
+									if(vanityrmdmatch((uint8_t*)publickeyhashrmd160_endomorphism[l][k]))	{
+										// Here the given publickeyhashrmd160 match againts one of the vanity targets
+										// We need to check which of the cases is it.
+
+										keyfound.SetInt32(k);
+										keyfound.Mult(&stride);
+										keyfound.Add(&key_mpz);
+										publickey = secp->ComputePublicKey(&keyfound);
+
+										/*
+										if(FLAGDEBUG) {
+											
+											rmd160toaddress_dst(publickeyhashrmd160_endomorphism[l][k],address);
+											
+											hextemp = tohex(publickeyhashrmd160_endomorphism[l][k],20);
+											printf("[D] hash found: %s : address %s\n",hextemp,address);
+											free(hextemp);
+											hextemp = keyfound.GetBase16();
+											printf("[D] key: %s\n",hextemp);
+											free(hextemp);
+											
+											hextemp = secp->GetPublicKeyHex(true,publickey);
+											printf("[D] GetPublicKeyHex: %s\n",hextemp);
+											free(hextemp);
+											
+											printf("[D] found something l = %i\n",l);
+
+										}
+										*/
+										
+										switch(l)	{
+											case 0:	//Original point, prefix 02
+												if(publickey.y.IsOdd())	{	//if the current publickey is odd that means, we need to negate the keyfound to get the correct key
+													keyfound.Neg();
+													keyfound.Add(&secp->order);
+												}
+												// else we dont need to chage the current keyfound because it already have prefix 02
+											break;
+											case 1:	//Original point, prefix 03
+												if(publickey.y.IsEven())	{	//if the current publickey is even that means, we need to negate the keyfound to get the correct key
+													keyfound.Neg();
+													keyfound.Add(&secp->order);
+												}
+												// else we dont need to chage the current keyfound because it already have prefix 03
+											break;
+											case 2:	//Beta point, prefix 02
+												keyfound.ModMulK1order(&lambda);
+												if(publickey.y.IsOdd())	{	//if the current publickey is odd that means, we need to negate the keyfound to get the correct key
+													keyfound.Neg();
+													keyfound.Add(&secp->order);
+												}
+												// else we dont need to chage the current keyfound because it already have prefix 02
+											break;
+											case 3:	//Beta point, prefix 03											
+												keyfound.ModMulK1order(&lambda);
+												if(publickey.y.IsEven())	{	//if the current publickey is even that means, we need to negate the keyfound to get the correct key
+													keyfound.Neg();
+													keyfound.Add(&secp->order);
+												}
+												// else we dont need to chage the current keyfound because it already have prefix 02
+											break;
+											case 4:	//Beta^2 point, prefix 02
+												keyfound.ModMulK1order(&lambda2);
+												if(publickey.y.IsOdd())	{	//if the current publickey is odd that means, we need to negate the keyfound to get the correct key
+													keyfound.Neg();
+													keyfound.Add(&secp->order);
+												}
+												// else we dont need to chage the current keyfound because it already have prefix 02
+											break;
+											case 5:	//Beta^2 point, prefix 03
+												keyfound.ModMulK1order(&lambda2);
+												if(publickey.y.IsEven())	{	//if the current publickey is even that means, we need to negate the keyfound to get the correct key
+													keyfound.Neg();
+													keyfound.Add(&secp->order);
+												}
+												// else we dont need to chage the current keyfound because it already have prefix 02
+											break;
+										}
+										writevanitykey(true,&keyfound);
+									}
+								}
+
+							}
+							else	{
+								if(vanityrmdmatch((uint8_t*)publickeyhashrmd160_compress[k]))	{
+									keyfound.SetInt32(k);
+									keyfound.Mult(&stride);
+									keyfound.Add(&key_mpz);
+									writevanitykey(true,&keyfound);
+								}									
+							}
+						}
+						if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH)	{
+							if(FLAGENDOMORPHISM)	{
+								for(l = 6;l < 12; l++)	{
+									if(vanityrmdmatch((uint8_t*)publickeyhashrmd160_endomorphism[l][k]))	{
+										// Here the given publickeyhashrmd160 match againts one of the vanity targets
+										// We need to check which of the cases is it.
+
+										//rmd160toaddress_dst(publickeyhashrmd160_endomorphism[l][k],address);
+										keyfound.SetInt32(k);
+										keyfound.Mult(&stride);
+										keyfound.Add(&key_mpz);
+										
+
+										/*
+										if(FLAGDEBUG) {
+											
+											rmd160toaddress_dst(publickeyhashrmd160_endomorphism[l][k],address);
+											
+											hextemp = tohex(publickeyhashrmd160_endomorphism[l][k],20);
+											printf("[D] hash found: %s : address %s\n",hextemp,address);
+											free(hextemp);
+											hextemp = keyfound.GetBase16();
+											printf("[D] key: %s\n",hextemp);
+											free(hextemp);
+											
+											hextemp = secp->GetPublicKeyHex(true,publickey);
+											printf("[D] GetPublicKeyHex: %s\n",hextemp);
+											free(hextemp);
+											
+											printf("[D] found something l = %i\n",l);
+
+										}
+										*/
+										
+										switch(l)	{
+											case 6:
+											case 7:
+												publickey = secp->ComputePublicKey(&keyfound);
+												secp->GetHash160(P2PKH,false,publickey,(uint8_t*)publickeyhashrmd160_uncompress[0]);
+												if(memcmp(publickeyhashrmd160_endomorphism[l][k],publickeyhashrmd160_uncompress[0],20) != 0){
+													keyfound.Neg();
+													keyfound.Add(&secp->order);
+												}
+											break;
+											case 8:
+											case 9:
+												keyfound.ModMulK1order(&lambda);
+												publickey = secp->ComputePublicKey(&keyfound);
+												secp->GetHash160(P2PKH,false,publickey,(uint8_t*)publickeyhashrmd160_uncompress[0]);
+												if(memcmp(publickeyhashrmd160_endomorphism[l][k],publickeyhashrmd160_uncompress[0],20) != 0){
+													keyfound.Neg();
+													keyfound.Add(&secp->order);
+												}
+											break;
+											case 10:
+											case 11:
+												keyfound.ModMulK1order(&lambda2);
+												publickey = secp->ComputePublicKey(&keyfound);
+												secp->GetHash160(P2PKH,false,publickey,(uint8_t*)publickeyhashrmd160_uncompress[0]);
+												if(memcmp(publickeyhashrmd160_endomorphism[l][k],publickeyhashrmd160_uncompress[0],20) != 0){
+													keyfound.Neg();
+													keyfound.Add(&secp->order);
+												}
+											break;
+										}
+										writevanitykey(false,&keyfound);
+									}
+								}
+
+							}
+							else	{
+								if(vanityrmdmatch((uint8_t*)publickeyhashrmd160_uncompress[k]))	{
+									keyfound.SetInt32(k);
+									keyfound.Mult(&stride);
+									keyfound.Add(&key_mpz);
+									writevanitykey(false,&keyfound);
+								}
+							}
+						}
+						
+					}
+
+					count+=4;
+					temp_stride.SetInt32(4);
+					temp_stride.Mult(&stride);
+					key_mpz.Add(&temp_stride);
+				}
+				steps[thread_number]++;
+
+				// Next start point (startP + GRP_SIZE*G)
+				pp = startP;
+				dy.ModSub(&_2Gn.y,&pp.y);
+
+				_s.ModMulK1(&dy,&dx[i + 1]);
+				_p.ModSquareK1(&_s);
+
+				pp.x.ModNeg();
+				pp.x.ModAdd(&_p);
+				pp.x.ModSub(&_2Gn.x);
+				
+				//The Y value for the next start point always need to be calculated
+				pp.y.ModSub(&_2Gn.x,&pp.x);
+				pp.y.ModMulK1(&_s);
+				pp.y.ModSub(&_2Gn.y);
+				startP = pp;
+			}while(count < N_SECUENTIAL_MAX && continue_flag);
+		}
+	} while(continue_flag);
+	ends[thread_number] = 1;
+	return NULL;
+}
 
 void _swap(struct address_value *a,struct address_value *b)	{
 	struct address_value t;
@@ -3666,7 +4204,7 @@ void *thread_process_bsgs(void *vargp)	{
 	char xpoint_raw[32],*aux_c,*hextemp;
 	Int base_key,keyfound;
 	Point base_point,point_aux,point_found;
-	uint32_t i,j,k,l,r,salir,thread_number,flip_detector, cycles;
+	uint32_t i,j,k,l,r,salir,thread_number, cycles;
 	
 	IntGroup *grp = new IntGroup(CPU_GRP_SIZE / 2 + 1);
 	Point startP;
@@ -3716,17 +4254,12 @@ void *thread_process_bsgs(void *vargp)	{
 	intaux.Set(&BSGS_M);
 	intaux.Mult(CPU_GRP_SIZE/2);
 	
-	flip_detector = FLIPBITLIMIT;
 	//if(FLAGDEBUG)	{ printf("bsgs_aux: %lu\n",bsgs_aux);}
 
 	/*
 		while base_key is less than n_range_end then:
 	*/
 	while(base_key.IsLower(&n_range_end) )	{
-		if(thread_number == 0 && flip_detector == 0)	{
-			memorycheck_bsgs();
-			flip_detector = FLIPBITLIMIT;
-		}
 		if(FLAGMATRIX)	{
 			aux_c = base_key.GetBase16();
 			printf("[+] Thread 0x%s \n",aux_c);
@@ -3975,7 +4508,6 @@ void *thread_process_bsgs(void *vargp)	{
 		pthread_mutex_unlock(&bsgs_thread);
 #endif
 
-		flip_detector--;
 	}
 	ends[thread_number] = 1;
 	return NULL;
@@ -3992,7 +4524,7 @@ void *thread_process_bsgs_random(void *vargp)	{
 	char xpoint_raw[32],*aux_c,*hextemp;
 	Int base_key,keyfound,n_range_random;
 	Point base_point,point_aux,point_found;
-	uint32_t i,j,l,k,r,salir,thread_number,flip_detector,cycles;
+	uint32_t i,j,l,k,r,salir,thread_number,cycles;
 	
 	IntGroup *grp = new IntGroup(CPU_GRP_SIZE / 2 + 1);
 	Point startP;
@@ -4040,15 +4572,11 @@ void *thread_process_bsgs_random(void *vargp)	{
 #endif
 	intaux.Set(&BSGS_M);
 	intaux.Mult(CPU_GRP_SIZE/2);
-	flip_detector = FLIPBITLIMIT;
+
 	/*
 		while base_key is less than n_range_end then:
 	*/
 	while(base_key.IsLower(&n_range_end))	{
-		if(thread_number == 0 && flip_detector == 0)	{
-			memorycheck_bsgs();
-			flip_detector = FLIPBITLIMIT;
-		}
 		if(FLAGMATRIX)	{
 				aux_c = base_key.GetBase16();
 				printf("[+] Thread 0x%s  \n",aux_c);
@@ -4287,7 +4815,6 @@ void *thread_process_bsgs_random(void *vargp)	{
 		base_key.Rand(&n_range_start,&n_range_end);
 		pthread_mutex_unlock(&bsgs_thread);
 #endif
-		flip_detector--;
 	}
 	ends[thread_number] = 1;
 	return NULL;
@@ -4925,6 +5452,7 @@ void *thread_bPload_2blooms(void *vargp)	{
 	return NULL;
 }
 
+/* This function perform the KECCAK Opetation*/
 void KECCAK_256(uint8_t *source, size_t size,uint8_t *dst)	{
 	SHA3_256_CTX ctx;
 	SHA3_256_Init(&ctx);
@@ -4932,12 +5460,22 @@ void KECCAK_256(uint8_t *source, size_t size,uint8_t *dst)	{
 	KECCAK_256_Final(dst,&ctx);
 }
 
+/* This function takes in two parameters:
+
+publickey: a reference to a Point object representing a public key.
+dst_address: a pointer to an unsigned char array where the generated binary address will be stored.
+The function is designed to generate a binary address for Ethereum using the given public key.
+It first extracts the x and y coordinates of the public key as 32-byte arrays, and concatenates them
+to form a 64-byte array called bin_publickey. Then, it applies the KECCAK-256 hashing algorithm to
+bin_publickey to generate the binary address, which is stored in dst_address. */
+
 void generate_binaddress_eth(Point &publickey,unsigned char *dst_address)	{
 	unsigned char bin_publickey[64];
 	publickey.x.Get32Bytes(bin_publickey);
 	publickey.y.Get32Bytes(bin_publickey+32);
 	KECCAK_256(bin_publickey, 64, dst_address);	
 }
+
 
 #if defined(_WIN64) && !defined(__CYGWIN__)
 DWORD WINAPI thread_process_bsgs_dance(LPVOID vargp) {
@@ -4950,7 +5488,7 @@ void *thread_process_bsgs_dance(void *vargp)	{
 	char xpoint_raw[32],*aux_c,*hextemp;
 	Int base_key,keyfound;
 	Point base_point,point_aux,point_found;
-	uint32_t i,j,k,l,r,salir,thread_number,flip_detector,entrar,cycles;
+	uint32_t i,j,k,l,r,salir,thread_number,entrar,cycles;
 	
 	IntGroup *grp = new IntGroup(CPU_GRP_SIZE / 2 + 1);
 	Point startP;
@@ -5023,17 +5561,12 @@ void *thread_process_bsgs_dance(void *vargp)	{
 	intaux.Set(&BSGS_M);
 	intaux.Mult(CPU_GRP_SIZE/2);
 	
-	flip_detector = FLIPBITLIMIT;
 	
 	
 	/*
 		while base_key is less than n_range_end then:
 	*/
 	while( entrar )	{
-		if(thread_number == 0 && flip_detector == 0)	{
-			memorycheck_bsgs();
-			flip_detector = FLIPBITLIMIT;
-		}
 		
 		if(FLAGMATRIX)	{
 			aux_c = base_key.GetBase16();
@@ -5255,7 +5788,6 @@ void *thread_process_bsgs_dance(void *vargp)	{
 		}
 			
 		steps[thread_number]++;
-		flip_detector--;
 		
 #if defined(_WIN64) && !defined(__CYGWIN__)
 		WaitForSingleObject(bsgs_thread, INFINITE);
@@ -5308,7 +5840,7 @@ void *thread_process_bsgs_backward(void *vargp)	{
 	char xpoint_raw[32],*aux_c,*hextemp;
 	Int base_key,keyfound;
 	Point base_point,point_aux,point_found;
-	uint32_t i,j,k,l,r,salir,thread_number,flip_detector,entrar,cycles;
+	uint32_t i,j,k,l,r,salir,thread_number,entrar,cycles;
 	
 	IntGroup *grp = new IntGroup(CPU_GRP_SIZE / 2 + 1);
 	Point startP;
@@ -5352,17 +5884,12 @@ void *thread_process_bsgs_backward(void *vargp)	{
 	intaux.Set(&BSGS_M);
 	intaux.Mult(CPU_GRP_SIZE/2);
 	
-	flip_detector = FLIPBITLIMIT;
 	entrar = 1;
 	
 	/*
 		while base_key is less than n_range_end then:
 	*/
 	while( entrar )	{
-		if(thread_number == 0 && flip_detector == 0)	{
-			memorycheck_bsgs();
-			flip_detector = FLIPBITLIMIT;
-		}
 		
 		if(FLAGMATRIX)	{
 			aux_c = base_key.GetBase16();
@@ -5583,7 +6110,6 @@ void *thread_process_bsgs_backward(void *vargp)	{
 		}
 			
 		steps[thread_number]++;
-		flip_detector--;
 		
 #if defined(_WIN64) && !defined(__CYGWIN__)
 		WaitForSingleObject(bsgs_thread, INFINITE);
@@ -5620,7 +6146,7 @@ void *thread_process_bsgs_both(void *vargp)	{
 	char xpoint_raw[32],*aux_c,*hextemp;
 	Int base_key,keyfound;
 	Point base_point,point_aux,point_found;
-	uint32_t i,j,k,l,r,salir,thread_number,flip_detector,entrar,cycles;
+	uint32_t i,j,k,l,r,salir,thread_number,entrar,cycles;
 	
 	IntGroup *grp = new IntGroup(CPU_GRP_SIZE / 2 + 1);
 	Point startP;
@@ -5689,19 +6215,13 @@ void *thread_process_bsgs_both(void *vargp)	{
 	
 	intaux.Set(&BSGS_M);
 	intaux.Mult(CPU_GRP_SIZE/2);
-	
-	flip_detector = FLIPBITLIMIT;
-	
+		
 	
 	/*
 		while BSGS_CURRENT is less than n_range_end 
 	*/
 	while( entrar )	{
 		
-		if(thread_number == 0 && flip_detector == 0)	{
-			memorycheck_bsgs();
-			flip_detector = FLIPBITLIMIT;
-		}
 		if(FLAGMATRIX)	{
 			aux_c = base_key.GetBase16();
 			printf("[+] Thread 0x%s \n",aux_c);
@@ -5920,7 +6440,6 @@ void *thread_process_bsgs_both(void *vargp)	{
 		}
 			
 		steps[thread_number]++;
-		flip_detector--;
 		
 #if defined(_WIN64) && !defined(__CYGWIN__)
 		WaitForSingleObject(bsgs_thread, INFINITE);
@@ -5959,30 +6478,30 @@ void *thread_process_bsgs_both(void *vargp)	{
 	return NULL;
 }
 
-void memorycheck_bsgs()	{
-	char current_checksum[32];
-	char *hextemp,*aux_c;
-	//if(FLAGDEBUG )printf("[D] Performing Memory checksum  \n");
-	sha256((uint8_t*)bPtable,bytes,(uint8_t*)current_checksum);
-	if(memcmp(current_checksum,checksum,32) != 0 || memcmp(current_checksum,checksum_backup,32) != 0)	{
-		fprintf(stderr,"[E] Memory checksum mismatch, this should not happen but actually happened\nA bit in the memory was flipped by : electrical malfuntion, radiation or a cosmic ray\n");
-		hextemp = tohex(current_checksum,32);
-		aux_c = tohex(checksum,32);
-		fprintf(stderr,"Current Checksum: %s\n",hextemp);
-		fprintf(stderr,"Saved Checksum: %s\n",aux_c);
-		aux_c = tohex(checksum_backup,32);
-		fprintf(stderr,"Backup Checksum: %s\nExit!\n",aux_c);
-		exit(0);
-	}
-}
+/* This function takes in three parameters:
 
-
+buffer: a pointer to a char array where the minikey will be stored.
+rawbuffer: a pointer to a char array that contains the raw data.
+length: an integer representing the length of the raw data.
+The function is designed to convert the raw data using a lookup table (Ccoinbuffer) and store the result in the buffer. 
+*/
 void set_minikey(char *buffer,char *rawbuffer,int length)	{
 	for(int i = 0;  i < length; i++)	{
-		
 		buffer[i] = Ccoinbuffer[(uint8_t)rawbuffer[i]];
 	}
 }
+
+/* This function takes in three parameters:
+
+buffer: a pointer to a char array where the minikey will be stored.
+rawbuffer: a pointer to a char array that contains the raw data.
+index: an integer representing the index of the raw data array to be incremented.
+The function is designed to increment the value at the specified index in the raw data array,
+and update the corresponding value in the buffer using a lookup table (Ccoinbuffer).
+If the value at the specified index exceeds 57, it is reset to 0x00 and the function recursively
+calls itself to increment the value at the previous index, unless the index is already 0, in which
+case the function returns false. The function returns true otherwise. 
+*/
 
 bool increment_minikey_index(char *buffer,char *rawbuffer,int index)	{
 	if(rawbuffer[index] < 57){
@@ -6002,11 +6521,21 @@ bool increment_minikey_index(char *buffer,char *rawbuffer,int index)	{
 	return true;
 }
 
+/* This function takes in a single parameter:
+
+rawbuffer: a pointer to a char array that contains the raw data.
+The function is designed to increment the values in the raw data array
+using a lookup table (minikeyN), while also handling carry-over to the
+previous element in the array if necessary. The maximum number of iterations
+is limited by minikey_n_limit. 
+
+
+*/
 void increment_minikey_N(char *rawbuffer)	{
 	int i = 20,j = 0;
 	while( i > 0 && j < minikey_n_limit)	{
 		rawbuffer[i] = rawbuffer[i] + minikeyN[i];
-		if(rawbuffer[i] > 57)	{
+		if(rawbuffer[i] > 57)	{	 // Handling carry-over if value exceeds 57
 			rawbuffer[i] = rawbuffer[i] % 58;
 			rawbuffer[i-1]++;
 		}
@@ -6078,77 +6607,332 @@ void sha256sse_23(uint8_t *src0, uint8_t *src1, uint8_t *src2, uint8_t *src3, ui
   sha256sse_1B(b0, b1, b2, b3, dst0, dst1, dst2, dst3);
 }
 
+void menu() {
+	printf("\nUsage:\n");
+	printf("-h          show this help\n");
+	printf("-B Mode     BSGS now have some modes <sequential, backward, both, random, dance>\n");
+	printf("-b bits     For some puzzles you only need some numbers of bits in the test keys.\n");
+	printf("-c crypto   Search for specific crypto. <btc, eth> valid only w/ -m address\n");
+	printf("-C mini     Set the minikey Base only 22 character minikeys, ex: SRPqx8QiwnW4WNWnTVa2W5\n");
+	printf("-8 alpha    Set the bas58 alphabet for minikeys\n");
+	printf("-e          Enable endomorphism search (Only for address, rmd160 and vanity)\n");
+	printf("-f file     Specify filename with addresses or xpoints or uncompressed public keys\n");
+	printf("-I stride   Stride for xpoint, rmd160 and address, this option don't work with bsgs\n");
+	printf("-k value    Use this only with bsgs mode, k value is factor for M, more speed but more RAM use wisely\n");
+	printf("-l look     What type of address/hash160 are you looking for <compress, uncompress, both> Only for rmd160 and address\n");
+	printf("-m mode     mode of search for cryptos. (bsgs, xpoint, rmd160, address, vanity) default: address\n");
+	printf("-M          Matrix screen, feel like a h4x0r, but performance will dropped\n");
+	printf("-n number   Check for N sequential numbers before the random chosen, this only works with -R option\n");
+	printf("            Use -n to set the N for the BSGS process. Bigger N more RAM needed\n");
+	printf("-q          Quiet the thread output\n");
+	printf("-r SR:EN    StarRange:EndRange, the end range can be omitted for search from start range to N-1 ECC value\n");
+	printf("-R          Random, this is the default behavior\n");
+	printf("-s ns       Number of seconds for the stats output, 0 to omit output.\n");
+	printf("-S          S is for SAVING in files BSGS data (Bloom filters and bPtable)\n");
+	printf("-t tn       Threads number, must be a positive integer\n");
+	printf("-v value    Search for vanity Address, only with -m address and rmd160\n");
+	printf("\nExample:\n\n");
+	printf("./keyhunt -m rmd160 -f tests/unsolvedpuzzles.rmd -b 66 -l compress -R -q -t 8\n\n");
+	printf("This line runs the program with 8 threads from the range 20000000000000000 to 40000000000000000 without stats output\n\n");
+	printf("Developed by AlbertoBSD\tTips BTC: 1Coffee1jV4gB5gaXfHgSHDz9xx9QSECVW\n");
+	printf("Thanks to Iceland always helping and sharing his ideas.\nTips to Iceland: bc1q39meky2mn5qjq704zz0nnkl0v7kj4uz6r529at\n\n");
+	exit(0);
+}
 
-/*
-#if defined(_WIN64) && !defined(__CYGWIN__)
-DWORD WINAPI thread_process_check_file_btc(LPVOID vargp) {
-#else
-void *thread_process_check_file_btc(void *vargp)	{
-#endif
-	FILE *input;
-	FILE *keys;
-	Point publickey;
-	Int key_mpz;
-	struct tothread *tt;
-	uint64_t count;
-	char publickeyhashrmd160_uncompress[4][20];
-	char public_key_compressed_hex[67],public_key_uncompressed_hex[131];
-	char hexstrpoint[65],rawvalue[4][32];
-	char address[4][40],buffer[1024],digest[32],buffer_b58[21];
-	char *hextemp,*rawbuffer;
-	int r,thread_number,continue_flag = 1,k,j,count_valid;
-	Int counter;
-	tt = (struct tothread *)vargp;
-	thread_number = tt->nt;
-	free(tt);
-	count = 0;
-	input = fopen("test.txt","r");
-	if(input != NULL)	{
-		while(!feof(input))	{
-			memset(buffer,0,1024);
-			fgets(buffer,1024,input);
-			trim(buffer,"\t\n\r ");
-			if(strlen(buffer) > 0)	{
-				printf("Checking %s\n",buffer);
-				key_mpz.SetBase16(buffer);
-				publickey = secp->ComputePublicKey(&key_mpz);
-				secp->GetHash160(P2PKH,true,publickey,(uint8_t*)publickeyhashrmd160_uncompress[0]);
-				secp->GetHash160(P2PKH,false,publickey,(uint8_t*)publickeyhashrmd160_uncompress[1]);
-				for(k = 0; k < 2 ; k++)	{
-					r = bloom_check(&bloom,publickeyhashrmd160_uncompress[k],20);
-					if(r) {
-						r = searchbinary(addressTable,publickeyhashrmd160_uncompress[k],N);
-						if(r) {
-							hextemp = key_mpz.GetBase16();
-							secp->GetPublicKeyHex(false,publickey,public_key_uncompressed_hex);
-#if defined(_WIN64) && !defined(__CYGWIN__)
-							WaitForSingleObject(write_keys, INFINITE);
-#else
-							pthread_mutex_lock(&write_keys);
-#endif
-					
-							keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
-							rmd160toaddress_dst(publickeyhashrmd160_uncompress[k],address[k]);
-							if(keys != NULL)	{
-								fprintf(keys,"Private Key: %s\npubkey: %s\n",hextemp,public_key_uncompressed_hex);
-								fclose(keys);
-							}
-							printf("\nHIT!! Private Key: %s\npubkey: %s\n",hextemp,public_key_uncompressed_hex);
-#if defined(_WIN64) && !defined(__CYGWIN__)
-							ReleaseMutex(write_keys);
-#else
-							pthread_mutex_unlock(&write_keys);
-#endif
-							free(hextemp);
-
-						}
+bool vanityrmdmatch(unsigned char *rmdhash)	{
+	bool r = false;
+	int i,j,cmpA,cmpB,result;
+	result = bloom_check(&bloom,rmdhash,vanity_rmd_minimun_bytes_check_length);
+	switch(result)	{
+		case -1:
+			fprintf(stderr,"[E] Bloom is not initialized\n");
+			exit(0);
+		break;
+		case 1:
+			for(i = 0; i < vanity_rmd_targets && !r;i++)	{
+				for(j = 0; j < vanity_rmd_limits[i] && !r; j++)	{
+					cmpA = memcmp(vanity_rmd_limit_values_A[i][j],rmdhash,20);
+					cmpB = memcmp(vanity_rmd_limit_values_B[i][j],rmdhash,20);
+					if(cmpA <= 0 && cmpB >= 0)	{
+						//if(FLAGDEBUG ) printf("\n\n[D] cmpA = %i, cmpB = %i \n\n",cmpA,cmpB);
+						r = true;
 					}
 				}
-				count++;
+			}
+		break;
+		default:
+			r = false;
+		break;
+	}
+	return r;
+}
+
+void writevanitykey(bool compressed,Int *key)	{
+	Point publickey;
+	FILE *keys;
+	char *hextemp,*hexrmd,public_key_hex[131],address[50],rmdhash[20];
+	hextemp = key->GetBase16();
+	publickey = secp->ComputePublicKey(key);
+	secp->GetPublicKeyHex(compressed,publickey,public_key_hex);
+	
+	secp->GetHash160(P2PKH,compressed,publickey,(uint8_t*)rmdhash);
+	hexrmd = tohex(rmdhash,20);
+	rmd160toaddress_dst(rmdhash,address);
+	
+#if defined(_WIN64) && !defined(__CYGWIN__)
+	WaitForSingleObject(write_keys, INFINITE);
+#else
+	pthread_mutex_lock(&write_keys);
+#endif
+	keys = fopen("VANITYKEYFOUND.txt","a+");
+	if(keys != NULL)	{
+		fprintf(keys,"Vanity Private Key: %s\npubkey: %s\nAddress %s\nrmd160 %s\n",hextemp,public_key_hex,address,hexrmd);
+		fclose(keys);
+	}
+	printf("\nVanity Private Key: %s\npubkey: %s\nAddress %s\nrmd160 %s\n",hextemp,public_key_hex,address,hexrmd);
+	
+#if defined(_WIN64) && !defined(__CYGWIN__)
+	ReleaseMutex(write_keys);
+#else
+	pthread_mutex_unlock(&write_keys);
+#endif
+	free(hextemp);
+	free(hexrmd);
+}
+
+
+int addvanity(char *target)	{
+	unsigned char raw_value_A[50],raw_value_B[50];
+	char target_copy[50];
+	char *hextemp;
+	int stringsize,targetsize,j,r = 0;
+	size_t raw_value_length;
+	int values_A_size = 0,values_B_size = 0,minimun_bytes;
+	
+	if(FLAGDEBUG) printf("[D] addvanity(%s)\n",target);
+	raw_value_length = 50;
+	stringsize = strlen(target);
+	targetsize = stringsize;
+	memset(raw_value_A,0,50);
+	memset(target_copy,0,50);
+	
+	//if(FLAGDEBUG) printf("[D] target = %s , size %i\n",target,stringsize);
+	
+	if(stringsize >= 25 )	{
+		return 0;
+	}
+	/* I was getting some warnings abouts strncpy regadless to have the correct size of the target string so i change it to memcpy*/
+	//strncpy(target_copy,target,stringsize);
+
+	memcpy(target_copy,target,stringsize);
+	//if(FLAGDEBUG) printf("[D] target = %s\n",target_copy);
+	
+	j = 0;
+	vanity_address_targets = (char**)  realloc(vanity_address_targets,(vanity_rmd_targets+1) * sizeof(char*));
+	checkpointer((void *)vanity_address_targets,__FILE__,"realloc","vanity_address_targets" ,__LINE__);
+	vanity_rmd_limits = (int*) realloc(vanity_rmd_limits,(vanity_rmd_targets+1) * sizeof(int));
+	checkpointer((void *)vanity_address_targets,__FILE__,"realloc","vanity_rmd_limits" ,__LINE__);
+	vanity_rmd_limit_values_A = (uint8_t***)realloc(vanity_rmd_limit_values_A,(vanity_rmd_targets+1) * sizeof(unsigned char *));
+	checkpointer((void *)vanity_address_targets,__FILE__,"realloc","vanity_rmd_limit_values_A" ,__LINE__);
+	vanity_rmd_limit_values_B = (uint8_t***)realloc(vanity_rmd_limit_values_B,(vanity_rmd_targets+1) * sizeof(unsigned char *));
+	checkpointer((void *)vanity_address_targets,__FILE__,"realloc","vanity_rmd_limit_values_B" ,__LINE__);
+	do	{
+		raw_value_length = 50;
+		b58tobin(raw_value_A,&raw_value_length,target_copy,stringsize);
+		if(raw_value_length < 25)	{
+			/*
+			if(FLAGDEBUG)	{
+				hextemp = tohex((char*)raw_value_A,25);
+				printf("Raw size: %li, Encoded size: %i : expected string %s, base string %s => hex %s\n", raw_value_length,stringsize,target,target_copy,hextemp);
+				free(hextemp);
+			}
+			*/
+			target_copy[stringsize] = '1';
+			stringsize++;
+		}
+		if(raw_value_length == 25)	{
+			b58tobin(raw_value_A,&raw_value_length,target_copy,stringsize);
+			
+			vanity_rmd_limit_values_A[vanity_rmd_targets] = (uint8_t**)realloc(vanity_rmd_limit_values_A[vanity_rmd_targets],(j+1) * sizeof(unsigned char *));
+			checkpointer((void *)vanity_address_targets,__FILE__,"realloc","vanity_rmd_limit_values_A" ,__LINE__);
+			vanity_rmd_limit_values_A[vanity_rmd_targets][j] = (uint8_t*)calloc(20,1);
+			checkpointer((void *)vanity_address_targets,__FILE__,"realloc","vanity_rmd_limit_values_A" ,__LINE__);
+			
+			memcpy(vanity_rmd_limit_values_A[vanity_rmd_targets][j] ,raw_value_A +1,20);
+			
+			/*
+			if(FLAGDEBUG)	{
+				hextemp = tohex((char*)vanity_rmd_limit_values_A[vanity_rmd_targets][j],20);
+				printf("[D] Raw size: %li, Encoded size: %i : expected string %s, base string %s => hex %s\n", raw_value_length,stringsize,target,target_copy,hextemp);
+				free(hextemp);
+			}
+			*/
+			
+			j++;	
+			values_A_size = j;
+			target_copy[stringsize] = '1';
+			stringsize++;
+		}	
+	}while(raw_value_length <= 25);
+	
+	stringsize = strlen(target);
+	memset(raw_value_B,0,50);
+	memset(target_copy,0,50);
+	memcpy(target_copy,target,stringsize);
+	//if(FLAGDEBUG) printf("[D] target = %s\n",target_copy);
+
+	j = 0;
+	do	{
+		raw_value_length = 50;
+		b58tobin(raw_value_B,&raw_value_length,target_copy,stringsize);
+		if(raw_value_length < 25)	{
+			/*
+			if(FLAGDEBUG)	{
+				hextemp = tohex((char*)vanity_rmd_limit_values_B[vanity_rmd_targets][j],20);
+				printf("Raw size: %li, Encoded size: %i : expected string %s, base string %s => hex %s\n", raw_value_length,stringsize,target,target_copy,hextemp);
+				free(hextemp);
+			}
+			*/
+			target_copy[stringsize] = 'z';
+			stringsize++;
+		}
+		if(raw_value_length == 25)	{
+			
+			b58tobin(raw_value_B,&raw_value_length,target_copy,stringsize);
+			vanity_rmd_limit_values_B[vanity_rmd_targets] = (uint8_t**)realloc(vanity_rmd_limit_values_B[vanity_rmd_targets],(j+1) * sizeof(unsigned char *));
+			checkpointer((void *)vanity_address_targets,__FILE__,"realloc","vanity_rmd_limit_values_B" ,__LINE__);
+			vanity_rmd_limit_values_B[vanity_rmd_targets][j] = (uint8_t*)calloc(20,1);
+			checkpointer((void *)vanity_address_targets,__FILE__,"calloc","vanity_rmd_limit_values_B" ,__LINE__);
+			memcpy(vanity_rmd_limit_values_B[vanity_rmd_targets][j],raw_value_B+1,20);
+			/*
+			if(FLAGDEBUG)	{
+				hextemp = tohex((char*)vanity_rmd_limit_values_B[vanity_rmd_targets][j],20);
+				printf("[D] Raw size: %li, Encoded size: %i : expected string %s, base string %s => hex %s\n", raw_value_length,stringsize,target,target_copy,hextemp);
+				free(hextemp);
+			}
+			*/
+			j++;				
+			values_B_size = j;
+			
+			target_copy[stringsize] = 'z';
+			stringsize++;
+		}
+	}while(raw_value_length <= 25);
+	
+	if(values_A_size >= 1 && values_B_size >= 1)	{
+		if(values_A_size != values_B_size)	{
+			if(values_A_size > values_B_size)
+				r = values_B_size;
+			else
+				r = values_A_size;
+		}
+		else	{
+			r = values_A_size;
+		}
+		for(j = 0; j < r; j++)	{
+			minimun_bytes =  minimum_same_bytes(vanity_rmd_limit_values_A[vanity_rmd_targets][j],vanity_rmd_limit_values_B[vanity_rmd_targets][j],20);
+			if(minimun_bytes < vanity_rmd_minimun_bytes_check_length)	{
+				vanity_rmd_minimun_bytes_check_length = minimun_bytes;
 			}
 		}
-		printf("Totale keys readed %i\n",count);
+		vanity_address_targets[vanity_rmd_targets] = (char*) calloc(targetsize+1,sizeof(char));
+		checkpointer((void *)vanity_address_targets,__FILE__,"calloc","vanity_address_targets" ,__LINE__);
+		strncpy(vanity_address_targets[vanity_rmd_targets],target,targetsize);
+		vanity_rmd_limits[vanity_rmd_targets] = r;
+		vanity_rmd_total+=r;
+		vanity_rmd_targets++;
 	}
-	return NULL;
+	else	{
+		for(j = 0; j < values_A_size;j++)	{
+			free(vanity_rmd_limit_values_A[vanity_rmd_targets][j]);
+		}
+		free(vanity_rmd_limit_values_A[vanity_rmd_targets]);
+		vanity_rmd_limit_values_A[vanity_rmd_targets] = NULL;
+		
+		for(j = 0; j < values_B_size;j++)	{
+			free(vanity_rmd_limit_values_B[vanity_rmd_targets][j]);
+		}
+		free(vanity_rmd_limit_values_B[vanity_rmd_targets]);
+		vanity_rmd_limit_values_B[vanity_rmd_targets] = NULL;
+		r = 0;
+	}
+	return r;
 }
+
+
+/*
+A and B are binary o string data pointers
+length the max lenght to check.
+
+Caller must by sure that the pointer are valid and have at least length bytes readebles witout causing overflow
 */
+int minimum_same_bytes(unsigned char* A,unsigned char* B, int length) {
+    int minBytes = 0; // Assume initially that all bytes are the same
+	if(A == NULL || B  == NULL)	{	// In case of some NULL pointer
+		return 0;
+	}
+    for (int i = 0; i < length; i++) {
+        if (A[i] != B[i]) {
+            break; // Exit the loop since we found a mismatch
+        }
+        minBytes++; // Update the minimum number of bytes where data is the same
+    }
+
+    return minBytes;
+}
+
+void checkpointer(void *ptr,const char *file,const char *function,const  char *name,int line)	{
+	if(ptr == NULL)	{
+		fprintf(stderr,"[E] error in file %s, %s pointer %s on line %i\n",file,function,name,line); 
+		exit(0);
+	}
+}
+
+void writekey(bool compressed,Int *key)	{
+	Point publickey;
+	FILE *keys;
+	char *hextemp,*hexrmd,public_key_hex[131],address[50],rmdhash[20];
+	memset(address,0,50);
+	memset(public_key_hex,0,132);
+	hextemp = key->GetBase16();
+	publickey = secp->ComputePublicKey(key);
+	secp->GetPublicKeyHex(compressed,publickey,public_key_hex);
+	secp->GetHash160(P2PKH,compressed,publickey,(uint8_t*)rmdhash);
+	hexrmd = tohex(rmdhash,20);
+	rmd160toaddress_dst(rmdhash,address);
+#if defined(_WIN64) && !defined(__CYGWIN__)
+	WaitForSingleObject(write_keys, INFINITE);
+#else
+	pthread_mutex_lock(&write_keys);
+#endif
+	keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
+	if(keys != NULL)	{
+		fprintf(keys,"Private Key: %s\npubkey: %s\nAddress %s\nrmd160 %s\n",hextemp,public_key_hex,address,hexrmd);
+		fclose(keys);
+	}
+	printf("\nHit! Private Key: %s\npubkey: %s\nAddress %s\nrmd160 %s\n",hextemp,public_key_hex,address,hexrmd);
+	
+#if defined(_WIN64) && !defined(__CYGWIN__)
+	ReleaseMutex(write_keys);
+#else
+	pthread_mutex_unlock(&write_keys);
+#endif
+	free(hextemp);
+	free(hexrmd);
+}
+
+bool isBase58(char c) {
+    // Define the base58 set
+    const char base58Set[] = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+    // Check if the character is in the base58 set
+    return strchr(base58Set, c) != NULL;
+}
+
+bool isValidBase58String(char *str)	{
+	int len = strlen(str);
+	bool continuar = true;
+	for (int i = 0; i < len && continuar; i++) {
+		continuar = isBase58(str[i]);
+	}
+	return continuar;
+}

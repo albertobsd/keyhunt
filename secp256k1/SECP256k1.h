@@ -53,6 +53,10 @@ public:
     uint8_t *h0, uint8_t *h1, uint8_t *h2, uint8_t *h3);
 
   void GetHash160(int type,bool compressed, Point &pubKey, unsigned char *hash);
+  
+  void GetHash160_fromX(int type,unsigned char prefix,
+  Int *k0,Int *k1,Int *k2,Int *k3,
+  uint8_t *h0,uint8_t *h1,uint8_t *h2,uint8_t *h3);
 
 
   Point Add(Point &p1, Point &p2);
@@ -63,7 +67,7 @@ public:
   Point Negation(Point &p);
 
   Point G;                 // Generator
-  Int P;                   //
+  Int P;                   // Prime for the finite field
   Int   order;             // Curve order
 
 private:

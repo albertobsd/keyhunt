@@ -417,7 +417,7 @@ int main(int argc, char **argv)	{
 	int readed,continue_flag,check_flag,r,lenaux,lendiff,c,salir,index_value;
 	Int total,pretotal,debugcount_mpz,seconds,div_pretotal,int_aux,int_r,int_q,int58;
 	struct bPload *bPload_temp_ptr;
-	size_t rsize;
+	size_t rsize,raw_value_length;
 	
 #if defined(_WIN64) && !defined(__CYGWIN__)
 	DWORD s;
@@ -913,25 +913,18 @@ int main(int argc, char **argv)	{
 		switch(FLAGMODE)	{
 			case MODE_ADDRESS:
 				/* We need to count how many lines are in the file */
-					while(!feof(fd))	{
-						hextemp = fgets(aux,998,fd);
-						if(hextemp == aux)	{
-							trim(aux," \t\n\r");
-							r = strlen(aux);
-							if(r > 10)	{ //Any length for invalid Address?
-								if(r > MAXLENGTHADDRESS)	{
-									MAXLENGTHADDRESS = r;
-								}
-								N++;
-							}
+				while(!feof(fd))	{
+					hextemp = fgets(aux,998,fd);
+					if(hextemp == aux)	{
+						trim(aux," \t\n\r");
+						r = strlen(aux);
+						if(r > 20)	{ 
+							N++;
 						}
 					}
-					if(FLAGCRYPTO == CRYPTO_BTC)	{
-						MAXLENGTHADDRESS = 32;
-					}
-					if(FLAGCRYPTO == CRYPTO_ETH)	{
-						MAXLENGTHADDRESS = 20;		/*20 bytes beacuase we only need the data in binary*/
-					}				
+				}
+
+				MAXLENGTHADDRESS = 20;		/*20 bytes beacuase we only need the data in binary*/
 			break;
 			case MODE_MINIKEYS:
 			case MODE_PUB2RMD:
@@ -1008,8 +1001,7 @@ int main(int argc, char **argv)	{
 		fseek(fd,0,SEEK_SET);
 
 		if(FLAGMODE != MODE_VANITY )	{
-			printf("[+] Allocating memory for %" PRIu64 " elements: %.2f MB\n",N,(double)(((double) sizeof(struct address_value)*N)/(double)1048576));
-			i = 0;
+			printf("[+] Allocating memory for %" PRIu64 " elements: %.2f MB\n",N,(double)(((double) sizeof(struct address_value)*N)/(double)1048576));			
 			addressTable = (struct address_value*) malloc(sizeof(struct address_value)*N);
 			checkpointer((void *)addressTable,__FILE__,"malloc","addressTable" ,__LINE__);
 		}
@@ -1021,7 +1013,7 @@ int main(int argc, char **argv)	{
 			}
 		}
 		else	{
-			if(bloom_init2(&bloom,N,0.000001)	== 1){
+			if(bloom_init2(&bloom,2*N,0.000001)	== 1){
 				fprintf(stderr,"[E] error bloom_init for %" PRIu64 " elements.\n",N);
 				exit(0);
 			}
@@ -1031,7 +1023,7 @@ int main(int argc, char **argv)	{
 		
 		switch (FLAGMODE) {
 			case MODE_VANITY:
-				aux =(char*) malloc(1); //To avoid "free(): double free detected in tcache 2" is this or chage more code
+				aux =(char*) malloc(1); //To avoid "free(): double free detected in tcache 2", is that or chage more code
 				
 				while(i < vanity_rmd_targets)	{
 					if(FLAGDEBUG)	{
@@ -1051,21 +1043,66 @@ int main(int argc, char **argv)	{
 			break;
 			case MODE_ADDRESS:
 				if(FLAGCRYPTO == CRYPTO_BTC)	{  // BTC address
-					aux =(char*) malloc(2*MAXLENGTHADDRESS);
+					aux =(char*) malloc(8*MAXLENGTHADDRESS);
 					checkpointer((void *)aux,__FILE__,"malloc","aux" ,__LINE__);
 					while(i < N)	{
-						memset(aux,0,2*MAXLENGTHADDRESS);
+						if(FLAGDEBUG && i % 1000000 == 0)printf("[D] working %li\n",i);
+						memset(aux,0,8*MAXLENGTHADDRESS);
 						memset(addressTable[i].value,0,sizeof(struct address_value));
-						hextemp = fgets(aux,2*MAXLENGTHADDRESS,fd);
+						hextemp = fgets(aux,8*MAXLENGTHADDRESS,fd);
 						if(hextemp == aux)	{
 							trim(aux," \t\n\r");
-							bloom_add(&bloom, aux,MAXLENGTHADDRESS);
-							memcpy(addressTable[i].value,aux,20);
-							i++;
+							r = strlen(aux);
+							if(r > 0)	{
+								switch(aux[0])	{
+									case '1':
+										if(isValidBase58String(aux)){
+											if(r <= 36)	{
+												raw_value_length = 25;
+												b58tobin(rawvalue,&raw_value_length,aux,r);
+												if(raw_value_length == 25)	{
+													bloom_add(&bloom, rawvalue+1 ,sizeof(struct address_value));
+													memcpy(addressTable[i].value,rawvalue+1,sizeof(struct address_value));											
+													i++;
+												}
+												else	{
+													fprintf(stderr,"[I] Invalid decoded size %s\n",aux);
+													N--;
+												}
+											}
+											else	{
+												N--;
+												fprintf(stderr,"[I] Address too long %s\n",aux);
+											}
+										}
+										else	{
+											fprintf(stderr,"[I] Invalid base58 Address %s\n",aux);
+											N--;
+										}
+									break;
+									case 'b':
+										N--;
+										fprintf(stderr,"[I] Unsopporting type of address %s\n",aux);
+									break;
+									case '3':
+										N--;
+										fprintf(stderr,"[I] Unsopporting type of address %s\n",aux);
+									break;
+									default:
+										N--;
+										fprintf(stderr,"[I] Unknown type of address %s\n",aux);
+									break;
+								}
+							}
+							else	{
+								N--;
+								fprintf(stderr,"[E] Omiting line : %s\n",aux);
+							}
 						}
 						else	{
 							trim(aux," \t\n\r");
 							fprintf(stderr,"[E] Omiting line : %s\n",aux);
+							N--;
 						}
 					}
 				}
@@ -6774,13 +6811,6 @@ int addvanity(char *target)	{
 		raw_value_length = 50;
 		b58tobin(raw_value_A,&raw_value_length,target_copy,stringsize);
 		if(raw_value_length < 25)	{
-			/*
-			if(FLAGDEBUG)	{
-				hextemp = tohex((char*)raw_value_A,25);
-				printf("Raw size: %li, Encoded size: %i : expected string %s, base string %s => hex %s\n", raw_value_length,stringsize,target,target_copy,hextemp);
-				free(hextemp);
-			}
-			*/
 			target_copy[stringsize] = '1';
 			stringsize++;
 		}
@@ -6794,13 +6824,11 @@ int addvanity(char *target)	{
 			
 			memcpy(vanity_rmd_limit_values_A[vanity_rmd_targets][j] ,raw_value_A +1,20);
 			
-			/*
 			if(FLAGDEBUG)	{
 				hextemp = tohex((char*)vanity_rmd_limit_values_A[vanity_rmd_targets][j],20);
 				printf("[D] Raw size: %li, Encoded size: %i : expected string %s, base string %s => hex %s\n", raw_value_length,stringsize,target,target_copy,hextemp);
 				free(hextemp);
 			}
-			*/
 			
 			j++;	
 			values_A_size = j;
@@ -6820,13 +6848,6 @@ int addvanity(char *target)	{
 		raw_value_length = 50;
 		b58tobin(raw_value_B,&raw_value_length,target_copy,stringsize);
 		if(raw_value_length < 25)	{
-			/*
-			if(FLAGDEBUG)	{
-				hextemp = tohex((char*)vanity_rmd_limit_values_B[vanity_rmd_targets][j],20);
-				printf("Raw size: %li, Encoded size: %i : expected string %s, base string %s => hex %s\n", raw_value_length,stringsize,target,target_copy,hextemp);
-				free(hextemp);
-			}
-			*/
 			target_copy[stringsize] = 'z';
 			stringsize++;
 		}
@@ -6839,13 +6860,11 @@ int addvanity(char *target)	{
 			vanity_rmd_limit_values_B[vanity_rmd_targets][j] = (uint8_t*)calloc(20,1);
 			checkpointer((void *)vanity_rmd_limit_values_B[vanity_rmd_targets][j],__FILE__,"calloc","vanity_rmd_limit_values_B" ,__LINE__);
 			memcpy(vanity_rmd_limit_values_B[vanity_rmd_targets][j],raw_value_B+1,20);
-			/*
 			if(FLAGDEBUG)	{
 				hextemp = tohex((char*)vanity_rmd_limit_values_B[vanity_rmd_targets][j],20);
 				printf("[D] Raw size: %li, Encoded size: %i : expected string %s, base string %s => hex %s\n", raw_value_length,stringsize,target,target_copy,hextemp);
 				free(hextemp);
 			}
-			*/
 			j++;				
 			values_B_size = j;
 			

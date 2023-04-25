@@ -1,5 +1,4 @@
 /*
-/*
 Develop by Alberto
 email: albertobsd@gmail.com
 */
@@ -470,16 +469,14 @@ int main(int argc, char **argv)	{
 					MPZAUX.Set(&ONE);
 					MPZAUX.ShiftL(bitrange-1);
 					bit_range_str_min = MPZAUX.GetBase16();
+					checkpointer((void *)bit_range_str_min,__FILE__,"malloc","bit_range_str_min" ,__LINE__);
 					MPZAUX.Set(&ONE);
 					MPZAUX.ShiftL(bitrange);
 					if(MPZAUX.IsGreater(&secp->order))	{
 						MPZAUX.Set(&secp->order);
 					}
 					bit_range_str_max = MPZAUX.GetBase16();
-					if(bit_range_str_min == NULL||bit_range_str_max == NULL)	{
-						fprintf(stderr,"[E] error malloc()\n");
-						exit(0);
-					}
+					checkpointer((void *)bit_range_str_max,__FILE__,"malloc","bit_range_str_min" ,__LINE__);
 					FLAGBITRANGE = 1;
 				}
 				else	{
@@ -512,10 +509,9 @@ int main(int argc, char **argv)	{
 				if(strlen(optarg) == 22)	{
 					FLAGBASEMINIKEY = 1;
 					str_baseminikey = (char*) malloc(23);
+					checkpointer((void *)str_baseminikey,__FILE__,"malloc","str_baseminikey" ,__LINE__);
 					raw_baseminikey = (char*) malloc(23);
-					if(str_baseminikey == NULL || raw_baseminikey == NULL)	{
-						fprintf(stderr,"[E] malloc()\n");
-					}
+					checkpointer((void *)raw_baseminikey,__FILE__,"malloc","raw_baseminikey" ,__LINE__);
 					strncpy(str_baseminikey,optarg,22);
 					for(i = 0; i< 21; i++)	{
 						if(strchr(Ccoinbuffer,str_baseminikey[i+1]) != NULL)	{
@@ -870,10 +866,7 @@ int main(int argc, char **argv)	{
 				printf("[+] Base Minikey : %s\n",str_baseminikey);
 			}
 			minikeyN = (char*) malloc(22);
-			if(minikeyN == NULL)	{
-				fprintf(stderr,"[E] malloc()\n");
-				exit(0);
-			}
+			checkpointer((void *)minikeyN,__FILE__,"malloc","minikeyN" ,__LINE__);
 			i =0;
 			int58.SetInt32(58);
 			int_aux.SetInt64(N_SECUENTIAL_MAX);
@@ -915,9 +908,8 @@ int main(int argc, char **argv)	{
 			free(hextemp);
 		}
 		aux =(char*) malloc(1000);
-		if(aux == NULL)	{
-			fprintf(stderr,"[E] error malloc()\n");
-		}
+		checkpointer((void *)aux,__FILE__,"malloc","aux" ,__LINE__);
+
 		switch(FLAGMODE)	{
 			case MODE_ADDRESS:
 				/* We need to count how many lines are in the file */
@@ -1019,10 +1011,7 @@ int main(int argc, char **argv)	{
 			printf("[+] Allocating memory for %" PRIu64 " elements: %.2f MB\n",N,(double)(((double) sizeof(struct address_value)*N)/(double)1048576));
 			i = 0;
 			addressTable = (struct address_value*) malloc(sizeof(struct address_value)*N);
-			if(addressTable == NULL)	{
-				fprintf(stderr,"[E] Can't alloc memory for %" PRIu64 " elements\n",N);
-				exit(0);
-			}
+			checkpointer((void *)addressTable,__FILE__,"malloc","addressTable" ,__LINE__);
 		}
 		printf("[+] Bloom filter for %" PRIu64 " elements.\n",N);
 		if(N <= 10000)	{
@@ -1043,6 +1032,7 @@ int main(int argc, char **argv)	{
 		switch (FLAGMODE) {
 			case MODE_VANITY:
 				aux =(char*) malloc(1); //To avoid "free(): double free detected in tcache 2" is this or chage more code
+				
 				while(i < vanity_rmd_targets)	{
 					if(FLAGDEBUG)	{
 						printf("[D] Next cycle up to %i\n",vanity_rmd_limits[i]);
@@ -1062,10 +1052,7 @@ int main(int argc, char **argv)	{
 			case MODE_ADDRESS:
 				if(FLAGCRYPTO == CRYPTO_BTC)	{  // BTC address
 					aux =(char*) malloc(2*MAXLENGTHADDRESS);
-					if(aux == NULL)	{
-						fprintf(stderr,"[E] error malloc()\n");
-						exit(0);
-					}
+					checkpointer((void *)aux,__FILE__,"malloc","aux" ,__LINE__);
 					while(i < N)	{
 						memset(aux,0,2*MAXLENGTHADDRESS);
 						memset(addressTable[i].value,0,sizeof(struct address_value));
@@ -1084,10 +1071,7 @@ int main(int argc, char **argv)	{
 				}
 				if(FLAGCRYPTO == CRYPTO_ETH)	{  // ETH address
 					aux =(char*) malloc(2*MAXLENGTHADDRESS + 4);	// 40 bytes + 0x and the charecter \0
-					if(aux == NULL)	{
-						fprintf(stderr,"[E] error malloc()\n");
-						exit(0);
-					}
+					checkpointer((void *)aux,__FILE__,"malloc","aux" ,__LINE__);
 					while(i < N)	{
 						memset(addressTable[i].value,0,sizeof(struct address_value));
 						memset(aux,0,2*MAXLENGTHADDRESS + 4);
@@ -1130,10 +1114,7 @@ int main(int argc, char **argv)	{
 			case MODE_XPOINT:
 				if(FLAGRAWDATA)	{
 					aux = (char*)malloc(MAXLENGTHADDRESS);
-					if(aux == NULL)	{
-						fprintf(stderr,"[E] error malloc()\n");
-						exit(0);
-					}
+					checkpointer((void *)aux,__FILE__,"malloc","aux" ,__LINE__);
 					while(i < N)	{
 						if(fread(aux,1,MAXLENGTHADDRESS,fd) == 32)	{
 							memcpy(addressTable[i].value,aux,20);
@@ -1144,10 +1125,7 @@ int main(int argc, char **argv)	{
 				}
 				else	{
 					aux = (char*) malloc(5*MAXLENGTHADDRESS);
-					if(aux == NULL)	{
-						fprintf(stderr,"[E] error malloc()\n");
-						exit(0);
-					}
+					checkpointer((void *)aux,__FILE__,"malloc","aux" ,__LINE__);
 					while(i < N)	{
 						memset(aux,0,5*MAXLENGTHADDRESS);
 						hextemp = fgets(aux,(5*MAXLENGTHADDRESS) -2,fd);
@@ -1214,10 +1192,7 @@ int main(int argc, char **argv)	{
 			case MODE_RMD160:
 				if(FLAGRAWDATA)	{
 					aux = (char*) malloc(MAXLENGTHADDRESS);
-					if(aux == NULL)	{
-						fprintf(stderr,"[E] error malloc()\n");
-						exit(0);
-					}
+					checkpointer((void *)aux,__FILE__,"malloc","aux" ,__LINE__);
 					while(i < N)	{
 						if(fread(aux,1,MAXLENGTHADDRESS,fd) == 20)	{
 							memcpy(addressTable[i].value,aux,20);
@@ -1228,10 +1203,7 @@ int main(int argc, char **argv)	{
 				}
 				else	{
 					aux = (char*) malloc(3*MAXLENGTHADDRESS);
-					if(aux == NULL)	{
-						fprintf(stderr,"[E] error malloc()\n");
-						exit(0);
-					}
+					checkpointer((void *)aux,__FILE__,"malloc","aux" ,__LINE__);
 					while(i < N)	{
 						memset(aux,0,3*MAXLENGTHADDRESS);
 						hextemp = fgets(aux,3*MAXLENGTHADDRESS,fd);
@@ -1277,10 +1249,7 @@ int main(int argc, char **argv)	{
 	if(FLAGMODE == MODE_BSGS )	{
 
 		aux = (char*) malloc(1024);
-		if(aux == NULL)	{
-			fprintf(stderr,"[E] error malloc()\n");
-			exit(0);
-		}
+		checkpointer((void *)aux,__FILE__,"malloc","aux" ,__LINE__);
 		while(!feof(fd))	{
 			if(fgets(aux,1022,fd) == aux)	{
 				trim(aux," \t\n\r");
@@ -1298,14 +1267,14 @@ int main(int argc, char **argv)	{
 			exit(0);
 		}
 		bsgs_found = (int*) calloc(N,sizeof(int));
+		checkpointer((void *)bsgs_found,__FILE__,"calloc","bsgs_found" ,__LINE__);
 		OriginalPointsBSGS.reserve(N);
 		OriginalPointsBSGScompressed = (bool*) malloc(N*sizeof(bool));
+		checkpointer((void *)OriginalPointsBSGScompressed,__FILE__,"malloc","OriginalPointsBSGScompressed" ,__LINE__);
 		pointx_str = (char*) malloc(65);
+		checkpointer((void *)pointx_str,__FILE__,"malloc","pointx_str" ,__LINE__);
 		pointy_str = (char*) malloc(65);
-		if(pointy_str == NULL || pointx_str == NULL || bsgs_found == NULL)	{
-			fprintf(stderr,"[E] error malloc()\n");
-			exit(0);
-		}
+		checkpointer((void *)pointy_str,__FILE__,"malloc","pointy_str" ,__LINE__);
 		fseek(fd,0,SEEK_SET);
 		i = 0;
 		while(!feof(fd))	{
@@ -1513,18 +1482,19 @@ int main(int argc, char **argv)	{
 		
 		printf("[+] Bloom filter for %" PRIu64 " elements ",bsgs_m);
 		bloom_bP = (struct bloom*)calloc(256,sizeof(struct bloom));
+		checkpointer((void *)bloom_bP,__FILE__,"calloc","bloom_bP" ,__LINE__);
 		bloom_bP_checksums = (struct checksumsha256*)calloc(256,sizeof(struct checksumsha256));
+		checkpointer((void *)bloom_bP_checksums,__FILE__,"calloc","bloom_bP_checksums" ,__LINE__);
 		
 #if defined(_WIN64) && !defined(__CYGWIN__)
 		bloom_bP_mutex = (HANDLE*) calloc(256,sizeof(HANDLE));
+		
 #else
 		bloom_bP_mutex = (pthread_mutex_t*) calloc(256,sizeof(pthread_mutex_t));
 #endif
+		checkpointer((void *)bloom_bP_mutex,__FILE__,"calloc","bloom_bP_mutex" ,__LINE__);
 		
-		if(bloom_bP == NULL || bloom_bP_checksums == NULL || bloom_bP_mutex == NULL )	{
-			fprintf(stderr,"[E] error calloc()\n");
-			exit(0);
-		}
+
 		fflush(stdout);
 		bloom_bP_totalbytes = 0;
 		for(i=0; i< 256; i++)	{
@@ -1550,12 +1520,11 @@ int main(int argc, char **argv)	{
 #else
 		bloom_bPx2nd_mutex = (pthread_mutex_t*) calloc(256,sizeof(pthread_mutex_t));
 #endif
+		checkpointer((void *)bloom_bPx2nd_mutex,__FILE__,"calloc","bloom_bPx2nd_mutex" ,__LINE__);
 		bloom_bPx2nd = (struct bloom*)calloc(256,sizeof(struct bloom));
+		checkpointer((void *)bloom_bPx2nd,__FILE__,"calloc","bloom_bPx2nd" ,__LINE__);
 		bloom_bPx2nd_checksums = (struct checksumsha256*) calloc(256,sizeof(struct checksumsha256));
-
-		if(bloom_bPx2nd == NULL || bloom_bPx2nd_checksums == NULL || bloom_bPx2nd_mutex == NULL )	{
-			fprintf(stderr,"[E] error calloc()\n");
-		}
+		checkpointer((void *)bloom_bPx2nd_checksums,__FILE__,"calloc","bloom_bPx2nd_checksums" ,__LINE__);
 		bloom_bP2_totalbytes = 0;
 		for(i=0; i< 256; i++)	{
 #if defined(_WIN64) && !defined(__CYGWIN__)
@@ -1578,14 +1547,11 @@ int main(int argc, char **argv)	{
 #else
 		bloom_bPx3rd_mutex = (pthread_mutex_t*) calloc(256,sizeof(pthread_mutex_t));
 #endif
-	
+		checkpointer((void *)bloom_bPx3rd_mutex,__FILE__,"calloc","bloom_bPx3rd_mutex" ,__LINE__);
 		bloom_bPx3rd = (struct bloom*)calloc(256,sizeof(struct bloom));
+		checkpointer((void *)bloom_bPx3rd,__FILE__,"calloc","bloom_bPx3rd" ,__LINE__);
 		bloom_bPx3rd_checksums = (struct checksumsha256*) calloc(256,sizeof(struct checksumsha256));
-
-		if(bloom_bPx3rd == NULL || bloom_bPx3rd_checksums == NULL || bloom_bPx3rd_mutex == NULL )	{
-			fprintf(stderr,"[E] error calloc()\n");
-		}
-
+		checkpointer((void *)bloom_bPx3rd_checksums,__FILE__,"calloc","bloom_bPx3rd_checksums" ,__LINE__);
 		
 		printf("[+] Bloom filter for %" PRIu64 " elements ",bsgs_m3);
 		bloom_bP3_totalbytes = 0;
@@ -1691,10 +1657,7 @@ int main(int argc, char **argv)	{
 		printf("[+] Allocating %.2f MB for %" PRIu64  " bP Points\n",(double)(bytes/1048576),bsgs_m3);
 		
 		bPtable = (struct bsgs_xvalue*) malloc(bytes);
-		if(bPtable == NULL)	{
-			printf("[E] error malloc()\n");
-			exit(0);
-		}
+		checkpointer((void *)bPtable,__FILE__,"malloc","bPtable" ,__LINE__);
 		memset(bPtable,0,bytes);
 		
 		if(FLAGSAVEREADFILE)	{
@@ -1974,18 +1937,18 @@ int main(int argc, char **argv)	{
 				
 #if defined(_WIN64) && !defined(__CYGWIN__)
 				tid = (HANDLE*)calloc(NTHREADS, sizeof(HANDLE));
+				checkpointer((void *)tid,__FILE__,"calloc","tid" ,__LINE__);
 				bPload_mutex = (HANDLE*) calloc(NTHREADS,sizeof(HANDLE));
 #else
 				tid = (pthread_t *) calloc(NTHREADS,sizeof(pthread_t));
 				bPload_mutex = (pthread_mutex_t*) calloc(NTHREADS,sizeof(pthread_mutex_t));
 #endif
+				checkpointer((void *)bPload_mutex,__FILE__,"calloc","bPload_mutex" ,__LINE__);
 				bPload_temp_ptr = (struct bPload*) calloc(NTHREADS,sizeof(struct bPload));
+				checkpointer((void *)bPload_temp_ptr,__FILE__,"calloc","bPload_temp_ptr" ,__LINE__);
 				bPload_threads_available = (char*) calloc(NTHREADS,sizeof(char));
+				checkpointer((void *)bPload_threads_available,__FILE__,"calloc","bPload_threads_available" ,__LINE__);
 				
-				if(tid == NULL || bPload_temp_ptr == NULL || bPload_threads_available == NULL || bPload_mutex == NULL)	{
-					fprintf(stderr,"[E] error calloc()\n");
-					exit(0);
-				}
 				memset(bPload_threads_available,1,NTHREADS);
 				
 				for(i = 0; i < NTHREADS; i++)	{
@@ -2093,13 +2056,15 @@ int main(int argc, char **argv)	{
 				tid = (pthread_t *) calloc(NTHREADS,sizeof(pthread_t));
 				bPload_mutex = (pthread_mutex_t*) calloc(NTHREADS,sizeof(pthread_mutex_t));
 #endif
-				bPload_temp_ptr = (struct bPload*) calloc(NTHREADS,sizeof(struct bPload));
-				bPload_threads_available = (char*) calloc(NTHREADS,sizeof(char));
+				checkpointer((void *)tid,__FILE__,"calloc","tid" ,__LINE__);
+				checkpointer((void *)bPload_mutex,__FILE__,"calloc","bPload_mutex" ,__LINE__);
 				
-				if(tid == NULL || bPload_temp_ptr == NULL || bPload_threads_available == NULL || bPload_mutex == NULL)	{
-					fprintf(stderr,"[E] error calloc()\n");
-					exit(0);
-				}
+				bPload_temp_ptr = (struct bPload*) calloc(NTHREADS,sizeof(struct bPload));
+				checkpointer((void *)bPload_temp_ptr,__FILE__,"calloc","bPload_temp_ptr" ,__LINE__);
+				bPload_threads_available = (char*) calloc(NTHREADS,sizeof(char));
+				checkpointer((void *)bPload_threads_available,__FILE__,"calloc","bPload_threads_available" ,__LINE__);
+				
+
 				memset(bPload_threads_available,1,NTHREADS);
 				
 				for(i = 0; i < NTHREADS; i++)	{
@@ -2393,15 +2358,19 @@ int main(int argc, char **argv)	{
 		i = 0;
 
 		steps = (uint64_t *) calloc(NTHREADS,sizeof(uint64_t));
+		checkpointer((void *)steps,__FILE__,"calloc","steps" ,__LINE__);
 		ends = (unsigned int *) calloc(NTHREADS,sizeof(int));
+		checkpointer((void *)ends,__FILE__,"calloc","ends" ,__LINE__);
 #if defined(_WIN64) && !defined(__CYGWIN__)
 		tid = (HANDLE*)calloc(NTHREADS, sizeof(HANDLE));
 #else
 		tid = (pthread_t *) calloc(NTHREADS,sizeof(pthread_t));
 #endif
+		checkpointer((void *)tid,__FILE__,"calloc","tid" ,__LINE__);
 		
 		for(i= 0;i < NTHREADS; i++)	{
 			tt = (tothread*) malloc(sizeof(struct tothread));
+			checkpointer((void *)tt,__FILE__,"malloc","tt" ,__LINE__);
 			tt->nt = i;
 			switch(FLAGBSGSMODE)	{
 #if defined(_WIN64) && !defined(__CYGWIN__)
@@ -2455,14 +2424,18 @@ int main(int argc, char **argv)	{
 	}
 	if(FLAGMODE != MODE_BSGS)	{
 		steps = (uint64_t *) calloc(NTHREADS,sizeof(uint64_t));
+		checkpointer((void *)steps,__FILE__,"calloc","steps" ,__LINE__);
 		ends = (unsigned int *) calloc(NTHREADS,sizeof(int));
+		checkpointer((void *)ends,__FILE__,"calloc","ends" ,__LINE__);
 #if defined(_WIN64) && !defined(__CYGWIN__)
 		tid = (HANDLE*)calloc(NTHREADS, sizeof(HANDLE));
 #else
 		tid = (pthread_t *) calloc(NTHREADS,sizeof(pthread_t));
 #endif
+		checkpointer((void *)tid,__FILE__,"calloc","tid" ,__LINE__);
 		for(i= 0;i < NTHREADS; i++)	{
 			tt = (tothread*) malloc(sizeof(struct tothread));
+			checkpointer((void *)tt,__FILE__,"malloc","tt" ,__LINE__);
 			tt->nt = i;
 			steps[i] = 0;
 			switch(FLAGMODE)	{
@@ -2652,10 +2625,8 @@ char *pubkeytopubaddress(char *pkey,int length)	{
 	char *pubaddress = (char*) calloc(MAXLENGTHADDRESS+10,1);
 	char *digest = (char*) calloc(60,1);
 	size_t pubaddress_size = MAXLENGTHADDRESS+10;
-	if(pubaddress == NULL || digest == NULL)	{
-		fprintf(stderr,"error malloc()\n");
-		exit(0);
-	}
+	checkpointer((void *)pubaddress,__FILE__,"malloc","pubaddress" ,__LINE__);
+	checkpointer((void *)digest,__FILE__,"malloc","digest" ,__LINE__);
 	//digest [000...0]
  	sha256((uint8_t*)pkey, length,(uint8_t*) digest);
 	//digest [SHA256 32 bytes+000....0]
@@ -2686,10 +2657,8 @@ void publickeytohashrmd160_dst(char *pkey,int length,char *dst)	{
 char *publickeytohashrmd160(char *pkey,int length)	{
 	char *hash160 = (char*) malloc(20);
 	char *digest = (char*) malloc(32);
-	if(hash160 == NULL || digest == NULL)	{
-		fprintf(stderr,"error malloc()\n");
-		exit(0);
-	}
+	checkpointer((void *)hash160,__FILE__,"malloc","hash160" ,__LINE__);
+	checkpointer((void *)digest,__FILE__,"malloc","digest" ,__LINE__);
 	//digest [000...0]
  	sha256((uint8_t*)pkey, length,(uint8_t*) digest);
 	//digest [SHA256 32 bytes]
@@ -2793,10 +2762,7 @@ void *thread_process_minikeys(void *vargp)	{
 #endif
 				if(raw_baseminikey == NULL){
 					raw_baseminikey = (char *) malloc(22);
-					if( raw_baseminikey == NULL)	{
-						fprintf(stderr,"[E] malloc()\n");
-						exit(0);
-					}
+					checkpointer((void *)raw_baseminikey,__FILE__,"malloc","raw_baseminikey" ,__LINE__);
 					counter.Rand(256);
 					for(k = 0; k < 21; k++)	{
 						raw_baseminikey[k] =(uint8_t)((uint8_t) rawbuffer[k] % 58);
@@ -2951,7 +2917,13 @@ void *thread_process(void *vargp)	{
 	free(tt);
 	grp->Set(dx);
 	
-
+	/*
+	if(FLAGDEBUG) {
+		printf("\n[D] thread_process\n");
+		fflush(stdout);
+	}
+	*/
+		
 	do {
 		if(FLAGRANDOM){
 			key_mpz.Rand(&n_range_start,&n_range_end);
@@ -2974,6 +2946,12 @@ void *thread_process(void *vargp)	{
 				continue_flag = 0;
 			}
 		}
+		/*
+		if(FLAGDEBUG) {
+			printf("\n[D] thread_process %i\n",__LINE__);
+			fflush(stdout);
+		}
+		*/
 		if(continue_flag)	{
 			count = 0;
 			if(FLAGMATRIX)	{
@@ -2991,6 +2969,12 @@ void *thread_process(void *vargp)	{
 					THREADOUTPUT = 1;
 				}
 			}
+			/*
+			if(FLAGDEBUG) {
+				printf("\n[D] thread_process %i\n",__LINE__);
+				fflush(stdout);
+			}
+			*/
 			do {
 				temp_stride.SetInt32(CPU_GRP_SIZE / 2);
 				temp_stride.Mult(&stride);
@@ -3072,7 +3056,12 @@ void *thread_process(void *vargp)	{
 						endomorphism_beta2[pn_offset].x.ModMulK1(&pn.x, &beta2);
 					}
 				}
-				
+				/*
+				if(FLAGDEBUG) {
+					printf("\n[D] thread_process %i\n",__LINE__);
+					fflush(stdout);
+				}
+				*/
 				/*
 					Half point for endomorphism because pts[CPU_GRP_SIZE / 2] was not calcualte in the previous cycle
 				*/
@@ -3119,7 +3108,12 @@ void *thread_process(void *vargp)	{
 					endomorphism_beta2[0].x.ModMulK1(&pn.x, &beta2);
 				}
 				
-				
+				/*
+				if(FLAGDEBUG) {
+					printf("\n[D] thread_process %i\n",__LINE__);
+					fflush(stdout);
+				}
+				*/
 				
 				for(j = 0; j < CPU_GRP_SIZE/4;j++){
 					switch(FLAGMODE)	{
@@ -3171,6 +3165,8 @@ void *thread_process(void *vargp)	{
 							}
 						break;
 					}
+
+
 					switch(FLAGMODE)	{
 						case MODE_RMD160:
 						case MODE_ADDRESS:
@@ -3236,25 +3232,49 @@ void *thread_process(void *vargp)	{
 																// else we dont need to chage the current keyfound because it already have prefix 02
 															break;
 														}
-														writekey(false,&keyfound);
+														writekey(true,&keyfound);
 													}
 												}
 											}
 										}
 										else	{
+											/*
+											if(FLAGDEBUG) {
+												printf("\n[D] thread_process %i\n",__LINE__);
+												fflush(stdout);
+											}
+											*/
+
 											r = bloom_check(&bloom,publickeyhashrmd160_compress[k],MAXLENGTHADDRESS);
+											/*
+											if(FLAGDEBUG) {
+												printf("\n[D] thread_process %i\n",__LINE__);
+												fflush(stdout);
+											}
+											*/
 											if(r) {
 												r = searchbinary(addressTable,publickeyhashrmd160_compress[k],N);
 												if(r) {
 													keyfound.SetInt32(k);
 													keyfound.Mult(&stride);
 													keyfound.Add(&key_mpz);
-													
-													writekey(false,&keyfound);
+													/*
+													if(FLAGDEBUG) {
+														printf("\n[D] thread_process %i\n",__LINE__);
+														fflush(stdout);
+													}
+													*/
+													writekey(true,&keyfound);
 												}
 											}
 										}
 									}
+									/*
+									if(FLAGDEBUG) {
+										printf("\n[D] thread_process %i\n",__LINE__);
+										fflush(stdout);
+									}
+									*/
 									if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH)	{
 										if(FLAGENDOMORPHISM)	{
 											for(l = 6;l < 12; l++)	{	//We check the array from 6 to 12(excluded) because we save the uncompressed information there
@@ -3318,6 +3338,13 @@ void *thread_process(void *vargp)	{
 									}
 								}
 							}
+							/*
+							if(FLAGDEBUG) {
+								printf("\n[D] thread_process %i\n",__LINE__);
+								fflush(stdout);
+							}
+							*/
+
 							if( FLAGCRYPTO == CRYPTO_ETH) {
 								for(k = 0; k < 4;k++)	{
 									generate_binaddress_eth(pts[(4*j)+k],(unsigned char*)rawvalue);
@@ -3423,6 +3450,13 @@ void *thread_process(void *vargp)	{
 					temp_stride.Mult(&stride);
 					key_mpz.Add(&temp_stride);
 				}
+				/*
+				if(FLAGDEBUG) {
+					printf("\n[D] thread_process %i\n",__LINE__);
+					fflush(stdout);
+				}
+				*/
+
 				steps[thread_number]++;
 
 				// Next start point (startP + GRP_SIZE*G)
@@ -6731,11 +6765,11 @@ int addvanity(char *target)	{
 	vanity_address_targets = (char**)  realloc(vanity_address_targets,(vanity_rmd_targets+1) * sizeof(char*));
 	checkpointer((void *)vanity_address_targets,__FILE__,"realloc","vanity_address_targets" ,__LINE__);
 	vanity_rmd_limits = (int*) realloc(vanity_rmd_limits,(vanity_rmd_targets+1) * sizeof(int));
-	checkpointer((void *)vanity_address_targets,__FILE__,"realloc","vanity_rmd_limits" ,__LINE__);
+	checkpointer((void *)vanity_rmd_limits,__FILE__,"realloc","vanity_rmd_limits" ,__LINE__);
 	vanity_rmd_limit_values_A = (uint8_t***)realloc(vanity_rmd_limit_values_A,(vanity_rmd_targets+1) * sizeof(unsigned char *));
-	checkpointer((void *)vanity_address_targets,__FILE__,"realloc","vanity_rmd_limit_values_A" ,__LINE__);
+	checkpointer((void *)vanity_rmd_limit_values_A,__FILE__,"realloc","vanity_rmd_limit_values_A" ,__LINE__);
 	vanity_rmd_limit_values_B = (uint8_t***)realloc(vanity_rmd_limit_values_B,(vanity_rmd_targets+1) * sizeof(unsigned char *));
-	checkpointer((void *)vanity_address_targets,__FILE__,"realloc","vanity_rmd_limit_values_B" ,__LINE__);
+	checkpointer((void *)vanity_rmd_limit_values_B,__FILE__,"realloc","vanity_rmd_limit_values_B" ,__LINE__);
 	do	{
 		raw_value_length = 50;
 		b58tobin(raw_value_A,&raw_value_length,target_copy,stringsize);
@@ -6754,9 +6788,9 @@ int addvanity(char *target)	{
 			b58tobin(raw_value_A,&raw_value_length,target_copy,stringsize);
 			
 			vanity_rmd_limit_values_A[vanity_rmd_targets] = (uint8_t**)realloc(vanity_rmd_limit_values_A[vanity_rmd_targets],(j+1) * sizeof(unsigned char *));
-			checkpointer((void *)vanity_address_targets,__FILE__,"realloc","vanity_rmd_limit_values_A" ,__LINE__);
+			checkpointer((void *)vanity_rmd_limit_values_A[vanity_rmd_targets],__FILE__,"realloc","vanity_rmd_limit_values_A" ,__LINE__);
 			vanity_rmd_limit_values_A[vanity_rmd_targets][j] = (uint8_t*)calloc(20,1);
-			checkpointer((void *)vanity_address_targets,__FILE__,"realloc","vanity_rmd_limit_values_A" ,__LINE__);
+			checkpointer((void *)vanity_rmd_limit_values_A[vanity_rmd_targets][j],__FILE__,"realloc","vanity_rmd_limit_values_A" ,__LINE__);
 			
 			memcpy(vanity_rmd_limit_values_A[vanity_rmd_targets][j] ,raw_value_A +1,20);
 			
@@ -6800,9 +6834,10 @@ int addvanity(char *target)	{
 			
 			b58tobin(raw_value_B,&raw_value_length,target_copy,stringsize);
 			vanity_rmd_limit_values_B[vanity_rmd_targets] = (uint8_t**)realloc(vanity_rmd_limit_values_B[vanity_rmd_targets],(j+1) * sizeof(unsigned char *));
-			checkpointer((void *)vanity_address_targets,__FILE__,"realloc","vanity_rmd_limit_values_B" ,__LINE__);
+			checkpointer((void *)vanity_rmd_limit_values_B[vanity_rmd_targets],__FILE__,"realloc","vanity_rmd_limit_values_B" ,__LINE__);
+			checkpointer((void *)vanity_rmd_limit_values_B[vanity_rmd_targets],__FILE__,"realloc","vanity_rmd_limit_values_B" ,__LINE__);
 			vanity_rmd_limit_values_B[vanity_rmd_targets][j] = (uint8_t*)calloc(20,1);
-			checkpointer((void *)vanity_address_targets,__FILE__,"calloc","vanity_rmd_limit_values_B" ,__LINE__);
+			checkpointer((void *)vanity_rmd_limit_values_B[vanity_rmd_targets][j],__FILE__,"calloc","vanity_rmd_limit_values_B" ,__LINE__);
 			memcpy(vanity_rmd_limit_values_B[vanity_rmd_targets][j],raw_value_B+1,20);
 			/*
 			if(FLAGDEBUG)	{
@@ -6836,7 +6871,7 @@ int addvanity(char *target)	{
 			}
 		}
 		vanity_address_targets[vanity_rmd_targets] = (char*) calloc(targetsize+1,sizeof(char));
-		checkpointer((void *)vanity_address_targets,__FILE__,"calloc","vanity_address_targets" ,__LINE__);
+		checkpointer((void *)vanity_address_targets[vanity_rmd_targets],__FILE__,"calloc","vanity_address_targets" ,__LINE__);
 		strncpy(vanity_address_targets[vanity_rmd_targets],target,targetsize);
 		vanity_rmd_limits[vanity_rmd_targets] = r;
 		vanity_rmd_total+=r;
@@ -6891,15 +6926,27 @@ void checkpointer(void *ptr,const char *file,const char *function,const  char *n
 void writekey(bool compressed,Int *key)	{
 	Point publickey;
 	FILE *keys;
-	char *hextemp,*hexrmd,public_key_hex[131],address[50],rmdhash[20];
+	char *hextemp,*hexrmd,public_key_hex[132],address[50],rmdhash[20];
 	memset(address,0,50);
 	memset(public_key_hex,0,132);
+	/*
+	if(FLAGDEBUG) {
+		printf("\n[D] thread_process %i\n",__LINE__);
+		fflush(stdout);
+	}
+	*/
 	hextemp = key->GetBase16();
 	publickey = secp->ComputePublicKey(key);
 	secp->GetPublicKeyHex(compressed,publickey,public_key_hex);
 	secp->GetHash160(P2PKH,compressed,publickey,(uint8_t*)rmdhash);
 	hexrmd = tohex(rmdhash,20);
 	rmd160toaddress_dst(rmdhash,address);
+	/*
+	if(FLAGDEBUG) {
+		printf("\n[D] thread_process %i\n",__LINE__);
+		fflush(stdout);
+	}
+	*/
 #if defined(_WIN64) && !defined(__CYGWIN__)
 	WaitForSingleObject(write_keys, INFINITE);
 #else

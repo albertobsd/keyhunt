@@ -114,7 +114,7 @@ char *raw_baseminikey = NULL;
 char *minikeyN = NULL;
 int minikey_n_limit;
 	
-const char *version = "0.2.23 Satoshi Quest";
+const char *version = "0.2.2304 Satoshi Quest";
 
 #define CPU_GRP_SIZE 1024
 
@@ -537,12 +537,11 @@ int main(int argc, char **argv)	{
 
 			case 'e':
 				FLAGENDOMORPHISM = 1;
-				
+				printf("[+] Endomorphism enabled\n");
 				lambda.SetBase16("5363ad4cc05c30e0a5261c028812645a122e22ea20816678df02967c1b23bd72");
 				lambda2.SetBase16("ac9c52b33fa3cf1f5ad9e3fd77ed9ba4a880b9fc8ec739c2e0cfc810b51283ce");
 				beta.SetBase16("7ae96a2b657c07106e64479eac3434e99cf0497512f58995c1396c28719501ee");
 				beta2.SetBase16("851695d49a83f8ef919bb86153cbcb16630fb68aed0a766a3ec693d68e6afa40");
-				
 			break;
 			case 'f':
 				FLAGFILE = 1;
@@ -988,7 +987,7 @@ int main(int argc, char **argv)	{
 						}
 					}
 				}
-				if(FLAGDEBUG) printf("[D] vanity_rmd_minimun_bytes_check_length: %i\n",vanity_rmd_minimun_bytes_check_length);
+				//if(FLAGDEBUG) printf("[D] vanity_rmd_minimun_bytes_check_length: %i\n",vanity_rmd_minimun_bytes_check_length);
 				N = vanity_rmd_total;
 			break;
 			
@@ -1026,15 +1025,19 @@ int main(int argc, char **argv)	{
 				aux =(char*) malloc(1); //To avoid "free(): double free detected in tcache 2", is that or chage more code
 				
 				while(i < vanity_rmd_targets)	{
+					/*
 					if(FLAGDEBUG)	{
 						printf("[D] Next cycle up to %i\n",vanity_rmd_limits[i]);
 					}
+					*/	
 					for(int k = 0; k < vanity_rmd_limits[i]; k++)	{
+						/*
 						if(FLAGDEBUG)	{	
 							hextemp = tohex((char*)vanity_rmd_limit_values_A[i][k],vanity_rmd_minimun_bytes_check_length);
 							printf("[D] Adding to the bloom filter %s for prefix %s\n",hextemp,vanity_address_targets[i]);
 							free(hextemp);
 						}
+						*/
 						bloom_add(&bloom, vanity_rmd_limit_values_A[i][k] ,vanity_rmd_minimun_bytes_check_length);
 					}
 					i++;
@@ -1046,7 +1049,7 @@ int main(int argc, char **argv)	{
 					aux =(char*) malloc(8*MAXLENGTHADDRESS);
 					checkpointer((void *)aux,__FILE__,"malloc","aux" ,__LINE__);
 					while(i < N)	{
-						if(FLAGDEBUG && i % 1000000 == 0)printf("[D] working %li\n",i);
+						//if(FLAGDEBUG && i % 1000000 == 0)printf("[D] working %li\n",i);
 						memset(aux,0,8*MAXLENGTHADDRESS);
 						memset(addressTable[i].value,0,sizeof(struct address_value));
 						hextemp = fgets(aux,8*MAXLENGTHADDRESS,fd);
@@ -1963,10 +1966,10 @@ int main(int argc, char **argv)	{
 				}
 				THREADCYCLES = bsgs_m2 / THREADBPWORKLOAD;
 				PERTHREAD_R = bsgs_m2 % THREADBPWORKLOAD;
-				if(FLAGDEBUG) printf("[D] THREADCYCLES: %lu\n",THREADCYCLES);
+				//if(FLAGDEBUG) printf("[D] THREADCYCLES: %lu\n",THREADCYCLES);
 				if(PERTHREAD_R != 0)	{
 					THREADCYCLES++;
-					if(FLAGDEBUG) printf("[D] PERTHREAD_R: %lu\n",PERTHREAD_R);
+					//if(FLAGDEBUG) printf("[D] PERTHREAD_R: %lu\n",PERTHREAD_R);
 				}
 				
 				printf("\r[+] processing %lu/%lu bP points : %i%%\r",FINISHED_ITEMS,bsgs_m,(int) (((double)FINISHED_ITEMS/(double)bsgs_m)*100));
@@ -2077,10 +2080,10 @@ int main(int argc, char **argv)	{
 				}
 				THREADCYCLES = bsgs_m / THREADBPWORKLOAD;
 				PERTHREAD_R = bsgs_m % THREADBPWORKLOAD;
-				if(FLAGDEBUG) printf("[D] THREADCYCLES: %lu\n",THREADCYCLES);
+				//if(FLAGDEBUG) printf("[D] THREADCYCLES: %lu\n",THREADCYCLES);
 				if(PERTHREAD_R != 0)	{
 					THREADCYCLES++;
-					if(FLAGDEBUG) printf("[D] PERTHREAD_R: %lu\n",PERTHREAD_R);
+					//if(FLAGDEBUG) printf("[D] PERTHREAD_R: %lu\n",PERTHREAD_R);
 				}
 				
 				printf("\r[+] processing %lu/%lu bP points : %i%%\r",FINISHED_ITEMS,bsgs_m,(int) (((double)FINISHED_ITEMS/(double)bsgs_m)*100));
@@ -2523,11 +2526,12 @@ int main(int argc, char **argv)	{
 	pretotal.SetInt32(0);
 	debugcount_mpz.Set(&BSGS_N);
 	seconds.SetInt32(0);
-	if(FLAGDEBUG)	{
+	/*if(FLAGDEBUG)	{
 		hextemp = debugcount_mpz.GetBase16();
 		printf("\n[D] debugcount_mpz = %s\n",hextemp);
 		free(hextemp);
 	}
+	*/
 	do	{
 		sleep_ms(1000);
 		seconds.AddOne();
@@ -2938,13 +2942,15 @@ void *thread_process(void *vargp)	{
 	int r,thread_number,continue_flag = 1,i_vanity,k;
 	char *hextemp = NULL;
 	char *eth_address = NULL;
+	
+	char publickeyhashrmd160[20];
 	char publickeyhashrmd160_uncompress[4][20],publickeyhashrmd160_compress[4][20];
 	char public_key_compressed_hex[67],public_key_uncompressed_hex[131];
 	char public_key_compressed[33],public_key_uncompressed[65];
 	char hexstrpoint[65],rawvalue[32];
 	char address_compressed[4][40],address_uncompressed[4][40];
 	
-	char publickeyhashrmd160_endomorphism[12][4][20],address[50],address2[50];
+	char publickeyhashrmd160_endomorphism[12][4][20],address[50];
 	
 	bool calculate_y = FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH;
 	FILE *keys,*vanityKeys;
@@ -3170,7 +3176,8 @@ void *thread_process(void *vargp)	{
 										secp->GetHash160_fromX(P2PKH,0x03,&endomorphism_beta2[(j*4)].x,&endomorphism_beta2[(j*4)+1].x,&endomorphism_beta2[(j*4)+2].x,&endomorphism_beta2[(j*4)+3].x,(uint8_t*)publickeyhashrmd160_endomorphism[5][0],(uint8_t*)publickeyhashrmd160_endomorphism[5][1],(uint8_t*)publickeyhashrmd160_endomorphism[5][2],(uint8_t*)publickeyhashrmd160_endomorphism[5][3]);
 									}
 									else	{
-										secp->GetHash160(P2PKH,true,pts[(j*4)],pts[(j*4)+1],pts[(j*4)+2],pts[(j*4)+3],(uint8_t*)publickeyhashrmd160_compress[0],(uint8_t*)publickeyhashrmd160_compress[1],(uint8_t*)publickeyhashrmd160_compress[2],(uint8_t*)publickeyhashrmd160_compress[3]);								
+										secp->GetHash160_fromX(P2PKH,0x02,&pts[(j*4)].x,&pts[(j*4)+1].x,&pts[(j*4)+2].x,&pts[(j*4)+3].x,(uint8_t*)publickeyhashrmd160_endomorphism[0][0],(uint8_t*)publickeyhashrmd160_endomorphism[0][1],(uint8_t*)publickeyhashrmd160_endomorphism[0][2],(uint8_t*)publickeyhashrmd160_endomorphism[0][3]);
+										secp->GetHash160_fromX(P2PKH,0x03,&pts[(j*4)].x,&pts[(j*4)+1].x,&pts[(j*4)+2].x,&pts[(j*4)+3].x,(uint8_t*)publickeyhashrmd160_endomorphism[1][0],(uint8_t*)publickeyhashrmd160_endomorphism[1][1],(uint8_t*)publickeyhashrmd160_endomorphism[1][2],(uint8_t*)publickeyhashrmd160_endomorphism[1][3]);
 									}
 									
 								}
@@ -3275,43 +3282,29 @@ void *thread_process(void *vargp)	{
 											}
 										}
 										else	{
-											/*
-											if(FLAGDEBUG) {
-												printf("\n[D] thread_process %i\n",__LINE__);
-												fflush(stdout);
-											}
-											*/
-
-											r = bloom_check(&bloom,publickeyhashrmd160_compress[k],MAXLENGTHADDRESS);
-											/*
-											if(FLAGDEBUG) {
-												printf("\n[D] thread_process %i\n",__LINE__);
-												fflush(stdout);
-											}
-											*/
-											if(r) {
-												r = searchbinary(addressTable,publickeyhashrmd160_compress[k],N);
+											for(l = 0;l < 2; l++)	{
+												r = bloom_check(&bloom,publickeyhashrmd160_endomorphism[l][k],MAXLENGTHADDRESS);
 												if(r) {
-													keyfound.SetInt32(k);
-													keyfound.Mult(&stride);
-													keyfound.Add(&key_mpz);
-													/*
-													if(FLAGDEBUG) {
-														printf("\n[D] thread_process %i\n",__LINE__);
-														fflush(stdout);
+													r = searchbinary(addressTable,publickeyhashrmd160_endomorphism[l][k],N);
+													if(r) {
+														keyfound.SetInt32(k);
+														keyfound.Mult(&stride);
+														keyfound.Add(&key_mpz);
+														
+														publickey = secp->ComputePublicKey(&keyfound);
+														secp->GetHash160(P2PKH,true,publickey,(uint8_t*)publickeyhashrmd160);
+														if(memcmp(publickeyhashrmd160_endomorphism[l][k],publickeyhashrmd160,20) != 0){
+															keyfound.Neg();
+															keyfound.Add(&secp->order);
+															//if(FLAGDEBUG) printf("[D] Key need to be negated\n");
+														}
+														writekey(true,&keyfound);
 													}
-													*/
-													writekey(true,&keyfound);
 												}
 											}
 										}
 									}
-									/*
-									if(FLAGDEBUG) {
-										printf("\n[D] thread_process %i\n",__LINE__);
-										fflush(stdout);
-									}
-									*/
+
 									if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH)	{
 										if(FLAGENDOMORPHISM)	{
 											for(l = 6;l < 12; l++)	{	//We check the array from 6 to 12(excluded) because we save the uncompressed information there
@@ -3547,9 +3540,10 @@ void *thread_process_vanity(void *vargp)	{
 	Point R,temporal,publickey;
 	int r,thread_number,continue_flag = 1,k;
 	char *hextemp = NULL;
+	char publickeyhashrmd160[20];
 	char publickeyhashrmd160_uncompress[4][20],publickeyhashrmd160_compress[4][20];
 	
-	char publickeyhashrmd160_endomorphism[12][4][20],address[50],address2[50];
+	char publickeyhashrmd160_endomorphism[12][4][20],address[50];
 	
 	char public_key_compressed_hex[67],public_key_uncompressed_hex[131];
 	char public_key_compressed[33],public_key_uncompressed[65];
@@ -3565,6 +3559,18 @@ void *thread_process_vanity(void *vargp)	{
 	//if FLAGENDOMORPHISM  == 1 and only compress search is enabled then there is no need to calculate the Y value value					
 	
 	bool calculate_y = FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH;
+	
+	/*
+	if(FLAGDEBUG && thread_number == 0)	{
+		printf("[D] vanity_rmd_targets = %i          fillllll\n",vanity_rmd_targets);
+		printf("[D] vanity_rmd_total = %i\n",vanity_rmd_total);
+		for(i =0; i < vanity_rmd_targets;i++)	{
+			printf("[D] vanity_rmd_limits[%li] = %i\n",i,vanity_rmd_limits[i]);
+			
+		}
+		printf("[D] vanity_rmd_minimun_bytes_check_length = %i\n",vanity_rmd_minimun_bytes_check_length);
+	}
+	*/
 	
 
 	do {
@@ -3598,7 +3604,7 @@ void *thread_process_vanity(void *vargp)	{
 					free(hextemp);
 			}
 			else	{
-				if(FLAGQUIET == 0){
+				if(FLAGQUIET == 0)	{
 					hextemp = key_mpz.GetBase16();
 					printf("\rBase key: %s     \r",hextemp);
 					fflush(stdout);
@@ -3636,8 +3642,6 @@ void *thread_process_vanity(void *vargp)	{
 					pp.x.ModNeg();
 					pp.x.ModAdd(&_p);
 					pp.x.ModSub(&Gn[i].x);           // rx = pow2(s) - p1.x - p2.x;
-
-
 					
 					if(calculate_y)	{
 						pp.y.ModSub(&Gn[i].x,&pp.x);
@@ -3725,7 +3729,6 @@ void *thread_process_vanity(void *vargp)	{
 							free(hextemp);
 						}
 						*/
-						
 					}
 				}
 				/*
@@ -3788,7 +3791,8 @@ void *thread_process_vanity(void *vargp)	{
 
 						}
 						else	{
-							secp->GetHash160(P2PKH,true,pts[(j*4)],pts[(j*4)+1],pts[(j*4)+2],pts[(j*4)+3],(uint8_t*)publickeyhashrmd160_compress[0],(uint8_t*)publickeyhashrmd160_compress[1],(uint8_t*)publickeyhashrmd160_compress[2],(uint8_t*)publickeyhashrmd160_compress[3]);
+							secp->GetHash160_fromX(P2PKH,0x02,&pts[(j*4)].x,&pts[(j*4)+1].x,&pts[(j*4)+2].x,&pts[(j*4)+3].x,(uint8_t*)publickeyhashrmd160_endomorphism[0][0],(uint8_t*)publickeyhashrmd160_endomorphism[0][1],(uint8_t*)publickeyhashrmd160_endomorphism[0][2],(uint8_t*)publickeyhashrmd160_endomorphism[0][3]);
+							secp->GetHash160_fromX(P2PKH,0x03,&pts[(j*4)].x,&pts[(j*4)+1].x,&pts[(j*4)+2].x,&pts[(j*4)+3].x,(uint8_t*)publickeyhashrmd160_endomorphism[1][0],(uint8_t*)publickeyhashrmd160_endomorphism[1][1],(uint8_t*)publickeyhashrmd160_endomorphism[1][2],(uint8_t*)publickeyhashrmd160_endomorphism[1][3]);
 						}
 					}
 					if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH)	{
@@ -3815,7 +3819,6 @@ void *thread_process_vanity(void *vargp)	{
 							
 						}
 					}
-
 					for(k = 0; k < 4;k++)	{
 						if(FLAGSEARCH == SEARCH_COMPRESS || FLAGSEARCH == SEARCH_BOTH ){
 							if(FLAGENDOMORPHISM)	{
@@ -3901,14 +3904,23 @@ void *thread_process_vanity(void *vargp)	{
 										writevanitykey(true,&keyfound);
 									}
 								}
-
 							}
 							else	{
-								if(vanityrmdmatch((uint8_t*)publickeyhashrmd160_compress[k]))	{
-									keyfound.SetInt32(k);
-									keyfound.Mult(&stride);
-									keyfound.Add(&key_mpz);
-									writevanitykey(true,&keyfound);
+								for(l = 0;l < 2; l++)	{
+									if(vanityrmdmatch((uint8_t*)publickeyhashrmd160_endomorphism[l][k]))	{
+										keyfound.SetInt32(k);
+										keyfound.Mult(&stride);
+										keyfound.Add(&key_mpz);
+										
+										publickey = secp->ComputePublicKey(&keyfound);
+										secp->GetHash160(P2PKH,true,publickey,(uint8_t*)publickeyhashrmd160);
+										if(memcmp(publickeyhashrmd160_endomorphism[l][k],publickeyhashrmd160,20) != 0){
+											keyfound.Neg();
+											keyfound.Add(&secp->order);
+											//if(FLAGDEBUG) printf("[D] Key need to be negated\n");
+										}
+										writevanitykey(true,&keyfound);
+									}
 								}									
 							}
 						}
@@ -6780,7 +6792,7 @@ int addvanity(char *target)	{
 	size_t raw_value_length;
 	int values_A_size = 0,values_B_size = 0,minimun_bytes;
 	
-	if(FLAGDEBUG) printf("[D] addvanity(%s)\n",target);
+	//if(FLAGDEBUG) printf("[D] addvanity(%s)\n",target);
 	raw_value_length = 50;
 	stringsize = strlen(target);
 	targetsize = stringsize;
@@ -6790,6 +6802,7 @@ int addvanity(char *target)	{
 	//if(FLAGDEBUG) printf("[D] target = %s , size %i\n",target,stringsize);
 	
 	if(stringsize >= 25 )	{
+		//if(FLAGDEBUG) printf("[D] not added %s\n",target);
 		return 0;
 	}
 	/* I was getting some warnings abouts strncpy regadless to have the correct size of the target string so i change it to memcpy*/
@@ -6824,11 +6837,13 @@ int addvanity(char *target)	{
 			
 			memcpy(vanity_rmd_limit_values_A[vanity_rmd_targets][j] ,raw_value_A +1,20);
 			
+			/*
 			if(FLAGDEBUG)	{
 				hextemp = tohex((char*)vanity_rmd_limit_values_A[vanity_rmd_targets][j],20);
 				printf("[D] Raw size: %li, Encoded size: %i : expected string %s, base string %s => hex %s\n", raw_value_length,stringsize,target,target_copy,hextemp);
 				free(hextemp);
 			}
+			*/
 			
 			j++;	
 			values_A_size = j;
@@ -6860,11 +6875,13 @@ int addvanity(char *target)	{
 			vanity_rmd_limit_values_B[vanity_rmd_targets][j] = (uint8_t*)calloc(20,1);
 			checkpointer((void *)vanity_rmd_limit_values_B[vanity_rmd_targets][j],__FILE__,"calloc","vanity_rmd_limit_values_B" ,__LINE__);
 			memcpy(vanity_rmd_limit_values_B[vanity_rmd_targets][j],raw_value_B+1,20);
+			/*
 			if(FLAGDEBUG)	{
 				hextemp = tohex((char*)vanity_rmd_limit_values_B[vanity_rmd_targets][j],20);
 				printf("[D] Raw size: %li, Encoded size: %i : expected string %s, base string %s => hex %s\n", raw_value_length,stringsize,target,target_copy,hextemp);
 				free(hextemp);
 			}
+			*/
 			j++;				
 			values_B_size = j;
 			
@@ -6873,6 +6890,7 @@ int addvanity(char *target)	{
 		}
 	}while(raw_value_length <= 25);
 	
+	//if(FLAGDEBUG) printf("[D] values_A_size %i, values_B_size %i\n",values_A_size,values_B_size);¿
 	if(values_A_size >= 1 && values_B_size >= 1)	{
 		if(values_A_size != values_B_size)	{
 			if(values_A_size > values_B_size)
@@ -6897,6 +6915,7 @@ int addvanity(char *target)	{
 		vanity_rmd_targets++;
 	}
 	else	{
+		//if(FLAGDEBUG) printf("[D] not added %s\n",target);
 		for(j = 0; j < values_A_size;j++)	{
 			free(vanity_rmd_limit_values_A[vanity_rmd_targets][j]);
 		}

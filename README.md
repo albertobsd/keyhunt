@@ -3,6 +3,7 @@
 Tool for hunt privatekeys for crypto currencies that use secp256k1 elliptic curve
 
 candy
+
 Post: https://bitcointalk.org/index.php?topic=5322040.0
 
 Work for Bitcoin
@@ -26,9 +27,11 @@ Work for Ethereum
 You need to add `-t numberThreads` to get better speed
 
 - Run againts Puzzle 125 (bsgs mode)
-```
 
 ```
+./keyhunt -m bsgs -f tests/125.txt -b 125 -q -s 10 -R
+```
+
 You need to add `-t numberThreads` and `-k factor` to get better speed
 
 ## Free Code
@@ -77,9 +80,11 @@ To clone the repository
 git clone https://github.com/albertobsd/keyhunt.git
 ```
 
-don't forget change to the keyhunt directory
+don't forget change to the keyhunt directory (But i'm not here to teach you linux commands)
 
-`cd keyhunt`
+```
+cd keyhunt
+```
 
 First compile:
 

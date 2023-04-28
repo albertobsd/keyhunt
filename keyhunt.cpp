@@ -33,6 +33,8 @@ email: albertobsd@gmail.com
 #else
 #include <unistd.h>
 #include <pthread.h>
+#include <sys/random.h>
+#include <linux/random.h>
 #endif
 
 #define CRYPTO_NONE 0
@@ -114,7 +116,7 @@ char *raw_baseminikey = NULL;
 char *minikeyN = NULL;
 int minikey_n_limit;
 	
-const char *version = "0.2.2304 Satoshi Quest";
+const char *version = "0.2.230428 Satoshi Quest";
 
 #define CPU_GRP_SIZE 1024
 
@@ -171,6 +173,17 @@ void checkpointer(void *ptr,const char *file,const char *function,const  char *n
 bool isBase58(char c);
 bool isValidBase58String(char *str);
 
+bool readFileAddress(char *fileName);
+bool readFileVanity(char *fileName);
+bool forceReadFileAddress(char *fileName);
+bool forceReadFileAddressEth(char *fileName);
+bool forceReadFileXPoint(char *fileName);
+bool processOneVanity();
+
+bool initBloomFilter(struct bloom *bloom_arg,uint64_t items_bloom);
+
+void writeFileIfNeeded(const char *fileName);
+
 #if defined(_WIN64) && !defined(__CYGWIN__)
 DWORD WINAPI thread_process_vanity(LPVOID vargp);
 DWORD WINAPI thread_process_minikeys(LPVOID vargp);
@@ -217,7 +230,7 @@ const char *bsgs_modes[5] = {"secuential","backward","both","random","dance"};
 const char *modes[7] = {"xpoint","address","bsgs","rmd160","pub2rmd","minikeys","vanity"};
 const char *cryptos[3] = {"btc","eth","all"};
 const char *publicsearch[3] = {"uncompress","compress","both"};
-const char *default_filename = "addresses.txt";
+const char *default_fileName = "addresses.txt";
 
 #if defined(_WIN64) && !defined(__CYGWIN__)
 HANDLE* tid = NULL;
@@ -243,13 +256,13 @@ uint64_t OLDFINISHED_ITEMS = -1;
 uint8_t byte_encode_crypto = 0x00;		/* Bitcoin  */
 
 
-
 int vanity_rmd_targets = 0;
 int vanity_rmd_total = 0;
 int *vanity_rmd_limits = NULL;
 uint8_t ***vanity_rmd_limit_values_A = NULL,***vanity_rmd_limit_values_B = NULL;
 int vanity_rmd_minimun_bytes_check_length = 999999;
 char **vanity_address_targets = NULL;
+struct bloom *vanity_bloom = NULL;
 
 struct bloom bloom;
 
@@ -265,6 +278,7 @@ Int OUTPUTSECONDS;
 
 int FLAGENDOMORPHISM = 0;
 
+int FLAGBLOOMMULTIPLIER = 1;
 int FLAGVANITY = 0;
 int FLAGBASEMINIKEY = 0;
 int FLAGBSGSMODE = 0;
@@ -280,7 +294,6 @@ int FLAGREADEDFILE1 = 0;
 int FLAGREADEDFILE2 = 0;
 int FLAGREADEDFILE3 = 0;
 int FLAGREADEDFILE4 = 0;
-
 int FLAGUPDATEFILE1 = 0;
 
 
@@ -295,8 +308,6 @@ int FLAGRAWDATA	= 0;
 int FLAGRANDOM = 0;
 int FLAG_N = 0;
 int FLAGPRECALCUTED_P_FILE = 0;
-//int COUNT_VANITIES = 0;
-
 
 int bitrange;
 char *str_N;
@@ -397,9 +408,9 @@ int main(int argc, char **argv)	{
 	char temporal[65];
 	char rawvalue[32];
 	struct tothread *tt;	//tothread
-	Tokenizer t,tokenizerbsgs,tokenizer_xpoint;	//tokenizer
-	char *filename = NULL;
-	char *precalculated_mp_filename = NULL;
+	Tokenizer t,tokenizerbsgs;	//tokenizer
+	char *fileName = NULL;
+	char *precalculated_mp_fileName = NULL;
 	char *hextemp = NULL;
 	char *aux = NULL;
 	char *aux2 = NULL;
@@ -439,16 +450,36 @@ int main(int argc, char **argv)	{
 	ZERO.SetInt32(0);
 	ONE.SetInt32(1);
 	BSGS_GROUP_SIZE.SetInt32(CPU_GRP_SIZE);
-	rseed(clock() + time(NULL));
 	
 #if defined(_WIN64) && !defined(__CYGWIN__)
-	printf("[+] Version %s, developed by AlbertoBSD(Win64 build by KV)\n", version);
+	//Any windows secure random source goes here
+	rseed(clock() + time(NULL) + rand());
 #else
-	printf("[+] Version %s, developed by AlbertoBSD\n",version);
+	unsigned long rseedvalue;
+	int bytes_read = getrandom(&rseedvalue, sizeof(unsigned long), GRND_NONBLOCK);
+	if(bytes_read > 0)	{
+		rseed(rseedvalue);
+		/*
+		In any case that seed is for a failsafe RNG, the default source on linux is getrandom function
+		See https://www.2uo.de/myths-about-urandom/
+		*/
+	}
+	else	{
+		/*
+			what year is??
+			WTF linux without RNG ? 
+		*/
+		fprintf(stderr,"[E] Error getrandom() ?\n");
+		exit(0);
+		rseed(clock() + time(NULL) + rand()*rand());
+	}
 #endif
 	
+	
+	
+	printf("[+] Version %s, developed by AlbertoBSD\n",version);
 
-	while ((c = getopt(argc, argv, "dehMqRwzSB:b:c:C:E:f:I:k:l:m:N:n:p:r:s:t:v:V:G:8:")) != -1) {
+	while ((c = getopt(argc, argv, "dehMqRSB:b:c:C:E:f:I:k:l:m:N:n:p:r:s:t:v:G:8:z:")) != -1) {
 		switch(c) {
 			case 'h':
 				menu();
@@ -469,14 +500,14 @@ int main(int argc, char **argv)	{
 					MPZAUX.Set(&ONE);
 					MPZAUX.ShiftL(bitrange-1);
 					bit_range_str_min = MPZAUX.GetBase16();
-					checkpointer((void *)bit_range_str_min,__FILE__,"malloc","bit_range_str_min" ,__LINE__);
+					checkpointer((void *)bit_range_str_min,__FILE__,"malloc","bit_range_str_min" ,__LINE__ -1);
 					MPZAUX.Set(&ONE);
 					MPZAUX.ShiftL(bitrange);
 					if(MPZAUX.IsGreater(&secp->order))	{
 						MPZAUX.Set(&secp->order);
 					}
 					bit_range_str_max = MPZAUX.GetBase16();
-					checkpointer((void *)bit_range_str_max,__FILE__,"malloc","bit_range_str_min" ,__LINE__);
+					checkpointer((void *)bit_range_str_max,__FILE__,"malloc","bit_range_str_min" ,__LINE__ -1);
 					FLAGBITRANGE = 1;
 				}
 				else	{
@@ -488,16 +519,16 @@ int main(int argc, char **argv)	{
 				switch(index_value) {
 					case 0: //btc
 						FLAGCRYPTO = CRYPTO_BTC;
-						printf("[+] Setting search for BTC adddress.\n");
 					break;
 					case 1: //eth
 						FLAGCRYPTO = CRYPTO_ETH;
 						printf("[+] Setting search for ETH adddress.\n");
 					break;
+					/*
 					case 2: //all
 						FLAGCRYPTO = CRYPTO_ALL;
-						printf("[+] Setting search for all cryptocurrencies avaible [btc].\n");
 					break;
+					*/
 					default:
 						FLAGCRYPTO = CRYPTO_NONE;
 						fprintf(stderr,"[E] Unknow crypto value %s\n",optarg);
@@ -509,9 +540,9 @@ int main(int argc, char **argv)	{
 				if(strlen(optarg) == 22)	{
 					FLAGBASEMINIKEY = 1;
 					str_baseminikey = (char*) malloc(23);
-					checkpointer((void *)str_baseminikey,__FILE__,"malloc","str_baseminikey" ,__LINE__);
+					checkpointer((void *)str_baseminikey,__FILE__,"malloc","str_baseminikey" ,__LINE__ - 1);
 					raw_baseminikey = (char*) malloc(23);
-					checkpointer((void *)raw_baseminikey,__FILE__,"malloc","raw_baseminikey" ,__LINE__);
+					checkpointer((void *)raw_baseminikey,__FILE__,"malloc","raw_baseminikey" ,__LINE__ - 1);
 					strncpy(str_baseminikey,optarg,22);
 					for(i = 0; i< 21; i++)	{
 						if(strchr(Ccoinbuffer,str_baseminikey[i+1]) != NULL)	{
@@ -534,7 +565,6 @@ int main(int argc, char **argv)	{
 				FLAGDEBUG = 1;
 				printf("[+] Flag DEBUG enabled\n");
 			break;
-
 			case 'e':
 				FLAGENDOMORPHISM = 1;
 				printf("[+] Endomorphism enabled\n");
@@ -545,14 +575,12 @@ int main(int argc, char **argv)	{
 			break;
 			case 'f':
 				FLAGFILE = 1;
-				filename = optarg;
+				fileName = optarg;
 			break;
 			case 'I':
 				FLAGSTRIDE = 1;
 				str_stride = optarg;
 			break;
-						
-
 			case 'k':
 				KFACTOR = (int)strtol(optarg,NULL,10);
 				if(KFACTOR <= 0)	{
@@ -611,6 +639,10 @@ int main(int argc, char **argv)	{
 					case MODE_VANITY:
 						FLAGMODE = MODE_VANITY;
 						printf("[+] Mode vanity\n");
+						if(vanity_bloom == NULL){
+							vanity_bloom = (struct bloom*) calloc(1,sizeof(struct bloom));
+							checkpointer((void *)vanity_bloom,__FILE__,"calloc","vanity_bloom" ,__LINE__ -1);
+						}
 					break;
 					default:
 						fprintf(stderr,"[E] Unknow mode value %s\n",optarg);
@@ -653,10 +685,10 @@ int main(int argc, char **argv)	{
 							}
 							else	{
 								if(isValidHex(range_start)) {
-									printf("[E] Invalid hexstring : %s\n",range_start);
+									fprintf(stderr,"[E] Invalid hexstring : %s\n",range_start);
 								}
 								else	{
-									printf("[E] Invalid hexstring : %s\n",range_end);
+									fprintf(stderr,"[E] Invalid hexstring : %s\n",range_end);
 								}
 							}
 						break;
@@ -692,8 +724,11 @@ int main(int argc, char **argv)	{
 			break;
 			case 'v':
 				FLAGVANITY = 1;
-				if(isValidBase58String(optarg)){
-
+				if(vanity_bloom == NULL){
+					vanity_bloom = (struct bloom*) calloc(1,sizeof(struct bloom));
+					checkpointer((void *)vanity_bloom,__FILE__,"calloc","vanity_bloom" ,__LINE__ -1);
+				}
+				if(isValidBase58String(optarg))	{
 					if(addvanity(optarg) > 0)	{
 						printf("[+] Added Vanity search : %s\n",optarg);
 					}
@@ -706,47 +741,34 @@ int main(int argc, char **argv)	{
 				}
 				
 			break;
-			/*
-			case 'V':
-				FLAGVANITY = 1;
-				printf("[+] Added Vanity file : %s\n",optarg);
-				fd = fopen(optarg,"r");
-				if(fd == NULL)	{
-					fprintf(stderr,"[E] Can't open the file : %s\n",optarg);
-					exit(0);
-				}
-				r = 0;
-				do	{
-					hextemp = fgets(buffer,1024,fd);
-					trim(buffer,"\n\t\r ");
-					if(addvanity(buffer) > 0)	{
-						printf("[+] Added Vanity search : %s\n",optarg);
-					}
-					else	{
-						printf("[+] Vanity search \"%s\" was NOT Added\n",optarg);
-					}
-					memset(buffer,0,1024);
-				}while(!feof(fd));
-			*/
-			case 'w':
-				printf("[+] Data marked as RAW\n");
-				FLAGRAWDATA = 1;
-			break;
 			case '8':
-				if(strlen(optarg) != 58)	{
-					fprintf(stderr,"[W] The base58 alphabet must be 58 characters long.\n");
-				}
-				else	{
+				if(strlen(optarg) == 58)	{
 					Ccoinbuffer = optarg; 
 					printf("[+] Base58 for Minikeys %s\n",Ccoinbuffer);
 				}
+				else	{
+					fprintf(stderr,"[E] The base58 alphabet must be 58 characters long.\n");
+					exit(0);
+				}
+			break;
+			case 'z':
+				FLAGBLOOMMULTIPLIER= strtol(optarg,NULL,10);
+				if(FLAGBLOOMMULTIPLIER <= 0)	{
+					FLAGBLOOMMULTIPLIER = 1;
+				}
+				printf("[+] Bloom Size Multiplier %i\n",FLAGBLOOMMULTIPLIER);
 			break;
 			default:
 				fprintf(stderr,"[E] Unknow opcion -%c\n",c);
+				exit(0);
 			break;
 		}
 	}
-	if( ( FLAGBSGSMODE == MODE_BSGS || FLAGBSGSMODE == MODE_PUB2RMD ) && FLAGSTRIDE == 1)	{
+	
+	
+	
+	
+	if( ( FLAGBSGSMODE == MODE_BSGS || FLAGBSGSMODE == MODE_PUB2RMD ) && FLAGSTRIDE)	{
 		fprintf(stderr,"[E] Stride doesn't work with BSGS, pub2rmd\n");
 		exit(0);
 	}
@@ -767,26 +789,15 @@ int main(int argc, char **argv)	{
 	if(FLAGMODE == MODE_BSGS )	{
 		printf("[+] Mode BSGS %s\n",bsgs_modes[FLAGBSGSMODE]);
 	}
+	
 	if(FLAGFILE == 0) {
-		filename =(char*) default_filename;
+		fileName =(char*) default_fileName;
 	}
-	printf("[+] Opening file %s\n",filename);
-	fd = fopen(filename,"rb");
-	if(fd == NULL)	{
-		fprintf(stderr,"[E] Can't open file %s\n",filename);
-		exit(0);
-	}
+	
 	if(FLAGMODE == MODE_ADDRESS && FLAGCRYPTO == CRYPTO_NONE) {	//When none crypto is defined the default search is for Bitcoin
 		FLAGCRYPTO = CRYPTO_BTC;
 		printf("[+] Setting search for btc adddress\n");
 	}
-	/*
-	if(FLAGCRYPTO == CRYPTO_ETH)	{
-		FLAGCRYPTO = CRYPTO_BTC;
-		printf("[+] Setting search for btc adddress\n");
-		
-	}
-	*/
 	if(FLAGRANGE) {
 		n_range_start.SetBase16(range_start);
 		if(n_range_start.IsZero())	{
@@ -865,7 +876,7 @@ int main(int argc, char **argv)	{
 				printf("[+] Base Minikey : %s\n",str_baseminikey);
 			}
 			minikeyN = (char*) malloc(22);
-			checkpointer((void *)minikeyN,__FILE__,"malloc","minikeyN" ,__LINE__);
+			checkpointer((void *)minikeyN,__FILE__,"malloc","minikeyN" ,__LINE__ -1);
 			i =0;
 			int58.SetInt32(58);
 			int_aux.SetInt64(N_SECUENTIAL_MAX);
@@ -906,390 +917,43 @@ int main(int argc, char **argv)	{
 			printf("[+] -- to   : 0x%s\n",hextemp);
 			free(hextemp);
 		}
-		aux =(char*) malloc(1000);
-		checkpointer((void *)aux,__FILE__,"malloc","aux" ,__LINE__);
 
 		switch(FLAGMODE)	{
-			case MODE_ADDRESS:
-				/* We need to count how many lines are in the file */
-				while(!feof(fd))	{
-					hextemp = fgets(aux,998,fd);
-					if(hextemp == aux)	{
-						trim(aux," \t\n\r");
-						r = strlen(aux);
-						if(r > 20)	{ 
-							N++;
-						}
-					}
-				}
-
-				MAXLENGTHADDRESS = 20;		/*20 bytes beacuase we only need the data in binary*/
-			break;
 			case MODE_MINIKEYS:
 			case MODE_PUB2RMD:
 			case MODE_RMD160:
-				/* RMD160 marked as RAWDATA is a binary file and each register is 20 bytes	*/
-				if(FLAGRAWDATA) {
-					while(!feof(fd))	{
-						if(fread(aux,1,20,fd) == 20)	{
-							N++;
-						}
-					}
-				}
-				else	{
-					while(!feof(fd))	{
-						hextemp = fgets(aux,998,fd);
-						if(hextemp == aux)	{
-							trim(aux," \t\n\r");
-							r = strlen(aux);
-							if(r == 40)	{ //Any length for invalid Address?
-								N++;
-							}
-						}
-					}
-				}
-				MAXLENGTHADDRESS = 20;	/* MAXLENGTHADDRESS is 20 because we save the data in binary format */
-			break;
-			case MODE_XPOINT:
-				if(FLAGRAWDATA) {
-					while(!feof(fd))	{
-						if(fread(aux,1,32,fd) == 32)	{
-							N++;
-						}
-					}
-				}
-				else	{
-					while(!feof(fd))	{
-						hextemp = fgets(aux,998,fd);
-						if(hextemp == aux)	{
-							trim(aux," \t\n\r");
-							r = strlen(aux);
-							if(r >= 32)	{ //Any length for invalid Address?
-								N++;
-							}
-						}
-					}
-				}
-				MAXLENGTHADDRESS = 32;
-			break;
-			case MODE_VANITY:
-				while(!feof(fd))	{
-					hextemp = fgets(aux,998,fd);
-					if(hextemp == aux)	{
-						trim(aux," \t\n\r");
-						if(strlen(aux) > 0){
-							if(isValidBase58String(aux))	{
-								addvanity(aux);
-							}
-							else	{
-								fprintf(stderr,"[E] the string \"%s\" is not valid Base58, omiting it\n",aux);
-							}
-						}
-					}
-				}
-				//if(FLAGDEBUG) printf("[D] vanity_rmd_minimun_bytes_check_length: %i\n",vanity_rmd_minimun_bytes_check_length);
-				N = vanity_rmd_total;
-			break;
-			
-		}
-		free(aux);
-		if(N == 0)	{
-			fprintf(stderr,"[E] There is no valid data in the file\n");
-			exit(0);
-		}
-		fseek(fd,0,SEEK_SET);
-
-		if(FLAGMODE != MODE_VANITY )	{
-			printf("[+] Allocating memory for %" PRIu64 " elements: %.2f MB\n",N,(double)(((double) sizeof(struct address_value)*N)/(double)1048576));			
-			addressTable = (struct address_value*) malloc(sizeof(struct address_value)*N);
-			checkpointer((void *)addressTable,__FILE__,"malloc","addressTable" ,__LINE__);
-		}
-		printf("[+] Bloom filter for %" PRIu64 " elements.\n",N);
-		if(N <= 10000)	{
-			if(bloom_init2(&bloom,10000,0.000001)	== 1){
-				fprintf(stderr,"[E] error bloom_init for 10000 elements.\n");
-				exit(0);
-			}
-		}
-		else	{
-			if(bloom_init2(&bloom,2*N,0.000001)	== 1){
-				fprintf(stderr,"[E] error bloom_init for %" PRIu64 " elements.\n",N);
-				exit(0);
-			}
-		}
-		printf("[+] Loading data to the bloomfilter total: %.2f MB\n",(double)(((double) bloom.bytes)/(double)1048576));
-		i = 0;
-		
-		switch (FLAGMODE) {
-			case MODE_VANITY:
-				aux =(char*) malloc(1); //To avoid "free(): double free detected in tcache 2", is that or chage more code
-				
-				while(i < vanity_rmd_targets)	{
-					/*
-					if(FLAGDEBUG)	{
-						printf("[D] Next cycle up to %i\n",vanity_rmd_limits[i]);
-					}
-					*/	
-					for(int k = 0; k < vanity_rmd_limits[i]; k++)	{
-						/*
-						if(FLAGDEBUG)	{	
-							hextemp = tohex((char*)vanity_rmd_limit_values_A[i][k],vanity_rmd_minimun_bytes_check_length);
-							printf("[D] Adding to the bloom filter %s for prefix %s\n",hextemp,vanity_address_targets[i]);
-							free(hextemp);
-						}
-						*/
-						bloom_add(&bloom, vanity_rmd_limit_values_A[i][k] ,vanity_rmd_minimun_bytes_check_length);
-					}
-					i++;
-				}
-			
-			break;
 			case MODE_ADDRESS:
-				if(FLAGCRYPTO == CRYPTO_BTC)	{  // BTC address
-					aux =(char*) malloc(8*MAXLENGTHADDRESS);
-					checkpointer((void *)aux,__FILE__,"malloc","aux" ,__LINE__);
-					while(i < N)	{
-						//if(FLAGDEBUG && i % 1000000 == 0)printf("[D] working %li\n",i);
-						memset(aux,0,8*MAXLENGTHADDRESS);
-						memset(addressTable[i].value,0,sizeof(struct address_value));
-						hextemp = fgets(aux,8*MAXLENGTHADDRESS,fd);
-						if(hextemp == aux)	{
-							trim(aux," \t\n\r");
-							r = strlen(aux);
-							if(r > 0)	{
-								switch(aux[0])	{
-									case '1':
-										if(isValidBase58String(aux)){
-											if(r <= 36)	{
-												raw_value_length = 25;
-												b58tobin(rawvalue,&raw_value_length,aux,r);
-												if(raw_value_length == 25)	{
-													bloom_add(&bloom, rawvalue+1 ,sizeof(struct address_value));
-													memcpy(addressTable[i].value,rawvalue+1,sizeof(struct address_value));											
-													i++;
-												}
-												else	{
-													fprintf(stderr,"[I] Invalid decoded size %s\n",aux);
-													N--;
-												}
-											}
-											else	{
-												N--;
-												fprintf(stderr,"[I] Address too long %s\n",aux);
-											}
-										}
-										else	{
-											fprintf(stderr,"[I] Invalid base58 Address %s\n",aux);
-											N--;
-										}
-									break;
-									case 'b':
-										N--;
-										fprintf(stderr,"[I] Unsopporting type of address %s\n",aux);
-									break;
-									case '3':
-										N--;
-										fprintf(stderr,"[I] Unsopporting type of address %s\n",aux);
-									break;
-									default:
-										N--;
-										fprintf(stderr,"[I] Unknown type of address %s\n",aux);
-									break;
-								}
-							}
-							else	{
-								N--;
-								fprintf(stderr,"[E] Omiting line : %s\n",aux);
-							}
-						}
-						else	{
-							trim(aux," \t\n\r");
-							fprintf(stderr,"[E] Omiting line : %s\n",aux);
-							N--;
-						}
-					}
-				}
-				if(FLAGCRYPTO == CRYPTO_ETH)	{  // ETH address
-					aux =(char*) malloc(2*MAXLENGTHADDRESS + 4);	// 40 bytes + 0x and the charecter \0
-					checkpointer((void *)aux,__FILE__,"malloc","aux" ,__LINE__);
-					while(i < N)	{
-						memset(addressTable[i].value,0,sizeof(struct address_value));
-						memset(aux,0,2*MAXLENGTHADDRESS + 4);
-						memset((void *)&addressTable[i],0,sizeof(struct address_value));
-						hextemp = fgets(aux,2*MAXLENGTHADDRESS + 4,fd);
-						if(hextemp == aux)	{
-							trim(aux," \t\n\r");
-							switch(strlen(aux))	{
-								case 42:	/*Address with 0x */
-									if(isValidHex(aux+2))	{
-										hexs2bin(aux+2,addressTable[i].value);
-										bloom_add(&bloom, addressTable[i].value,MAXLENGTHADDRESS);
-									}
-									else	{
-										fprintf(stderr,"[E] Omiting line : %s\n",aux);
-									}
-								break;
-								case 40:	/*Address without 0x */
-									if(isValidHex(aux))	{
-										hexs2bin(aux,addressTable[i].value);
-										bloom_add(&bloom, addressTable[i].value,MAXLENGTHADDRESS);
-									}
-									else	{
-										fprintf(stderr,"[E] Omiting line : %s\n",aux);
-									}
-								break;
-								default:
-									fprintf(stderr,"[E] Omiting line : %s\n",aux);
-								break;
-							}
-						}
-						else	{
-							trim(aux," \t\n\r");
-							fprintf(stderr,"[E] Omiting line : %s\n",aux);
-						}
-						i++;
-					}
-				}
-			break;
 			case MODE_XPOINT:
-				if(FLAGRAWDATA)	{
-					aux = (char*)malloc(MAXLENGTHADDRESS);
-					checkpointer((void *)aux,__FILE__,"malloc","aux" ,__LINE__);
-					while(i < N)	{
-						if(fread(aux,1,MAXLENGTHADDRESS,fd) == 32)	{
-							memcpy(addressTable[i].value,aux,20);
-							bloom_add(&bloom, aux,MAXLENGTHADDRESS);
-						}
-						i++;
-					}
-				}
-				else	{
-					aux = (char*) malloc(5*MAXLENGTHADDRESS);
-					checkpointer((void *)aux,__FILE__,"malloc","aux" ,__LINE__);
-					while(i < N)	{
-						memset(aux,0,5*MAXLENGTHADDRESS);
-						hextemp = fgets(aux,(5*MAXLENGTHADDRESS) -2,fd);
-						memset((void *)&addressTable[i],0,sizeof(struct address_value));
-						if(hextemp == aux)	{
-							trim(aux," \t\n\r");
-							stringtokenizer(aux,&tokenizer_xpoint);
-							hextemp = nextToken(&tokenizer_xpoint);
-							lenaux = strlen(hextemp);
-							if(isValidHex(hextemp)) {
-								switch(lenaux)	{
-									case 64:	/*X value*/
-										r = hexs2bin(aux,(uint8_t*) rawvalue);
-										if(r)	{
-											memcpy(addressTable[i].value,rawvalue,20);
-											bloom_add(&bloom,rawvalue,MAXLENGTHADDRESS);
-										}
-										else	{
-											fprintf(stderr,"[E] error hexs2bin\n");
-										}
-									break;
-									case 66:	/*Compress publickey*/
-									r = hexs2bin(aux+2, (uint8_t*)rawvalue);
-										if(r)	{
-											memcpy(addressTable[i].value,rawvalue,20);
-											bloom_add(&bloom,rawvalue,MAXLENGTHADDRESS);
-										}
-										else	{
-											fprintf(stderr,"[E] error hexs2bin\n");
-										}
-									break;
-									case 130:	/* Uncompress publickey length*/
-										memset(temporal,0,65);
-										memcpy(temporal,aux+2,64);
-										r = hexs2bin(temporal, (uint8_t*) rawvalue);
-										if(r)	{
-												memcpy(addressTable[i].value,rawvalue,20);
-												bloom_add(&bloom,rawvalue,MAXLENGTHADDRESS);
-										}
-										else	{
-											fprintf(stderr,"[E] error hexs2bin\n");
-										}
-									break;
-									default:
-										fprintf(stderr,"[E] Omiting line unknow length size %i: %s\n",lenaux,aux);
-									break;
-								}
-							}
-							else	{
-								fprintf(stderr,"[E] Ignoring invalid hexvalue %s\n",aux);
-							}
-							freetokenizer(&tokenizer_xpoint);
-						}
-						else	{
-							fprintf(stderr,"[E] Omiting line : %s\n",aux);
-							N--;
-						}
-						i++;
-					}
+				if(!readFileAddress(fileName))	{
+					fprintf(stderr,"[E] Unenexpected error\n");
+					exit(0);
 				}
 			break;
-			case MODE_MINIKEYS:
-			case MODE_PUB2RMD:
-			case MODE_RMD160:
-				if(FLAGRAWDATA)	{
-					aux = (char*) malloc(MAXLENGTHADDRESS);
-					checkpointer((void *)aux,__FILE__,"malloc","aux" ,__LINE__);
-					while(i < N)	{
-						if(fread(aux,1,MAXLENGTHADDRESS,fd) == 20)	{
-							memcpy(addressTable[i].value,aux,20);
-							bloom_add(&bloom, aux,MAXLENGTHADDRESS);
-						}
-						i++;
-					}
-				}
-				else	{
-					aux = (char*) malloc(3*MAXLENGTHADDRESS);
-					checkpointer((void *)aux,__FILE__,"malloc","aux" ,__LINE__);
-					while(i < N)	{
-						memset(aux,0,3*MAXLENGTHADDRESS);
-						hextemp = fgets(aux,3*MAXLENGTHADDRESS,fd);
-						memset(addressTable[i].value,0,sizeof(struct address_value));
-						if(hextemp == aux)	{
-							trim(aux," \t\n\r");
-							lenaux = strlen(aux);
-							if(isValidHex(aux)) {
-								if(lenaux == 40)	{
-									if(hexs2bin(aux,addressTable[i].value))	{
-											bloom_add(&bloom,addressTable[i].value,MAXLENGTHADDRESS);
-									}
-									else	{
-										fprintf(stderr,"[E] error hexs2bin\n");
-									}
-								}
-								else	{
-									fprintf(stderr,"[E] Ignoring invalid length line %s\n",aux);
-								}
-							}
-							else	{
-								fprintf(stderr,"[E] Ignoring invalid hexvalue %s\n",aux);
-							}
-						}
-						else	{
-							fprintf(stderr,"[E] Omiting line : %s\n",aux);
-						}
-						i++;
-					}
+			case MODE_VANITY:
+				if(!readFileVanity(fileName))	{
+					fprintf(stderr,"[E] Unenexpected error\n");
+					exit(0);
 				}
 			break;
 		}
-		free(aux);
-		fclose(fd);
-		printf("[+] Bloomfilter completed\n");
 		
-		if(FLAGMODE != MODE_VANITY )	{
+		if(FLAGMODE != MODE_VANITY && !FLAGREADEDFILE1)	{
 			printf("[+] Sorting data ...");
 			_sort(addressTable,N);
 			printf(" done! %" PRIu64 " values were loaded and sorted\n",N);
+			writeFileIfNeeded(fileName);
 		}
 	}
+	
 	if(FLAGMODE == MODE_BSGS )	{
-
+		printf("[+] Opening file %s\n",fileName);
+		fd = fopen(fileName,"rb");
+		if(fd == NULL)	{
+			fprintf(stderr,"[E] Can't open file %s\n",fileName);
+			exit(0);
+		}
 		aux = (char*) malloc(1024);
-		checkpointer((void *)aux,__FILE__,"malloc","aux" ,__LINE__);
+		checkpointer((void *)aux,__FILE__,"malloc","aux" ,__LINE__ - 1);
 		while(!feof(fd))	{
 			if(fgets(aux,1022,fd) == aux)	{
 				trim(aux," \t\n\r");
@@ -1307,14 +971,14 @@ int main(int argc, char **argv)	{
 			exit(0);
 		}
 		bsgs_found = (int*) calloc(N,sizeof(int));
-		checkpointer((void *)bsgs_found,__FILE__,"calloc","bsgs_found" ,__LINE__);
+		checkpointer((void *)bsgs_found,__FILE__,"calloc","bsgs_found" ,__LINE__ -1 );
 		OriginalPointsBSGS.reserve(N);
 		OriginalPointsBSGScompressed = (bool*) malloc(N*sizeof(bool));
-		checkpointer((void *)OriginalPointsBSGScompressed,__FILE__,"malloc","OriginalPointsBSGScompressed" ,__LINE__);
+		checkpointer((void *)OriginalPointsBSGScompressed,__FILE__,"malloc","OriginalPointsBSGScompressed" ,__LINE__ -1 );
 		pointx_str = (char*) malloc(65);
-		checkpointer((void *)pointx_str,__FILE__,"malloc","pointx_str" ,__LINE__);
+		checkpointer((void *)pointx_str,__FILE__,"malloc","pointx_str" ,__LINE__ -1 );
 		pointy_str = (char*) malloc(65);
-		checkpointer((void *)pointy_str,__FILE__,"malloc","pointy_str" ,__LINE__);
+		checkpointer((void *)pointy_str,__FILE__,"malloc","pointy_str" ,__LINE__ -1 );
 		fseek(fd,0,SEEK_SET);
 		i = 0;
 		while(!feof(fd))	{
@@ -1361,7 +1025,7 @@ int main(int argc, char **argv)	{
 			printf("[+] Added %u points from file\n",bsgs_point_number);
 		}
 		else	{
-			printf("[E] The file don't have any valid publickeys\n");
+			fprintf(stderr,"[E] The file don't have any valid publickeys\n");
 			exit(0);
 		}
 		BSGS_N.SetInt32(0);
@@ -1522,9 +1186,9 @@ int main(int argc, char **argv)	{
 		
 		printf("[+] Bloom filter for %" PRIu64 " elements ",bsgs_m);
 		bloom_bP = (struct bloom*)calloc(256,sizeof(struct bloom));
-		checkpointer((void *)bloom_bP,__FILE__,"calloc","bloom_bP" ,__LINE__);
+		checkpointer((void *)bloom_bP,__FILE__,"calloc","bloom_bP" ,__LINE__ -1 );
 		bloom_bP_checksums = (struct checksumsha256*)calloc(256,sizeof(struct checksumsha256));
-		checkpointer((void *)bloom_bP_checksums,__FILE__,"calloc","bloom_bP_checksums" ,__LINE__);
+		checkpointer((void *)bloom_bP_checksums,__FILE__,"calloc","bloom_bP_checksums" ,__LINE__ -1 );
 		
 #if defined(_WIN64) && !defined(__CYGWIN__)
 		bloom_bP_mutex = (HANDLE*) calloc(256,sizeof(HANDLE));
@@ -1532,7 +1196,7 @@ int main(int argc, char **argv)	{
 #else
 		bloom_bP_mutex = (pthread_mutex_t*) calloc(256,sizeof(pthread_mutex_t));
 #endif
-		checkpointer((void *)bloom_bP_mutex,__FILE__,"calloc","bloom_bP_mutex" ,__LINE__);
+		checkpointer((void *)bloom_bP_mutex,__FILE__,"calloc","bloom_bP_mutex" ,__LINE__ -1 );
 		
 
 		fflush(stdout);
@@ -1560,11 +1224,11 @@ int main(int argc, char **argv)	{
 #else
 		bloom_bPx2nd_mutex = (pthread_mutex_t*) calloc(256,sizeof(pthread_mutex_t));
 #endif
-		checkpointer((void *)bloom_bPx2nd_mutex,__FILE__,"calloc","bloom_bPx2nd_mutex" ,__LINE__);
+		checkpointer((void *)bloom_bPx2nd_mutex,__FILE__,"calloc","bloom_bPx2nd_mutex" ,__LINE__ -1 );
 		bloom_bPx2nd = (struct bloom*)calloc(256,sizeof(struct bloom));
-		checkpointer((void *)bloom_bPx2nd,__FILE__,"calloc","bloom_bPx2nd" ,__LINE__);
+		checkpointer((void *)bloom_bPx2nd,__FILE__,"calloc","bloom_bPx2nd" ,__LINE__ -1 );
 		bloom_bPx2nd_checksums = (struct checksumsha256*) calloc(256,sizeof(struct checksumsha256));
-		checkpointer((void *)bloom_bPx2nd_checksums,__FILE__,"calloc","bloom_bPx2nd_checksums" ,__LINE__);
+		checkpointer((void *)bloom_bPx2nd_checksums,__FILE__,"calloc","bloom_bPx2nd_checksums" ,__LINE__ -1 );
 		bloom_bP2_totalbytes = 0;
 		for(i=0; i< 256; i++)	{
 #if defined(_WIN64) && !defined(__CYGWIN__)
@@ -1587,11 +1251,11 @@ int main(int argc, char **argv)	{
 #else
 		bloom_bPx3rd_mutex = (pthread_mutex_t*) calloc(256,sizeof(pthread_mutex_t));
 #endif
-		checkpointer((void *)bloom_bPx3rd_mutex,__FILE__,"calloc","bloom_bPx3rd_mutex" ,__LINE__);
+		checkpointer((void *)bloom_bPx3rd_mutex,__FILE__,"calloc","bloom_bPx3rd_mutex" ,__LINE__ -1 );
 		bloom_bPx3rd = (struct bloom*)calloc(256,sizeof(struct bloom));
-		checkpointer((void *)bloom_bPx3rd,__FILE__,"calloc","bloom_bPx3rd" ,__LINE__);
+		checkpointer((void *)bloom_bPx3rd,__FILE__,"calloc","bloom_bPx3rd" ,__LINE__ -1 );
 		bloom_bPx3rd_checksums = (struct checksumsha256*) calloc(256,sizeof(struct checksumsha256));
-		checkpointer((void *)bloom_bPx3rd_checksums,__FILE__,"calloc","bloom_bPx3rd_checksums" ,__LINE__);
+		checkpointer((void *)bloom_bPx3rd_checksums,__FILE__,"calloc","bloom_bPx3rd_checksums" ,__LINE__ -1 );
 		
 		printf("[+] Bloom filter for %" PRIu64 " elements ",bsgs_m3);
 		bloom_bP3_totalbytes = 0;
@@ -1697,7 +1361,7 @@ int main(int argc, char **argv)	{
 		printf("[+] Allocating %.2f MB for %" PRIu64  " bP Points\n",(double)(bytes/1048576),bsgs_m3);
 		
 		bPtable = (struct bsgs_xvalue*) malloc(bytes);
-		checkpointer((void *)bPtable,__FILE__,"malloc","bPtable" ,__LINE__);
+		checkpointer((void *)bPtable,__FILE__,"malloc","bPtable" ,__LINE__ -1 );
 		memset(bPtable,0,bytes);
 		
 		if(FLAGSAVEREADFILE)	{
@@ -1729,17 +1393,9 @@ int main(int argc, char **argv)	{
 					memset(rawvalue,0,32);
 					sha256((uint8_t*)bloom_bP[i].bf,bloom_bP[i].bytes,(uint8_t*)rawvalue);
 					if(memcmp(bloom_bP_checksums[i].data,rawvalue,32) != 0 || memcmp(bloom_bP_checksums[i].backup,rawvalue,32) != 0 )	{	/* Verification */
-						fprintf(stderr,"[E] Error checksum file mismatch!\n");
+						fprintf(stderr,"[E] Error checksum file mismatch! %s\n",buffer_bloom_file);
 						exit(0);
 					}
-					/*
-					if(FLAGDEBUG)	{
-						hextemp = tohex(bloom_bP_checksums[i].data,32);
-						printf("Checksum %s\n",hextemp);
-						free(hextemp);
-						bloom_print(&bloom_bP[i]);
-					}
-					*/
 					if(i % 64 == 0 )	{
 						printf(".");
 						fflush(stdout);
@@ -1790,7 +1446,7 @@ int main(int argc, char **argv)	{
 						memset(rawvalue,0,32);
 						sha256((uint8_t*)bloom_bP[i].bf,bloom_bP[i].bytes,(uint8_t*)rawvalue);
 						if(memcmp(bloom_bP_checksums[i].data,rawvalue,32) != 0 || memcmp(bloom_bP_checksums[i].backup,rawvalue,32) != 0 )	{	/* Verification */
-							fprintf(stderr,"[E] Error checksum file mismatch!\n");
+							fprintf(stderr,"[E] Error checksum file mismatch! %s\n",buffer_bloom_file);
 							exit(0);
 						}
 						if(i % 32 == 0 )	{
@@ -1837,22 +1493,13 @@ int main(int argc, char **argv)	{
 					memset(rawvalue,0,32);
 					sha256((uint8_t*)bloom_bPx2nd[i].bf,bloom_bPx2nd[i].bytes,(uint8_t*)rawvalue);
 					if(memcmp(bloom_bPx2nd_checksums[i].data,rawvalue,32) != 0 || memcmp(bloom_bPx2nd_checksums[i].backup,rawvalue,32) != 0 )	{		/* Verification */
-						fprintf(stderr,"[E] Error checksum file mismatch!\n");
+						fprintf(stderr,"[E] Error checksum file mismatch! %s\n",buffer_bloom_file);
 						exit(0);
 					}
 					if(i % 64 == 0)	{
 						printf(".");
 						fflush(stdout);
 					}
-
-					/*
-					if(FLAGDEBUG)	{
-						hextemp = tohex(bloom_bPx2nd_checksum[i].data,32);
-						printf("Checksum %s\n",hextemp);
-						free(hextemp);
-						bloom_print(&bloom_bPx2nd[i]);
-					}
-					*/
 				}
 				fclose(fd_aux2);
 				printf(" Done!\n");
@@ -1890,7 +1537,7 @@ int main(int argc, char **argv)	{
 				rsize = fread(checksum,32,1,fd_aux3);
 				sha256((uint8_t*)bPtable,bytes,(uint8_t*)checksum_backup);
 				if(memcmp(checksum,checksum_backup,32) != 0)	{
-					fprintf(stderr,"[E] Checksum from file %s mismatch!!\n",buffer_bloom_file);
+					fprintf(stderr,"[E] Error checksum file mismatch! %s\n",buffer_bloom_file);
 					exit(0);
 				}
 				printf("... Done!\n");
@@ -1928,7 +1575,7 @@ int main(int argc, char **argv)	{
 					memset(rawvalue,0,32);
 					sha256((uint8_t*)bloom_bPx3rd[i].bf,bloom_bPx3rd[i].bytes,(uint8_t*)rawvalue);
 					if(memcmp(bloom_bPx3rd_checksums[i].data,rawvalue,32) != 0 || memcmp(bloom_bPx3rd_checksums[i].backup,rawvalue,32) != 0 )	{		/* Verification */
-						fprintf(stderr,"[E] Error checksum file mismatch!\n");
+						fprintf(stderr,"[E] Error checksum file mismatch! %s\n",buffer_bloom_file);
 						exit(0);
 					}
 					if(i % 64 == 0)	{
@@ -1966,10 +1613,8 @@ int main(int argc, char **argv)	{
 				}
 				THREADCYCLES = bsgs_m2 / THREADBPWORKLOAD;
 				PERTHREAD_R = bsgs_m2 % THREADBPWORKLOAD;
-				//if(FLAGDEBUG) printf("[D] THREADCYCLES: %lu\n",THREADCYCLES);
 				if(PERTHREAD_R != 0)	{
 					THREADCYCLES++;
-					//if(FLAGDEBUG) printf("[D] PERTHREAD_R: %lu\n",PERTHREAD_R);
 				}
 				
 				printf("\r[+] processing %lu/%lu bP points : %i%%\r",FINISHED_ITEMS,bsgs_m,(int) (((double)FINISHED_ITEMS/(double)bsgs_m)*100));
@@ -1977,17 +1622,17 @@ int main(int argc, char **argv)	{
 				
 #if defined(_WIN64) && !defined(__CYGWIN__)
 				tid = (HANDLE*)calloc(NTHREADS, sizeof(HANDLE));
-				checkpointer((void *)tid,__FILE__,"calloc","tid" ,__LINE__);
+				checkpointer((void *)tid,__FILE__,"calloc","tid" ,__LINE__ -1 );
 				bPload_mutex = (HANDLE*) calloc(NTHREADS,sizeof(HANDLE));
 #else
 				tid = (pthread_t *) calloc(NTHREADS,sizeof(pthread_t));
 				bPload_mutex = (pthread_mutex_t*) calloc(NTHREADS,sizeof(pthread_mutex_t));
 #endif
-				checkpointer((void *)bPload_mutex,__FILE__,"calloc","bPload_mutex" ,__LINE__);
+				checkpointer((void *)bPload_mutex,__FILE__,"calloc","bPload_mutex" ,__LINE__ -1 );
 				bPload_temp_ptr = (struct bPload*) calloc(NTHREADS,sizeof(struct bPload));
-				checkpointer((void *)bPload_temp_ptr,__FILE__,"calloc","bPload_temp_ptr" ,__LINE__);
+				checkpointer((void *)bPload_temp_ptr,__FILE__,"calloc","bPload_temp_ptr" ,__LINE__ -1 );
 				bPload_threads_available = (char*) calloc(NTHREADS,sizeof(char));
-				checkpointer((void *)bPload_threads_available,__FILE__,"calloc","bPload_threads_available" ,__LINE__);
+				checkpointer((void *)bPload_threads_available,__FILE__,"calloc","bPload_threads_available" ,__LINE__ -1 );
 				
 				memset(bPload_threads_available,1,NTHREADS);
 				
@@ -2096,13 +1741,13 @@ int main(int argc, char **argv)	{
 				tid = (pthread_t *) calloc(NTHREADS,sizeof(pthread_t));
 				bPload_mutex = (pthread_mutex_t*) calloc(NTHREADS,sizeof(pthread_mutex_t));
 #endif
-				checkpointer((void *)tid,__FILE__,"calloc","tid" ,__LINE__);
-				checkpointer((void *)bPload_mutex,__FILE__,"calloc","bPload_mutex" ,__LINE__);
+				checkpointer((void *)tid,__FILE__,"calloc","tid" ,__LINE__ -1 );
+				checkpointer((void *)bPload_mutex,__FILE__,"calloc","bPload_mutex" ,__LINE__ -1 );
 				
 				bPload_temp_ptr = (struct bPload*) calloc(NTHREADS,sizeof(struct bPload));
-				checkpointer((void *)bPload_temp_ptr,__FILE__,"calloc","bPload_temp_ptr" ,__LINE__);
+				checkpointer((void *)bPload_temp_ptr,__FILE__,"calloc","bPload_temp_ptr" ,__LINE__ -1 );
 				bPload_threads_available = (char*) calloc(NTHREADS,sizeof(char));
-				checkpointer((void *)bPload_threads_available,__FILE__,"calloc","bPload_threads_available" ,__LINE__);
+				checkpointer((void *)bPload_threads_available,__FILE__,"calloc","bPload_threads_available" ,__LINE__ -1 );
 				
 
 				memset(bPload_threads_available,1,NTHREADS);
@@ -2251,14 +1896,6 @@ int main(int argc, char **argv)	{
 							printf(".");
 							fflush(stdout);
 						}
-						/*
-						if(FLAGDEBUG)	{
-							hextemp = tohex(bloom_bP_checksums[i].data,32);
-							printf("Checksum %s\n",hextemp);
-							free(hextemp);
-							bloom_print(&bloom_bP[i]);
-						}
-						*/
 					}
 					printf(" Done!\n");
 					fclose(fd_aux1);
@@ -2297,14 +1934,6 @@ int main(int argc, char **argv)	{
 							printf(".");
 							fflush(stdout);
 						}
-						/*
-						if(FLAGDEBUG)	{
-							hextemp = tohex(bloom_bPx2nd_checksum.data,32);
-							printf("Checksum %s\n",hextemp);
-							free(hextemp);
-							bloom_print(&bloom_bPx2nd);
-						}
-						*/
 					}
 					printf(" Done!\n");
 					fclose(fd_aux2);	
@@ -2334,13 +1963,6 @@ int main(int argc, char **argv)	{
 					}
 					printf("Done!\n");
 					fclose(fd_aux3);	
-					/*
-					if(FLAGDEBUG)	{
-						hextemp = tohex(checksum,32);
-						printf("Checksum %s\n",hextemp);
-						free(hextemp);
-					}
-					*/
 				}
 				else	{
 					fprintf(stderr,"[E] Error can't create the file %s\n",buffer_bloom_file);
@@ -2375,14 +1997,6 @@ int main(int argc, char **argv)	{
 							printf(".");
 							fflush(stdout);
 						}
-						/*
-						if(FLAGDEBUG)	{
-							hextemp = tohex(bloom_bPx2nd_checksum.data,32);
-							printf("Checksum %s\n",hextemp);
-							free(hextemp);
-							bloom_print(&bloom_bPx2nd);
-						}
-						*/
 					}
 					printf(" Done!\n");
 					fclose(fd_aux2);
@@ -2398,19 +2012,19 @@ int main(int argc, char **argv)	{
 		i = 0;
 
 		steps = (uint64_t *) calloc(NTHREADS,sizeof(uint64_t));
-		checkpointer((void *)steps,__FILE__,"calloc","steps" ,__LINE__);
+		checkpointer((void *)steps,__FILE__,"calloc","steps" ,__LINE__ -1 );
 		ends = (unsigned int *) calloc(NTHREADS,sizeof(int));
-		checkpointer((void *)ends,__FILE__,"calloc","ends" ,__LINE__);
+		checkpointer((void *)ends,__FILE__,"calloc","ends" ,__LINE__ -1 );
 #if defined(_WIN64) && !defined(__CYGWIN__)
 		tid = (HANDLE*)calloc(NTHREADS, sizeof(HANDLE));
 #else
 		tid = (pthread_t *) calloc(NTHREADS,sizeof(pthread_t));
 #endif
-		checkpointer((void *)tid,__FILE__,"calloc","tid" ,__LINE__);
+		checkpointer((void *)tid,__FILE__,"calloc","tid" ,__LINE__ -1 );
 		
 		for(i= 0;i < NTHREADS; i++)	{
 			tt = (tothread*) malloc(sizeof(struct tothread));
-			checkpointer((void *)tt,__FILE__,"malloc","tt" ,__LINE__);
+			checkpointer((void *)tt,__FILE__,"malloc","tt" ,__LINE__ -1 );
 			tt->nt = i;
 			switch(FLAGBSGSMODE)	{
 #if defined(_WIN64) && !defined(__CYGWIN__)
@@ -2464,18 +2078,18 @@ int main(int argc, char **argv)	{
 	}
 	if(FLAGMODE != MODE_BSGS)	{
 		steps = (uint64_t *) calloc(NTHREADS,sizeof(uint64_t));
-		checkpointer((void *)steps,__FILE__,"calloc","steps" ,__LINE__);
+		checkpointer((void *)steps,__FILE__,"calloc","steps" ,__LINE__ -1 );
 		ends = (unsigned int *) calloc(NTHREADS,sizeof(int));
-		checkpointer((void *)ends,__FILE__,"calloc","ends" ,__LINE__);
+		checkpointer((void *)ends,__FILE__,"calloc","ends" ,__LINE__ -1 );
 #if defined(_WIN64) && !defined(__CYGWIN__)
 		tid = (HANDLE*)calloc(NTHREADS, sizeof(HANDLE));
 #else
 		tid = (pthread_t *) calloc(NTHREADS,sizeof(pthread_t));
 #endif
-		checkpointer((void *)tid,__FILE__,"calloc","tid" ,__LINE__);
+		checkpointer((void *)tid,__FILE__,"calloc","tid" ,__LINE__ -1 );
 		for(i= 0;i < NTHREADS; i++)	{
 			tt = (tothread*) malloc(sizeof(struct tothread));
-			checkpointer((void *)tt,__FILE__,"malloc","tt" ,__LINE__);
+			checkpointer((void *)tt,__FILE__,"malloc","tt" ,__LINE__ -1 );
 			tt->nt = i;
 			steps[i] = 0;
 			switch(FLAGMODE)	{
@@ -2526,12 +2140,6 @@ int main(int argc, char **argv)	{
 	pretotal.SetInt32(0);
 	debugcount_mpz.Set(&BSGS_N);
 	seconds.SetInt32(0);
-	/*if(FLAGDEBUG)	{
-		hextemp = debugcount_mpz.GetBase16();
-		printf("\n[D] debugcount_mpz = %s\n",hextemp);
-		free(hextemp);
-	}
-	*/
 	do	{
 		sleep_ms(1000);
 		seconds.AddOne();
@@ -2666,8 +2274,8 @@ char *pubkeytopubaddress(char *pkey,int length)	{
 	char *pubaddress = (char*) calloc(MAXLENGTHADDRESS+10,1);
 	char *digest = (char*) calloc(60,1);
 	size_t pubaddress_size = MAXLENGTHADDRESS+10;
-	checkpointer((void *)pubaddress,__FILE__,"malloc","pubaddress" ,__LINE__);
-	checkpointer((void *)digest,__FILE__,"malloc","digest" ,__LINE__);
+	checkpointer((void *)pubaddress,__FILE__,"malloc","pubaddress" ,__LINE__ -1 );
+	checkpointer((void *)digest,__FILE__,"malloc","digest" ,__LINE__ -1 );
 	//digest [000...0]
  	sha256((uint8_t*)pkey, length,(uint8_t*) digest);
 	//digest [SHA256 32 bytes+000....0]
@@ -2698,8 +2306,8 @@ void publickeytohashrmd160_dst(char *pkey,int length,char *dst)	{
 char *publickeytohashrmd160(char *pkey,int length)	{
 	char *hash160 = (char*) malloc(20);
 	char *digest = (char*) malloc(32);
-	checkpointer((void *)hash160,__FILE__,"malloc","hash160" ,__LINE__);
-	checkpointer((void *)digest,__FILE__,"malloc","digest" ,__LINE__);
+	checkpointer((void *)hash160,__FILE__,"malloc","hash160" ,__LINE__ -1 );
+	checkpointer((void *)digest,__FILE__,"malloc","digest" ,__LINE__ -1 );
 	//digest [000...0]
  	sha256((uint8_t*)pkey, length,(uint8_t*) digest);
 	//digest [SHA256 32 bytes]
@@ -2803,7 +2411,7 @@ void *thread_process_minikeys(void *vargp)	{
 #endif
 				if(raw_baseminikey == NULL){
 					raw_baseminikey = (char *) malloc(22);
-					checkpointer((void *)raw_baseminikey,__FILE__,"malloc","raw_baseminikey" ,__LINE__);
+					checkpointer((void *)raw_baseminikey,__FILE__,"malloc","raw_baseminikey" ,__LINE__ -1 );
 					counter.Rand(256);
 					for(k = 0; k < 21; k++)	{
 						raw_baseminikey[k] =(uint8_t)((uint8_t) rawbuffer[k] % 58);
@@ -2940,7 +2548,7 @@ void *thread_process(void *vargp)	{
 	uint64_t i,j,count;
 	Point R,temporal,publickey;
 	int r,thread_number,continue_flag = 1,i_vanity,k;
-	char *hextemp = NULL;
+	char *hextemp = NULL,checksum[32];
 	char *eth_address = NULL;
 	
 	char publickeyhashrmd160[20];
@@ -2991,7 +2599,7 @@ void *thread_process(void *vargp)	{
 		}
 		/*
 		if(FLAGDEBUG) {
-			printf("\n[D] thread_process %i\n",__LINE__);
+			printf("\n[D] thread_process %i\n",__LINE__ -1 );
 			fflush(stdout);
 		}
 		*/
@@ -3014,7 +2622,7 @@ void *thread_process(void *vargp)	{
 			}
 			/*
 			if(FLAGDEBUG) {
-				printf("\n[D] thread_process %i\n",__LINE__);
+				printf("\n[D] thread_process %i\n",__LINE__ -1 );
 				fflush(stdout);
 			}
 			*/
@@ -3101,7 +2709,7 @@ void *thread_process(void *vargp)	{
 				}
 				/*
 				if(FLAGDEBUG) {
-					printf("\n[D] thread_process %i\n",__LINE__);
+					printf("\n[D] thread_process %i\n",__LINE__ -1 );
 					fflush(stdout);
 				}
 				*/
@@ -3153,7 +2761,7 @@ void *thread_process(void *vargp)	{
 				
 				/*
 				if(FLAGDEBUG) {
-					printf("\n[D] thread_process %i\n",__LINE__);
+					printf("\n[D] thread_process %i\n",__LINE__ -1 );
 					fflush(stdout);
 				}
 				*/
@@ -3293,10 +2901,9 @@ void *thread_process(void *vargp)	{
 														
 														publickey = secp->ComputePublicKey(&keyfound);
 														secp->GetHash160(P2PKH,true,publickey,(uint8_t*)publickeyhashrmd160);
-														if(memcmp(publickeyhashrmd160_endomorphism[l][k],publickeyhashrmd160,20) != 0){
+														if(memcmp(publickeyhashrmd160_endomorphism[l][k],publickeyhashrmd160,20) != 0)	{
 															keyfound.Neg();
 															keyfound.Add(&secp->order);
-															//if(FLAGDEBUG) printf("[D] Key need to be negated\n");
 														}
 														writekey(true,&keyfound);
 													}
@@ -3370,7 +2977,7 @@ void *thread_process(void *vargp)	{
 							}
 							/*
 							if(FLAGDEBUG) {
-								printf("\n[D] thread_process %i\n",__LINE__);
+								printf("\n[D] thread_process %i\n",__LINE__ -1 );
 								fflush(stdout);
 							}
 							*/
@@ -3482,7 +3089,7 @@ void *thread_process(void *vargp)	{
 				}
 				/*
 				if(FLAGDEBUG) {
-					printf("\n[D] thread_process %i\n",__LINE__);
+					printf("\n[D] thread_process %i\n",__LINE__ -1 );
 					fflush(stdout);
 				}
 				*/
@@ -5088,30 +4695,30 @@ void *thread_pub2rmd(void *vargp)	{
 				RMD160Data((const unsigned char*)digest256,32, digest160);
 				r = bloom_check(&bloom,digest160,MAXLENGTHADDRESS);
 				if(r)  {
-						r = searchbinary(addressTable,digest160,N);
-						if(r)	{
-							temphex = tohex((char*)&pub,33);
-							printf("\nHit: Publickey found %s\n",temphex);
-							fd = fopen("KEYFOUNDKEYFOUND.txt","a+");
-							if(fd != NULL)	{
+					r = searchbinary(addressTable,digest160,N);
+					if(r)	{
+						temphex = tohex((char*)&pub,33);
+						printf("\nHit: Publickey found %s\n",temphex);
+						fd = fopen("KEYFOUNDKEYFOUND.txt","a+");
+						if(fd != NULL)	{
 #if defined(_WIN64) && !defined(__CYGWIN__)
-								WaitForSingleObject(write_keys, INFINITE);
-								fprintf(fd,"Publickey found %s\n",temphex);
-								fclose(fd);
-								ReleaseMutex(write_keys);
+							WaitForSingleObject(write_keys, INFINITE);
+							fprintf(fd,"Publickey found %s\n",temphex);
+							fclose(fd);
+							ReleaseMutex(write_keys);
 #else
-								pthread_mutex_lock(&write_keys);
-								fprintf(fd,"Publickey found %s\n",temphex);
-								fclose(fd);
-								pthread_mutex_unlock(&write_keys);
+							pthread_mutex_lock(&write_keys);
+							fprintf(fd,"Publickey found %s\n",temphex);
+							fclose(fd);
+							pthread_mutex_unlock(&write_keys);
 #endif
-							}
-							else	{
-								fprintf(stderr,"\nPublickey found %s\nbut the file can't be open\n",temphex);
-								exit(0);
-							}
-							free(temphex);
 						}
+						else	{
+							fprintf(stderr,"\nPublickey found %s\nbut the file can't be open\n",temphex);
+							exit(0);
+						}
+						free(temphex);
+					}
 				}
 				pub.parity = 0x03;
 				sha256((uint8_t*)&pub, 33,(uint8_t*) digest256);
@@ -6699,7 +6306,7 @@ void menu() {
 	printf("-C mini     Set the minikey Base only 22 character minikeys, ex: SRPqx8QiwnW4WNWnTVa2W5\n");
 	printf("-8 alpha    Set the bas58 alphabet for minikeys\n");
 	printf("-e          Enable endomorphism search (Only for address, rmd160 and vanity)\n");
-	printf("-f file     Specify filename with addresses or xpoints or uncompressed public keys\n");
+	printf("-f file     Specify file name with addresses or xpoints or uncompressed public keys\n");
 	printf("-I stride   Stride for xpoint, rmd160 and address, this option don't work with bsgs\n");
 	printf("-k value    Use this only with bsgs mode, k value is factor for M, more speed but more RAM use wisely\n");
 	printf("-l look     What type of address/hash160 are you looking for <compress, uncompress, both> Only for rmd160 and address\n");
@@ -6714,6 +6321,7 @@ void menu() {
 	printf("-S          S is for SAVING in files BSGS data (Bloom filters and bPtable)\n");
 	printf("-t tn       Threads number, must be a positive integer\n");
 	printf("-v value    Search for vanity Address, only with -m address and rmd160\n");
+	printf("-z value    Bloom size multiplier, only address,rmd160,vanity, xpoint, value >= 1\n");
 	printf("\nExample:\n\n");
 	printf("./keyhunt -m rmd160 -f tests/unsolvedpuzzles.rmd -b 66 -l compress -R -q -t 8\n\n");
 	printf("This line runs the program with 8 threads from the range 20000000000000000 to 40000000000000000 without stats output\n\n");
@@ -6725,7 +6333,7 @@ void menu() {
 bool vanityrmdmatch(unsigned char *rmdhash)	{
 	bool r = false;
 	int i,j,cmpA,cmpB,result;
-	result = bloom_check(&bloom,rmdhash,vanity_rmd_minimun_bytes_check_length);
+	result = bloom_check(vanity_bloom,rmdhash,vanity_rmd_minimun_bytes_check_length);
 	switch(result)	{
 		case -1:
 			fprintf(stderr,"[E] Bloom is not initialized\n");
@@ -6801,7 +6409,7 @@ int addvanity(char *target)	{
 	
 	//if(FLAGDEBUG) printf("[D] target = %s , size %i\n",target,stringsize);
 	
-	if(stringsize >= 25 )	{
+	if(stringsize >= 30 )	{
 		//if(FLAGDEBUG) printf("[D] not added %s\n",target);
 		return 0;
 	}
@@ -6813,13 +6421,13 @@ int addvanity(char *target)	{
 	
 	j = 0;
 	vanity_address_targets = (char**)  realloc(vanity_address_targets,(vanity_rmd_targets+1) * sizeof(char*));
-	checkpointer((void *)vanity_address_targets,__FILE__,"realloc","vanity_address_targets" ,__LINE__);
+	checkpointer((void *)vanity_address_targets,__FILE__,"realloc","vanity_address_targets" ,__LINE__ -1 );
 	vanity_rmd_limits = (int*) realloc(vanity_rmd_limits,(vanity_rmd_targets+1) * sizeof(int));
-	checkpointer((void *)vanity_rmd_limits,__FILE__,"realloc","vanity_rmd_limits" ,__LINE__);
+	checkpointer((void *)vanity_rmd_limits,__FILE__,"realloc","vanity_rmd_limits" ,__LINE__ -1 );
 	vanity_rmd_limit_values_A = (uint8_t***)realloc(vanity_rmd_limit_values_A,(vanity_rmd_targets+1) * sizeof(unsigned char *));
-	checkpointer((void *)vanity_rmd_limit_values_A,__FILE__,"realloc","vanity_rmd_limit_values_A" ,__LINE__);
+	checkpointer((void *)vanity_rmd_limit_values_A,__FILE__,"realloc","vanity_rmd_limit_values_A" ,__LINE__ -1 );
 	vanity_rmd_limit_values_B = (uint8_t***)realloc(vanity_rmd_limit_values_B,(vanity_rmd_targets+1) * sizeof(unsigned char *));
-	checkpointer((void *)vanity_rmd_limit_values_B,__FILE__,"realloc","vanity_rmd_limit_values_B" ,__LINE__);
+	checkpointer((void *)vanity_rmd_limit_values_B,__FILE__,"realloc","vanity_rmd_limit_values_B" ,__LINE__ -1 );
 	do	{
 		raw_value_length = 50;
 		b58tobin(raw_value_A,&raw_value_length,target_copy,stringsize);
@@ -6831,9 +6439,9 @@ int addvanity(char *target)	{
 			b58tobin(raw_value_A,&raw_value_length,target_copy,stringsize);
 			
 			vanity_rmd_limit_values_A[vanity_rmd_targets] = (uint8_t**)realloc(vanity_rmd_limit_values_A[vanity_rmd_targets],(j+1) * sizeof(unsigned char *));
-			checkpointer((void *)vanity_rmd_limit_values_A[vanity_rmd_targets],__FILE__,"realloc","vanity_rmd_limit_values_A" ,__LINE__);
+			checkpointer((void *)vanity_rmd_limit_values_A[vanity_rmd_targets],__FILE__,"realloc","vanity_rmd_limit_values_A" ,__LINE__ -1 );
 			vanity_rmd_limit_values_A[vanity_rmd_targets][j] = (uint8_t*)calloc(20,1);
-			checkpointer((void *)vanity_rmd_limit_values_A[vanity_rmd_targets][j],__FILE__,"realloc","vanity_rmd_limit_values_A" ,__LINE__);
+			checkpointer((void *)vanity_rmd_limit_values_A[vanity_rmd_targets][j],__FILE__,"realloc","vanity_rmd_limit_values_A" ,__LINE__ -1 );
 			
 			memcpy(vanity_rmd_limit_values_A[vanity_rmd_targets][j] ,raw_value_A +1,20);
 			
@@ -6870,11 +6478,12 @@ int addvanity(char *target)	{
 			
 			b58tobin(raw_value_B,&raw_value_length,target_copy,stringsize);
 			vanity_rmd_limit_values_B[vanity_rmd_targets] = (uint8_t**)realloc(vanity_rmd_limit_values_B[vanity_rmd_targets],(j+1) * sizeof(unsigned char *));
-			checkpointer((void *)vanity_rmd_limit_values_B[vanity_rmd_targets],__FILE__,"realloc","vanity_rmd_limit_values_B" ,__LINE__);
-			checkpointer((void *)vanity_rmd_limit_values_B[vanity_rmd_targets],__FILE__,"realloc","vanity_rmd_limit_values_B" ,__LINE__);
+			checkpointer((void *)vanity_rmd_limit_values_B[vanity_rmd_targets],__FILE__,"realloc","vanity_rmd_limit_values_B" ,__LINE__ -1 );
+			checkpointer((void *)vanity_rmd_limit_values_B[vanity_rmd_targets],__FILE__,"realloc","vanity_rmd_limit_values_B" ,__LINE__ -1 );
 			vanity_rmd_limit_values_B[vanity_rmd_targets][j] = (uint8_t*)calloc(20,1);
-			checkpointer((void *)vanity_rmd_limit_values_B[vanity_rmd_targets][j],__FILE__,"calloc","vanity_rmd_limit_values_B" ,__LINE__);
+			checkpointer((void *)vanity_rmd_limit_values_B[vanity_rmd_targets][j],__FILE__,"calloc","vanity_rmd_limit_values_B" ,__LINE__ -1 );
 			memcpy(vanity_rmd_limit_values_B[vanity_rmd_targets][j],raw_value_B+1,20);
+			
 			/*
 			if(FLAGDEBUG)	{
 				hextemp = tohex((char*)vanity_rmd_limit_values_B[vanity_rmd_targets][j],20);
@@ -6882,6 +6491,7 @@ int addvanity(char *target)	{
 				free(hextemp);
 			}
 			*/
+			
 			j++;				
 			values_B_size = j;
 			
@@ -6890,7 +6500,6 @@ int addvanity(char *target)	{
 		}
 	}while(raw_value_length <= 25);
 	
-	//if(FLAGDEBUG) printf("[D] values_A_size %i, values_B_size %i\n",values_A_size,values_B_size);¿
 	if(values_A_size >= 1 && values_B_size >= 1)	{
 		if(values_A_size != values_B_size)	{
 			if(values_A_size > values_B_size)
@@ -6908,14 +6517,13 @@ int addvanity(char *target)	{
 			}
 		}
 		vanity_address_targets[vanity_rmd_targets] = (char*) calloc(targetsize+1,sizeof(char));
-		checkpointer((void *)vanity_address_targets[vanity_rmd_targets],__FILE__,"calloc","vanity_address_targets" ,__LINE__);
+		checkpointer((void *)vanity_address_targets[vanity_rmd_targets],__FILE__,"calloc","vanity_address_targets" ,__LINE__ -1 );
 		strncpy(vanity_address_targets[vanity_rmd_targets],target,targetsize);
 		vanity_rmd_limits[vanity_rmd_targets] = r;
 		vanity_rmd_total+=r;
 		vanity_rmd_targets++;
 	}
 	else	{
-		//if(FLAGDEBUG) printf("[D] not added %s\n",target);
 		for(j = 0; j < values_A_size;j++)	{
 			free(vanity_rmd_limit_values_A[vanity_rmd_targets][j]);
 		}
@@ -6967,24 +6575,13 @@ void writekey(bool compressed,Int *key)	{
 	char *hextemp,*hexrmd,public_key_hex[132],address[50],rmdhash[20];
 	memset(address,0,50);
 	memset(public_key_hex,0,132);
-	/*
-	if(FLAGDEBUG) {
-		printf("\n[D] thread_process %i\n",__LINE__);
-		fflush(stdout);
-	}
-	*/
 	hextemp = key->GetBase16();
 	publickey = secp->ComputePublicKey(key);
 	secp->GetPublicKeyHex(compressed,publickey,public_key_hex);
 	secp->GetHash160(P2PKH,compressed,publickey,(uint8_t*)rmdhash);
 	hexrmd = tohex(rmdhash,20);
 	rmd160toaddress_dst(rmdhash,address);
-	/*
-	if(FLAGDEBUG) {
-		printf("\n[D] thread_process %i\n",__LINE__);
-		fflush(stdout);
-	}
-	*/
+
 #if defined(_WIN64) && !defined(__CYGWIN__)
 	WaitForSingleObject(write_keys, INFINITE);
 #else
@@ -7020,4 +6617,619 @@ bool isValidBase58String(char *str)	{
 		continuar = isBase58(str[i]);
 	}
 	return continuar;
+}
+
+bool processOneVanity()	{
+	int i,K;
+	if(vanity_rmd_targets == 0)	{
+		fprintf(stderr,"[E] There aren't any vanity targets\n");
+		return false;
+	}
+
+	if(!initBloomFilter(vanity_bloom, vanity_rmd_total))
+		return false;
+	
+	while(i < vanity_rmd_targets)	{
+		for(int k = 0; k < vanity_rmd_limits[i]; k++)	{
+			bloom_add(vanity_bloom, vanity_rmd_limit_values_A[i][k] ,vanity_rmd_minimun_bytes_check_length);
+		}
+		i++;
+	}
+	return true;
+}
+
+
+bool readFileVanity(char *fileName)	{
+	FILE *fileDescriptor;
+	int i,K,len;
+	char aux[100],*hextemp;
+
+	fileDescriptor = fopen(fileName,"r");
+	if(fileDescriptor == NULL)	{
+		if(vanity_rmd_targets == 0)	{
+			fprintf(stderr,"[E] There aren't any vanity targets\n");
+			return false;
+		}
+	}
+	else	{
+	
+		while(!feof(fileDescriptor))	{
+			hextemp = fgets(aux,100,fileDescriptor);
+			if(hextemp == aux)	{
+				trim(aux," \t\n\r");
+				len = strlen(aux);
+				if(len > 0 && len < 36){
+					if(isValidBase58String(aux))	{
+						addvanity(aux);
+					}
+					else	{
+						fprintf(stderr,"[E] the string \"%s\" is not valid Base58, omiting it\n",aux);
+					}
+				}
+			}
+		}
+		fclose(fileDescriptor);
+	}
+	
+	N = vanity_rmd_total;
+	if(!initBloomFilter(vanity_bloom,N))
+		return false;
+	
+	i = 0;
+	while(i < vanity_rmd_targets)	{
+		for(int k = 0; k < vanity_rmd_limits[i]; k++)	{
+			/*
+			if(FLAGDEBUG)	{
+				printf("[D] i %i ; k %i\n",i,k);
+				hextemp = tohex((char*)vanity_rmd_limit_values_A[i][k],vanity_rmd_minimun_bytes_check_length);
+				printf("[D] Adding %s\n",hextemp);
+				fflush(stdout);
+				free(hextemp);
+			}
+			*/
+			bloom_add(vanity_bloom, vanity_rmd_limit_values_A[i][k] ,vanity_rmd_minimun_bytes_check_length);
+		}
+		i++;
+	}
+	return true;
+}
+
+bool readFileAddress(char *fileName)	{
+	FILE *fileDescriptor;
+	char fileBloomName[30],*hextemp;	/* Actually it is Bloom and Table but just to keep the variable name short*/
+	uint8_t checksum[32],hexPrefix[9];
+	char dataChecksum[32],bloomChecksum[32];
+	size_t bytesRead;
+	uint64_t dataSize;
+	/*
+		if the FLAGSAVEREADFILE is Set to 1 we need to the checksum and check if we have that information already saved
+	*/
+	if(FLAGSAVEREADFILE)	{	/* if the flag is set to REAd and SAVE the file firs we need to check it the file exist*/
+		if(!sha256_file((const char*)fileName,checksum)){
+			fprintf(stderr,"[E] sha256_file error line %i\n",__LINE__ - 1);
+			return false;
+		}
+		tohex_dst((char*)checksum,4,(char*)hexPrefix); // we save the prefix (last fourt bytes) hexadecimal value
+		snprintf(fileBloomName,30,"data_%s.dat",hexPrefix);
+		fileDescriptor = fopen(fileBloomName,"rb");
+		if(fileDescriptor != NULL)	{
+			printf("[+] Reading file %s\n",fileBloomName);
+		
+			//read bloom checksum (expected value to be checked)
+			//read bloom filter structure
+			//read bloom filter data
+			//calculate checksum of the current readed data
+			//Compare checksums
+			//read data checksum (expected value to be checked)
+			//read data size
+			//read data
+			//compare the expected datachecksum againts the current data checksum
+			//compare the expected bloom checksum againts the current bloom checksum
+			
+
+			//read bloom checksum (expected value to be checked)
+			bytesRead = fread(bloomChecksum,1,32,fileDescriptor);
+			if(bytesRead != 32)	{
+				fprintf(stderr,"[E] Errore reading file, code line %i\n",__LINE__ - 2);
+				fclose(fileDescriptor);
+				return false;
+			}
+			
+			//read bloom filter structure
+			bytesRead = fread(&bloom,1,sizeof(struct bloom),fileDescriptor);
+			if(bytesRead != sizeof(struct bloom))	{
+				fprintf(stderr,"[E] Error reading file, code line %i\n",__LINE__ - 2);
+				fclose(fileDescriptor);
+				return false;
+			}
+			
+			printf("[+] Bloom filter for %" PRIu64 " elements.\n",bloom.entries);
+			
+			bloom.bf = (uint8_t*) malloc(bloom.bytes);
+			if(bloom.bf == NULL)	{
+				fprintf(stderr,"[E] Error allocating memory, code line %i\n",__LINE__ - 2);
+				fclose(fileDescriptor);
+				return false;
+			}
+
+			//read bloom filter data
+			bytesRead = fread(bloom.bf,1,bloom.bytes,fileDescriptor);
+			if(bytesRead != bloom.bytes)	{
+				fprintf(stderr,"[E] Error reading file, code line %i\n",__LINE__ - 2);
+				fclose(fileDescriptor);
+				return false;
+			}
+
+			//calculate checksum of the current readed data
+			sha256((uint8_t*)bloom.bf,bloom.bytes,(uint8_t*)checksum);
+			
+			//Compare checksums
+			/*
+			if(FLAGDEBUG)	{
+				hextemp = tohex((char*)checksum,32);
+				printf("[D] Current Bloom checksum %s\n",hextemp);
+				free(hextemp);
+			}
+			*/
+			if(memcmp(checksum,bloomChecksum,32) != 0)	{
+				fprintf(stderr,"[E] Error checksum mismatch, code line %i\n",__LINE__ - 2);
+				fclose(fileDescriptor);
+				return false;
+			}
+			
+			/*
+			if(FLAGDEBUG) {
+				hextemp = tohex((char*)bloom.bf,32);
+				printf("[D] first 32 bytes of the bloom : %s\n",hextemp);
+				bloom_print(&bloom);
+				printf("[D] bloom.bf points to %p\n",bloom.bf);
+			}
+			*/
+			
+			bytesRead = fread(dataChecksum,1,32,fileDescriptor);
+			if(bytesRead != 32)	{
+				fprintf(stderr,"[E] Errore reading file, code line %i\n",__LINE__ - 2);
+				fclose(fileDescriptor);
+				return false;
+			}
+			
+			bytesRead = fread(&dataSize,1,sizeof(uint64_t),fileDescriptor);
+			if(bytesRead != sizeof(uint64_t))	{
+				fprintf(stderr,"[E] Errore reading file, code line %i\n",__LINE__ - 2);
+				fclose(fileDescriptor);
+				return false; 
+			}
+			N = dataSize / sizeof(struct address_value);
+	
+			printf("[+] Allocating memory for %" PRIu64 " elements: %.2f MB\n",N,(double)(((double) sizeof(struct address_value)*N)/(double)1048576));
+			
+			addressTable = (struct address_value*) malloc(dataSize);
+			if(addressTable == NULL)	{
+				fprintf(stderr,"[E] Error allocating memory, code line %i\n",__LINE__ - 2);
+				fclose(fileDescriptor);
+				return false;
+			}
+			
+			bytesRead = fread(addressTable,1,dataSize,fileDescriptor);
+			if(bytesRead != dataSize)	{
+				fprintf(stderr,"[E] Error reading file, code line %i\n",__LINE__ - 2);
+				fclose(fileDescriptor);
+				return false;
+			}
+			
+			sha256((uint8_t*)addressTable,dataSize,(uint8_t*)checksum);
+			if(memcmp(checksum,dataChecksum,32) != 0)	{
+				fprintf(stderr,"[E] Error checksum mismatch, code line %i\n",__LINE__ - 2);
+				fclose(fileDescriptor);
+				return false;
+			}
+			//printf("[D] bloom.bf points to %p\n",bloom.bf);
+			FLAGREADEDFILE1 = 1;	/* We mark the file as readed*/
+			fclose(fileDescriptor);
+			MAXLENGTHADDRESS = sizeof(struct address_value);
+		}
+	}
+	if(FLAGVANITY)	{
+		processOneVanity();
+	}
+	if(!FLAGREADEDFILE1)	{
+		/*
+			if the data_ file doesn't exist we need read it first:
+		*/
+		switch(FLAGMODE)	{
+			case MODE_ADDRESS:
+				if(FLAGCRYPTO == CRYPTO_BTC)	{
+					return forceReadFileAddress(fileName);
+				}
+				if(FLAGCRYPTO == CRYPTO_ETH)	{
+					return forceReadFileAddressEth(fileName);
+				}
+			break;
+			case MODE_MINIKEYS:
+			case MODE_PUB2RMD:
+			case MODE_RMD160:
+				return forceReadFileAddress(fileName);
+			break;
+			case MODE_XPOINT:
+				return forceReadFileXPoint(fileName);
+			break;
+			default:
+				return false;
+			break;
+		}
+	}
+	return true;
+}
+
+bool forceReadFileAddress(char *fileName)	{
+	/* Here we read the original file as usual */
+	FILE *fileDescriptor;
+	bool validAddress;
+	uint64_t numberItems,i;
+	size_t r,raw_value_length;
+	uint8_t rawvalue[50];
+	char aux[100],*hextemp;
+	fileDescriptor = fopen(fileName,"r");	
+	if(fileDescriptor == NULL)	{
+		fprintf(stderr,"[E] Error opening the file %s, line %i\n",fileName,__LINE__ - 2);
+		return false;
+	}
+
+	/*Count lines in the file*/
+	numberItems = 0;
+	while(!feof(fileDescriptor))	{
+		hextemp = fgets(aux,100,fileDescriptor);
+		trim(aux," \t\n\r");
+		if(hextemp == aux)	{			
+			r = strlen(aux);
+			if(r > 20)	{ 
+				numberItems++;
+			}
+		}
+	}
+	fseek(fileDescriptor,0,SEEK_SET);
+	MAXLENGTHADDRESS = 20;		/*20 bytes beacuase we only need the data in binary*/
+	
+	printf("[+] Allocating memory for %" PRIu64 " elements: %.2f MB\n",numberItems,(double)(((double) sizeof(struct address_value)*numberItems)/(double)1048576));
+	addressTable = (struct address_value*) malloc(sizeof(struct address_value)*numberItems);
+	checkpointer((void *)addressTable,__FILE__,"malloc","addressTable" ,__LINE__ -1 );
+		
+	if(!initBloomFilter(&bloom,numberItems))
+		return false;
+	
+	while(i < numberItems)	{
+		validAddress = false;
+		memset(aux,0,100);
+		memset(addressTable[i].value,0,sizeof(struct address_value));
+		hextemp = fgets(aux,100,fileDescriptor);
+		trim(aux," \t\n\r");			
+		r = strlen(aux);
+		if(r > 0 && r <= 40)	{
+			if(r<40 && isValidBase58String(aux))	{	//Address
+				raw_value_length = 25;
+				b58tobin(rawvalue,&raw_value_length,aux,r);
+				if(raw_value_length == 25)	{
+					//hextemp = tohex((char*)rawvalue+1,20);
+					bloom_add(&bloom, rawvalue+1 ,sizeof(struct address_value));
+					memcpy(addressTable[i].value,rawvalue+1,sizeof(struct address_value));											
+					i++;
+					validAddress = true;
+				}
+			}
+			if(r == 40 && isValidHex(aux))	{	//RMD
+				hexs2bin(aux,rawvalue);				
+				bloom_add(&bloom, rawvalue ,sizeof(struct address_value));
+				memcpy(addressTable[i].value,rawvalue,sizeof(struct address_value));											
+				i++;
+				validAddress = true;
+			}
+		}
+		if(!validAddress)	{
+			fprintf(stderr,"[I] Ommiting invalid line %s\n",aux);
+			numberItems--;
+		}
+	}
+	N = numberItems;
+	return true;
+}
+
+bool forceReadFileAddressEth(char *fileName)	{
+	/* Here we read the original file as usual */
+	FILE *fileDescriptor;
+	bool validAddress;
+	uint64_t numberItems,i;
+	size_t r,raw_value_length;
+	uint8_t rawvalue[50];
+	char aux[100],*hextemp;
+	fileDescriptor = fopen(fileName,"r");	
+	if(fileDescriptor == NULL)	{
+		fprintf(stderr,"[E] Error opening the file %s, line %i\n",fileName,__LINE__ - 2);
+		return false;
+	}
+	/*Count lines in the file*/
+	numberItems = 0;
+	while(!feof(fileDescriptor))	{
+		hextemp = fgets(aux,100,fileDescriptor);
+		trim(aux," \t\n\r");
+		if(hextemp == aux)	{			
+			r = strlen(aux);
+			if(r >= 40)	{ 
+				numberItems++;
+			}
+		}
+	}
+	fseek(fileDescriptor,0,SEEK_SET);
+
+	MAXLENGTHADDRESS = 20;		/*20 bytes beacuase we only need the data in binary*/
+	N = numberItems;
+	
+	printf("[+] Allocating memory for %" PRIu64 " elements: %.2f MB\n",numberItems,(double)(((double) sizeof(struct address_value)*numberItems)/(double)1048576));
+	addressTable = (struct address_value*) malloc(sizeof(struct address_value)*numberItems);
+	checkpointer((void *)addressTable,__FILE__,"malloc","addressTable" ,__LINE__ -1 );
+	
+	
+	if(!initBloomFilter(&bloom,N))
+		return false;
+	
+	while(i < numberItems)	{
+		validAddress = false;
+		memset(aux,0,100);
+		memset(addressTable[i].value,0,sizeof(struct address_value));
+		hextemp = fgets(aux,100,fileDescriptor);
+		trim(aux," \t\n\r");			
+		r = strlen(aux);
+		if(r >= 40 && r <= 42 && isValidHex(aux)){
+			switch(r)		{
+				case 40:
+					hexs2bin(aux,rawvalue);
+					bloom_add(&bloom, rawvalue ,sizeof(struct address_value));
+					memcpy(addressTable[i].value,rawvalue+1,sizeof(struct address_value));											
+					i++;
+					validAddress = true;
+				break;
+				case 42:
+					hexs2bin(aux+2,rawvalue);
+					bloom_add(&bloom, rawvalue ,sizeof(struct address_value));
+					memcpy(addressTable[i].value,rawvalue+1,sizeof(struct address_value));											
+					i++;
+					validAddress = true;
+
+				break;
+			}
+		}
+		if(!validAddress)	{
+			fprintf(stderr,"[I] Ommiting invalid line %s\n",aux);
+			numberItems--;
+		}
+	}
+	
+	fclose(fileDescriptor);
+	return true;
+}
+
+
+
+bool forceReadFileXPoint(char *fileName)	{
+	/* Here we read the original file as usual */
+	FILE *fileDescriptor;
+	bool validAddress;
+	uint64_t numberItems,i;
+	size_t r,raw_value_length,lenaux;
+	uint8_t rawvalue[100];
+	char aux[1000],*hextemp;
+	Tokenizer tokenizer_xpoint;	//tokenizer
+	fileDescriptor = fopen(fileName,"r");	
+	if(fileDescriptor == NULL)	{
+		fprintf(stderr,"[E] Error opening the file %s, line %i\n",fileName,__LINE__ - 2);
+		return false;
+	}
+	/*Count lines in the file*/
+	numberItems = 0;
+	while(!feof(fileDescriptor))	{
+		hextemp = fgets(aux,1000,fileDescriptor);
+		trim(aux," \t\n\r");
+		if(hextemp == aux)	{			
+			r = strlen(aux);
+			if(r >= 40)	{ 
+				numberItems++;
+			}
+		}
+	}
+	fseek(fileDescriptor,0,SEEK_SET);
+
+	MAXLENGTHADDRESS = 20;		/*20 bytes beacuase we only need the data in binary*/
+	
+	printf("[+] Allocating memory for %" PRIu64 " elements: %.2f MB\n",numberItems,(double)(((double) sizeof(struct address_value)*numberItems)/(double)1048576));
+	addressTable = (struct address_value*) malloc(sizeof(struct address_value)*numberItems);
+	checkpointer((void *)addressTable,__FILE__,"malloc","addressTable" ,__LINE__ - 1);
+	
+	N = numberItems;
+	
+	if(!initBloomFilter(&bloom,N))
+		return false;
+		
+	while(i < N)	{
+		memset(aux,0,1000);
+		hextemp = fgets(aux,1000,fileDescriptor);
+		memset((void *)&addressTable[i],0,sizeof(struct address_value));
+		if(hextemp == aux)	{
+			trim(aux," \t\n\r");
+			stringtokenizer(aux,&tokenizer_xpoint);
+			hextemp = nextToken(&tokenizer_xpoint);
+			lenaux = strlen(hextemp);
+			if(isValidHex(hextemp)) {
+				switch(lenaux)	{
+					case 64:	/*X value*/
+						r = hexs2bin(aux,(uint8_t*) rawvalue);
+						if(r)	{
+							memcpy(addressTable[i].value,rawvalue,20);
+							bloom_add(&bloom,rawvalue,MAXLENGTHADDRESS);
+						}
+						else	{
+							fprintf(stderr,"[E] error hexs2bin\n");
+						}
+					break;
+					case 66:	/*Compress publickey*/
+						r = hexs2bin(aux+2, (uint8_t*)rawvalue);
+						if(r)	{
+							memcpy(addressTable[i].value,rawvalue,20);
+							bloom_add(&bloom,rawvalue,MAXLENGTHADDRESS);
+						}
+						else	{
+							fprintf(stderr,"[E] error hexs2bin\n");
+						}
+					break;
+					case 130:	/* Uncompress publickey length*/
+						r = hexs2bin(aux, (uint8_t*) rawvalue);
+						if(r)	{
+								memcpy(addressTable[i].value,rawvalue+2,20);
+								bloom_add(&bloom,rawvalue,MAXLENGTHADDRESS);
+						}
+						else	{
+							fprintf(stderr,"[E] error hexs2bin\n");
+						}
+					break;
+					default:
+						fprintf(stderr,"[E] Omiting line unknow length size %li: %s\n",lenaux,aux);
+					break;
+				}
+			}
+			else	{
+				fprintf(stderr,"[E] Ignoring invalid hexvalue %s\n",aux);
+			}
+			freetokenizer(&tokenizer_xpoint);
+		}
+		else	{
+			fprintf(stderr,"[E] Omiting line : %s\n",aux);
+			N--;
+		}
+		i++;
+	}
+	fclose(fileDescriptor);
+	return true;
+}
+
+
+/*
+	I write this as a function because i have the same segment of code in 3 different functions
+*/
+
+bool initBloomFilter(struct bloom *bloom_arg,uint64_t items_bloom)	{
+	bool r = true;
+	printf("[+] Bloom filter for %" PRIu64 " elements.\n",items_bloom);
+	if(items_bloom <= 10000)	{
+		if(bloom_init2(bloom_arg,10000,0.000001) == 1){
+			fprintf(stderr,"[E] error bloom_init for 10000 elements.\n");
+			r = false;
+		}
+	}
+	else	{
+		if(bloom_init2(bloom_arg,FLAGBLOOMMULTIPLIER*items_bloom,0.000001)	== 1){
+			fprintf(stderr,"[E] error bloom_init for %" PRIu64 " elements.\n",items_bloom);
+			r = false;
+		}
+	}
+	return r;
+}
+
+void writeFileIfNeeded(const char *fileName)	{
+	//printf("[D] FLAGSAVEREADFILE %i, FLAGREADEDFILE1 %i\n",FLAGSAVEREADFILE,FLAGREADEDFILE1);
+	if(FLAGSAVEREADFILE && !FLAGREADEDFILE1)	{
+		FILE *fileDescriptor;
+		char fileBloomName[30],*hextemp;
+		uint8_t checksum[32],hexPrefix[9];
+		char dataChecksum[32],bloomChecksum[32];
+		size_t bytesWrite;
+		uint64_t dataSize;
+		if(!sha256_file((const char*)fileName,checksum)){
+			fprintf(stderr,"[E] sha256_file error line %i\n",__LINE__ - 1);
+			exit(0);
+		}
+		tohex_dst((char*)checksum,4,(char*)hexPrefix); // we save the prefix (last fourt bytes) hexadecimal value
+		snprintf(fileBloomName,30,"data_%s.dat",hexPrefix);
+		fileDescriptor = fopen(fileBloomName,"wb");
+		dataSize = N * (sizeof(struct address_value));
+		printf("[D] size data %li\n",dataSize);
+		if(fileDescriptor != NULL)	{
+			printf("[+] Writing file %s ",fileBloomName);
+			
+
+			//calculate bloom checksum
+			//write bloom checksum (expected value to be checked)
+			//write bloom filter structure
+			//write bloom filter data
+
+
+			//calculate dataChecksum
+			//write data checksum (expected value to be checked)
+			//write data size
+			//write data
+			
+			
+			
+
+			sha256((uint8_t*)bloom.bf,bloom.bytes,(uint8_t*)bloomChecksum);
+			printf(".");
+			bytesWrite = fwrite(bloomChecksum,1,32,fileDescriptor);
+			if(bytesWrite != 32)	{
+				fprintf(stderr,"[E] Errore writing file, code line %i\n",__LINE__ - 2);
+				exit(0);
+			}
+			printf(".");
+			
+			bytesWrite = fwrite(&bloom,1,sizeof(struct bloom),fileDescriptor);
+			if(bytesWrite != sizeof(struct bloom))	{
+				fprintf(stderr,"[E] Error writing file, code line %i\n",__LINE__ - 2);
+				exit(0);
+			}
+			printf(".");
+			
+			bytesWrite = fwrite(bloom.bf,1,bloom.bytes,fileDescriptor);
+			if(bytesWrite != bloom.bytes)	{
+				fprintf(stderr,"[E] Error writing file, code line %i\n",__LINE__ - 2);
+				fclose(fileDescriptor);
+				exit(0);
+			}
+			printf(".");
+			
+			/*
+			if(FLAGDEBUG)	{
+				hextemp = tohex((char*)bloom.bf,32);
+				printf("\n[D] first 32 bytes bloom : %s\n",hextemp);
+				bloom_print(&bloom);
+				free(hextemp);
+			}
+			*/
+
+			
+			
+			sha256((uint8_t*)addressTable,dataSize,(uint8_t*)dataChecksum);
+			printf(".");
+
+			bytesWrite = fwrite(dataChecksum,1,32,fileDescriptor);
+			if(bytesWrite != 32)	{
+				fprintf(stderr,"[E] Errore writing file, code line %i\n",__LINE__ - 2);
+				exit(0);
+			}
+			printf(".");	
+			
+			bytesWrite = fwrite(&dataSize,1,sizeof(uint64_t),fileDescriptor);
+			if(bytesWrite != sizeof(uint64_t))	{
+				fprintf(stderr,"[E] Errore writing file, code line %i\n",__LINE__ - 2);
+				exit(0);
+			}
+			printf(".");
+			
+			bytesWrite = fwrite(addressTable,1,dataSize,fileDescriptor);
+			if(bytesWrite != dataSize)	{
+				fprintf(stderr,"[E] Error writing file, code line %i\n",__LINE__ - 2);
+				exit(0);
+			}
+			printf(".");
+			
+			FLAGREADEDFILE1 = 1;	
+			fclose(fileDescriptor);		
+			printf("\n");
+		}
+	}
 }

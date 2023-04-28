@@ -1,4 +1,10 @@
-# 0.2.211117 SSE Trick or treat ¡Beta!
+# Version 0.2.230428 Satoshi Quest
+- Merge of address and rmd160 speeds
+- Added option for endomorphism
+- Added SAVE bloom filter and table option for adddress, rmd160, minikeys and xpoint
+- Improved Makefile options
+
+# Version 0.2.211117 SSE Trick or treat ¡Beta!
 - Minikeys new sequential generator and x2 times more speed
 - third bloom filter check for bsgs 20% less memory usage
 

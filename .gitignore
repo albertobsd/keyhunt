@@ -4,6 +4,7 @@ hexcharstoraw
 keyhunt
 KEYFOUNDKEYFOUND.txt
 VANITYKEYFOUND.txt
+*.dat
 *.tbl
 *.blm
 

@@ -500,3 +500,23 @@ std::string sha256_hex(unsigned char *digest) {
 
 }
 
+bool sha256_file(const char* file_name, uint8_t* checksum) {
+    FILE* file = fopen(file_name, "rb");
+    if (file == NULL) {
+        printf("Failed to open file: %s\n", file_name);
+        return false;
+    }
+    CSHA256 sha;
+    uint8_t buffer[8192]; // Buffer to read file contents
+    size_t bytes_read;
+
+	// Read file contents and update SHA256 context
+	while ((bytes_read = fread(buffer, 1, sizeof(buffer), file)) > 0) {
+		sha.Write( buffer, bytes_read);
+	}
+
+	// Finalize SHA256 computation
+	sha.Finalize(checksum);
+	fclose(file);
+	return true;
+}

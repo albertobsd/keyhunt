@@ -15,7 +15,14 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
 */
 
+
 #include "Random.h"
+
+#if defined(_WIN64) && !defined(__CYGWIN__)
+#else
+#include <sys/random.h>
+#include <linux/random.h>
+#endif
 
 #define  RK_STATE_LEN 624
 
@@ -96,22 +103,37 @@ inline unsigned long rk_random(rk_state *state)
 
 inline double rk_double(rk_state *state)
 {
-  /* shifts : 67108864 = 0x4000000, 9007199254740992 = 0x20000000000000 */
-  long a = rk_random(state) >> 5, b = rk_random(state) >> 6;
-  return (a * 67108864.0 + b) / 9007199254740992.0;
+	/* shifts : 67108864 = 0x4000000, 9007199254740992 = 0x20000000000000 */
+	long a = rk_random(state) >> 5, b = rk_random(state) >> 6;
+	return (a * 67108864.0 + b) / 9007199254740992.0;
 }
 
 // Initialise the random generator with the specified seed
 void rseed(unsigned long seed) {
-  rk_seed(seed,&localState);
-  //srand(seed);
+	rk_seed(seed,&localState);
+	//srand(seed);
 }
 
+#if defined(_WIN64) && !defined(__CYGWIN__)
 unsigned long rndl() {
-  return rk_random(&localState);
+	return rk_random(&localState);
 }
+#else
+unsigned long rndl() {
+	unsigned long r;
+	int bytes_read = getrandom(&r, sizeof(unsigned long), GRND_NONBLOCK );
+	if (bytes_read > 0) {
+		return r;
+	}
+	else	{
+		/*Fail safe */
+		return rk_random(&localState);
+	}
+}
+	
+#endif
 
 // Returns a uniform distributed double value in the interval ]0,1[
 double rnd() {
-  return rk_double(&localState);
+	return rk_double(&localState);
 }

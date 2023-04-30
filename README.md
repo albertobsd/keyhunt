@@ -136,29 +136,32 @@ To target that file we need to execute keyhunt with this line
 
 output:
 ```
-[+] Version 0.2.211007 Chocolate ¡Beta!
+[+] Version 0.2.230430 Satoshi Quest, developed by AlbertoBSD
 [+] Mode address
-[+] Matrix screen
-[+] Opening file tests/1to32.txt
 [+] Setting search for btc adddress
+[+] N = 0x100000000
+[+] Range
+[+] -- from : 0x1
+[+] -- to   : 0xffffffff
 [+] Allocating memory for 32 elements: 0.00 MB
 [+] Bloom filter for 32 elements.
-[+] Loading data to the bloomfilter total: 0.00 MB
-[+] Bloomfilter completed
+[+] Loading data to the bloomfilter total: 0.03 MB
 [+] Sorting data ... done! 32 values were loaded and sorted
 Base key: 1
-HIT!! PrivKey: 1
+Hit! Private Key: 1
 pubkey: 0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
-address: 1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH
-HIT!! PrivKey: 3
+Address 1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH
+rmd160 751e76e8199196d454941c45d1b3a323f1433bd6
+
+Hit! Private Key: 3
 pubkey: 02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9
-address: 1CUNEBjYrCn2y1SdiUMohaKUi4wpP326Lb
-HIT!! PrivKey: 7
+Address 1CUNEBjYrCn2y1SdiUMohaKUi4wpP326Lb
+rmd160 7dd65592d0ab2fe0d0257d571abf032cd9db93dc
+
+Hit! Private Key: 7
 pubkey: 025cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc
-address: 19ZewH8Kk1PDbSNdJ97FP4EiCjTRaZMZQA
-HIT!! PrivKey: 8
-pubkey: 022f01e5e15cca351daff3843fb70f3c2f0a1bdd05e5af888a67784ef3e10a2a01
-address: 1EhqbyUMvvs7BfL8goY6qcPbD6YKfPqb7e
+Address 19ZewH8Kk1PDbSNdJ97FP4EiCjTRaZMZQA
+rmd160 5dedfbf9ea599dd4e3ca6a80b333c472fd0b3f69
 (Output omitted)
 ```
 
@@ -170,24 +173,26 @@ Test your luck with the random parameter `-R` againts the puzzle #66
 ./keyhunt -m address -f tests/66.txt -b 66 -l compress -R -q -s 10
 ```
 
-Please note the change from `-r 1:FFFFFFFF` to `-b 64`, with -b you can specify the bit range
+Please note the change from `-r 1:FFFFFFFF` to `-b 66`, with -b you can specify the bit range
 
 output:
 ```
-[+] Version 0.2.211007 Chocolate ¡Beta!
+[+] Version 0.2.230430 Satoshi Quest, developed by AlbertoBSD
 [+] Mode address
 [+] Search compress only
 [+] Random mode
 [+] Quiet thread output
 [+] Stats output every 10 seconds
-[+] Opening file tests/64.txt
 [+] Setting search for btc adddress
+[+] N = 0x100000000
+[+] Bit Range 66
+[+] -- from : 0x20000000000000000
+[+] -- to   : 0x40000000000000000
 [+] Allocating memory for 1 elements: 0.00 MB
 [+] Bloom filter for 1 elements.
-[+] Loading data to the bloomfilter total: 0.00 MB
-[+] Bloomfilter completed
+[+] Loading data to the bloomfilter total: 0.03 MB
 [+] Sorting data ... done! 1 values were loaded and sorted
-[+] Total 6291456 keys in 20 seconds: 314572 keys/s
+^C] Total 47634432 keys in 10 seconds: ~4 Mkeys/s (4763443 keys/s)
 ```
 
 ### vanity search.
@@ -203,7 +208,7 @@ full command
 output:
 
 ```
-[+] Version 0.2.230428 Satoshi Quest, developed by AlbertoBSD
+[+] Version 0.2.230430 Satoshi Quest, developed by AlbertoBSD
 [+] Mode vanity
 [+] Search compress only
 [+] Random mode
@@ -213,43 +218,38 @@ output:
 [+] Bit Range 256
 [+] -- from : 0x8000000000000000000000000000000000000000000000000000000000000000
 [+] -- to   : 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141
-Base key: ca6e973e412404494cd35adfdf48accb241a3d1254c621f873842ccae33a0c39
-Vanity Private Key: 359168c1bedbfbb6b32ca52020b7533396949fd45a827e434c4e31c1ec77fc97
-pubkey: 0315f720aa46a9dd7b35fb9aa3a47225ba6747a1455375ca96eb3b298fa9b4c97f
-Address 1Good11yCbx7eukM9VL5ruonhi87j8gYdi
-rmd160 ad63f02070a0e04cc806f00f8b9f45ad0b2c2467
-
-Vanity Private Key: ca6e973e412404494cd35adfdf48accb241a3d1254c621f873842ccae75b25c7
-pubkey: 02204933f56c894d0aa3b56c9507048f74af903c70d19ca6c9cdcaacede8d7afe4
-Address 1MyKeyc98D6jBiSwza14cewRrz67ftW3Rp
-rmd160 e60961b9f1459c712803afce4dbb2965d306ff16
-^C] Total 70090752 keys in 30 seconds: ~2 Mkeys/s (2336358 keys/s)
+[+] Bloom filter for 4 elements.
+[+] Loading data to the bloomfilter total: 0.03 MB
+Base key: a5247120867e8d57b8908b0d962df84a924cba7f684903e2c942574353520a03
+Vanity Private Key: 5adb8edf798172a8476f74f269d207b42862226746ff9c58f69007497c0d7516
+pubkey: 0273267f9764b022bb462b359a12917dbb3568e4e6cd3aa2e846b8c1d9cae0363a
+Address 1Good1mjxXjNqb8TucvKjyCuZfihMZgFcc
+rmd160 ad63f02cb68254ce12982e5e312bd51e8a239a84
 ```
 
 
 command to search multiple vanity address from a file `-f filename.txt`.
 
 ```
-./keyhunt -m vanity -f filename.txt -l compress -R -b 256 
+./keyhunt -m vanity -f ~/main/keyhunt/vanitytargets.txt -l compress -R -b 256 -e -s 10 -q 
 ```
 
 Output:
 ```
-[+] Version 0.2.211012 Chocolate ¡Beta!, developed by AlbertoBSD
-[+] Mode address
+[+] Version 0.2.230430 Satoshi Quest, developed by AlbertoBSD
+[+] Mode vanity
 [+] Search compress only
 [+] Random mode
-[+] Added Vanity file : tests/vanitytargets.txt
-[D] Added Vanity search : 1GoodBoy
-[D] Added Vanity search : 1BadBoy
-[+] Opening file tests/unsolvedpuzzles.txt
-[+] Setting search for btc adddress
-[+] Allocating memory for 86 elements: 0.00 MB
-[+] Bloom filter for 86 elements.
-[+] Loading data to the bloomfilter total: 0.00 MB
-[+] Bloomfilter completed
-[+] Sorting data ... done! 86 values were loaded and sorted
-Base key: c0a082112714d9f4dba8bf07adb9bc2204c594b5c24270b0cb9a8ff6c2adc9c3
+[+] Endomorphism enabled
+[+] Stats output every 10 seconds
+[+] Quiet thread output
+[+] N = 0x100000000
+[+] Bit Range 256
+[+] -- from : 0x8000000000000000000000000000000000000000000000000000000000000000
+[+] -- to   : 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141
+[+] Bloom filter for 225 elements.
+[+] Loading data to the bloomfilter total: 0.03 MB
+^C] Total 58202112 keys in 10 seconds: ~5 Mkeys/s (5820211 keys/s)
 ```
 
 All the vanity address and his privatekeys will be saved in the file `VANITYKEYFOUND.txt` of your current directory
@@ -275,33 +275,34 @@ example file `tests/1to32.rmd` :
 to target that file you need to execute the next line:
 
 ```
-./keyhunt -m rmd160 -f tests/1to32.rmd -r 1:FFFFFFFF -l compress
+./keyhunt -m rmd160 -f tests/1to32.rmd -r 1:FFFFFFFF -l compress -s 5
 ```
 
 output:
 
 ```
-[+] Version 0.2.211007 Chocolate ¡Beta!
+[+] Version 0.2.230430 Satoshi Quest, developed by AlbertoBSD
 [+] Mode rmd160
 [+] Search compress only
-[+] Opening file tests/1to32.rmd
+[+] N = 0x100000000
+[+] Range
+[+] -- from : 0x1
+[+] -- to   : 0xffffffff
 [+] Allocating memory for 32 elements: 0.00 MB
 [+] Bloom filter for 32 elements.
-[+] Loading data to the bloomfilter total: 0.00 MB
-[+] Bloomfilter completed
+[+] Loading data to the bloomfilter total: 0.03 MB
 [+] Sorting data ... done! 32 values were loaded and sorted
-HIT!! PrivKey: 1
+Base key: 1
+Hit! Private Key: 1
 pubkey: 0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
-HIT!! PrivKey: 3
+Address 1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH
+rmd160 751e76e8199196d454941c45d1b3a323f1433bd6
+
+Hit! Private Key: 3
 pubkey: 02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9
-HIT!! PrivKey: 7
-pubkey: 025cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc
-HIT!! PrivKey: 8
-pubkey: 022f01e5e15cca351daff3843fb70f3c2f0a1bdd05e5af888a67784ef3e10a2a01
-HIT!! PrivKey: 15
-pubkey: 02352bbf4a4cdd12564f93fa332ce333301d9ad40271f8107181340aef25be59d5
-HIT!! PrivKey: 31
-pubkey: 03f2dac991cc4ce4b9ea44887e5c7c0bce58c80074ab9d4dbaeb28531b7739f530
+Address 1CUNEBjYrCn2y1SdiUMohaKUi4wpP326Lb
+rmd160 7dd65592d0ab2fe0d0257d571abf032cd9db93dc
+(Output omitted)
 ```
 
 test your luck with the next file for th puzzle #66
@@ -314,18 +315,21 @@ test your luck with the next file for th puzzle #66
 Output:
 
 ```
-[+] Version 0.2.230428 Satoshi Quest, developed by AlbertoBSD
+[+] Version 0.2.230430 Satoshi Quest, developed by AlbertoBSD
 [+] Mode rmd160
 [+] Search compress only
 [+] Random mode
 [+] Quiet thread output
+[+] Stats output every 5 seconds
 [+] N = 0x100000000
 [+] Bit Range 66
 [+] -- from : 0x20000000000000000
 [+] -- to   : 0x40000000000000000
 [+] Allocating memory for 1 elements: 0.00 MB
 [+] Bloom filter for 1 elements.
+[+] Loading data to the bloomfilter total: 0.03 MB
 [+] Sorting data ... done! 1 values were loaded and sorted
+^C] Total 70844416 keys in 15 seconds: ~4 Mkeys/s (4722961 keys/s)
 ```
 
 ## xpoint mode
@@ -363,20 +367,22 @@ Now you can use keyhunt against some thousand values of the puzzle 40:
 Output:
 
 ```
-[+] Version 0.2.211007 Chocolate ¡Beta!
+[+] Version 0.2.230430 Satoshi Quest, developed by AlbertoBSD
 [+] Mode xpoint
 [+] Threads : 4
-[+] Quiet thread output
-[+] Opening file tests/substracted40.txt
+[+] N = 0x10000
+[+] Bit Range 40
+[+] -- from : 0x8000000000
+[+] -- to   : 0x10000000000
 [+] Allocating memory for 6003 elements: 0.11 MB
 [+] Bloom filter for 6003 elements.
-[+] Loading data to the bloomfilter total: 0.02 MB
-[+] Bloomfilter completed
+[+] Loading data to the bloomfilter total: 0.03 MB
 [+] Sorting data ... done! 6003 values were loaded and sorted
-HIT!! PrivKey: 800258a2ce
-pubkey: 0274241b684e7c31e7933510b510aa14de9ac88ec3635bdd35a3bcf1d16da210be
-HIT!! PrivKey: 8009c16fb9
-pubkey: 027c3463c3d4e034f328749e2ac17b47a24b42ad47aaab0ec09d4d0abeee3ab46d
+Base key: 80025b0000
+Hit! Private Key: 800258a2ce
+pubkey: 0474241b684e7c31e7933510b510aa14de9ac88ec3635bdd35a3bcf1d16da210be7ad946c9b185433fff3a7824ee140b15789d5f12d60cd2814154b0f8f1a4308e
+Address 1CMg4mukBGVvid4ocTx5x5LEuCatKoHQRB
+rmd160 7c92500fa9d2ecbca5bdd61bb6a14a249669bae4
 
 ```
 
@@ -391,22 +397,25 @@ This is an easy example, I been trying the puzzle 120 with more than 500 million
 
 Test you luck with the puzzle 120 with xpoint:
 
-```./keyhunt -m xpoint -f tests/120.txt -t 4 -b 120 -R -q```
+```./keyhunt -m xpoint -f tests/120.txt -t 4 -b 125 -R -q```
 
 Output:
 
 ```
-[+] Version 0.2.211007 Chocolate ¡Beta!
+[+] Version 0.2.230430 Satoshi Quest, developed by AlbertoBSD
 [+] Mode xpoint
 [+] Threads : 4
 [+] Random mode
 [+] Quiet thread output
-[+] Opening file tests/120.txt
+[+] N = 0x100000000
+[+] Bit Range 125
+[+] -- from : 0x10000000000000000000000000000000
+[+] -- to   : 0x20000000000000000000000000000000
 [+] Allocating memory for 1 elements: 0.00 MB
 [+] Bloom filter for 1 elements.
-[+] Loading data to the bloomfilter total: 0.00 MB
-[+] Bloomfilter completed
-[+] Total 544210944 keys in 30 seconds: ~18 Mkeys/s (18140364 keys/s)
+[+] Loading data to the bloomfilter total: 0.03 MB
+[+] Sorting data ... done! 1 values were loaded and sorted
+^C] Total 462885888 keys in 30 seconds: ~15 Mkeys/s (15429529 keys/s)
 ```
 
 ## Endomorphism
@@ -418,7 +427,7 @@ endomorphism is only enabled for `address`, `rdm160` , `vanity` and `xpoint`
 
 But what the heck is `Endomorphism`?
 
-In short words for elliptic curves, an endomorphism is a function that maps points on the curve to other points on the same curve.
+In few words for elliptic curves, an endomorphism is a function that maps points on the curve to other points on the same curve.
 
 One kind of Endomorphism is the Point negation by example the privatekey from puzzle 64 
 
@@ -589,49 +598,55 @@ The files are created if they don't exist when you run the program the first tim
 example of file creation:
 
 ```
-./keyhunt -m bsgs -f tests/120.txt -R -b 120 -q -S
-[+] Version 0.2.211007 Chocolate ¡Beta!
+./keyhunt -m bsgs -f tests/125.txt -R -b 125 -q -S -s 10
+[+] Version 0.2.230430 Satoshi Quest, developed by AlbertoBSD
 [+] Random mode
 [+] Quiet thread output
+[+] Stats output every 10 seconds
 [+] Mode BSGS random
-[+] Opening file tests/120.txt
+[+] Opening file tests/125.txt
 [+] Added 1 points from file
-[+] Bit Range 120
-[+] -- from : 0x800000000000000000000000000000
-[+] -- to   : 0x1000000000000000000000000000000
+[+] Bit Range 125
+[+] -- from : 0x10000000000000000000000000000000
+[+] -- to   : 0x20000000000000000000000000000000
 [+] N = 0x100000000000
-[+] Bloom filter for 4194304 elements : 14.00 MB
-[+] Bloom filter for 209716 elements : 0.72 MB
-[+] Allocating 3.00 MB for 209716 bP Points
+[+] Bloom filter for 4194304 elements : 14.38 MB
+[+] Bloom filter for 131072 elements : 0.88 MB
+[+] Bloom filter for 4096 elements : 0.88 MB
+[+] Allocating 0.00 MB for 4096 bP Points
 [+] processing 4194304/4194304 bP points : 100%
-[+] Sorting 209716 elements... Done!
-[+] Writing bloom filter to file keyhunt_bsgs_0_4194304.blm .. Done!
-[+] Writing bloom filter to file keyhunt_bsgs_1_209716.blm .. Done!
-[+] Writing bP Table to file keyhunt_bsgs_2_209716.tbl .. Done!
-[+] Total 439804651110400 keys in 30 seconds: ~14 Tkeys/s (14660155037013 keys/s)
-[+] Total 897201488265216 keys in 60 seconds: ~14 Tkeys/s (14953358137753 keys/s)
+[+] Making checkums .. ... done
+[+] Sorting 4096 elements... Done!
+[+] Writing bloom filter to file keyhunt_bsgs_4_4194304.blm .... Done!
+[+] Writing bloom filter to file keyhunt_bsgs_6_131072.blm .... Done!
+[+] Writing bP Table to file keyhunt_bsgs_2_4096.tbl .. Done!
+[+] Writing bloom filter to file keyhunt_bsgs_7_4096.blm .... Done!
+^C] Total 457396837154816 keys in 30 seconds: ~15 Tkeys/s (15246561238493 keys/s)
 ```
 
 when we run the program for second time the files are now readed and the bP Points processing is omited:
 
 ```
-./keyhunt -m bsgs -f tests/120.txt -b 120 -q -S
-[+] Version 0.2.211007 Chocolate ¡Beta!
+./keyhunt -m bsgs -f tests/125.txt -R -b 125 -q -S -s 10
+[+] Version 0.2.230430 Satoshi Quest, developed by AlbertoBSD
+[+] Random mode
 [+] Quiet thread output
-[+] Turn off stats output
-[+] Mode BSGS secuential
-[+] Opening file tests/120.txt
+[+] Stats output every 10 seconds
+[+] Mode BSGS random
+[+] Opening file tests/125.txt
 [+] Added 1 points from file
-[+] Bit Range 120
-[+] -- from : 0x800000000000000000000000000000
-[+] -- to   : 0x1000000000000000000000000000000
+[+] Bit Range 125
+[+] -- from : 0x10000000000000000000000000000000
+[+] -- to   : 0x20000000000000000000000000000000
 [+] N = 0x100000000000
-[+] Bloom filter for 4194304 elements : 14.00 MB
-[+] Bloom filter for 209716 elements : 0.72 MB
-[+] Allocating 3.00 MB for 209716 bP Points
-[+] Reading bloom filter from file keyhunt_bsgs_0_4194304.blm .. Done!
-[+] Reading bloom filter from file keyhunt_bsgs_1_209716.blm .. Done!
-[+] Reading bP Table from file keyhunt_bsgs_2_209716.tbl ..Done!
+[+] Bloom filter for 4194304 elements : 14.38 MB
+[+] Bloom filter for 131072 elements : 0.88 MB
+[+] Bloom filter for 4096 elements : 0.88 MB
+[+] Allocating 0.00 MB for 4096 bP Points
+[+] Reading bloom filter from file keyhunt_bsgs_4_4194304.blm .... Done!
+[+] Reading bloom filter from file keyhunt_bsgs_6_131072.blm .... Done!
+[+] Reading bP Table from file keyhunt_bsgs_2_4096.tbl .... Done!
+[+] Reading bloom filter from file keyhunt_bsgs_7_4096.blm .... Done!
 ^C
 ```
 
@@ -648,7 +663,8 @@ time ./keyhunt -m bsgs -f tests/test120.txt -b 120 -S
 Output:
 
 ```
-[+] Version 0.2.211007 Chocolate ¡Beta!
+time ./keyhunt -m bsgs -f tests/test120.txt -b 120 -S
+[+] Version 0.2.230430 Satoshi Quest, developed by AlbertoBSD
 [+] Mode BSGS secuential
 [+] Opening file tests/test120.txt
 [+] Added 2 points from file
@@ -656,43 +672,45 @@ Output:
 [+] -- from : 0x800000000000000000000000000000
 [+] -- to   : 0x1000000000000000000000000000000
 [+] N = 0x100000000000
-[+] Bloom filter for 4194304 elements : 14.00 MB
-[+] Bloom filter for 209716 elements : 0.72 MB
-[+] Allocating 3.00 MB for 209716 bP Points
-[+] Reading bloom filter from file keyhunt_bsgs_0_4194304.blm .. Done!
-[+] Reading bloom filter from file keyhunt_bsgs_1_209716.blm .. Done!
-[+] Reading bP Table from file keyhunt_bsgs_2_209716.tbl ..Done!
+[+] Bloom filter for 4194304 elements : 14.38 MB
+[+] Bloom filter for 131072 elements : 0.88 MB
+[+] Bloom filter for 4096 elements : 0.88 MB
+[+] Allocating 0.00 MB for 4096 bP Points
+[+] Reading bloom filter from file keyhunt_bsgs_4_4194304.blm .... Done!
+[+] Reading bloom filter from file keyhunt_bsgs_6_131072.blm .... Done!
+[+] Reading bP Table from file keyhunt_bsgs_2_4096.tbl .... Done!
+[+] Reading bloom filter from file keyhunt_bsgs_7_4096.blm .... Done!
 [+] Thread Key found privkey 800000000000000000100000000000
 [+] Publickey 043ffa1cc011a8d23dec502c7656fb3f93dbe4c61f91fd443ba444b4ec2dd8e6f0406c36edf3d8a0dfaa7b8f309b8f1276a5c04131762c23594f130a023742bdde
 [+] Thread Key found privkey 800000000000000000200000000000
 [+] Publickey 046534b9e9d56624f5850198f6ac462f482fec8a60262728ee79a91cac1d60f8d6a92d5131a20f78e26726a63d212158b20b14c3025ebb9968c890c4bab90bfc69
 All points were found
 
-real    0m3.642s
-user    0m3.637s
-sys     0m0.005s
-
+real    0m3.632s
+user    0m3.619s
+sys     0m0.000s
 ```
 
 Test the puzzle 120 with the next publickey:
 
 ```
-02CEB6CBBCDBDF5EF7150682150F4CE2C6F4807B349827DCDBDD1F2EFA885A2630
+0233709eb11e0d4439a729f21c2c443dedb727528229713f0065721ba8fa46f00e
 ```
 
 Line of execution in random mode `-R` or -B random
 
-```./keyhunt -m bsgs -f tests/120.txt -b 120 -q -s 10 -R```
+```./keyhunt -m bsgs -f tests/125.txt -b 120 -q -s 10 -R```
 
-```./keyhunt -m bsgs -f tests/120.txt -b 120 -q -s 10 -B random```
+```./keyhunt -m bsgs -f tests/125.txt -b 120 -q -s 10 -B random```
 
 
 Example Output:
 
 ```
-[+] Version 0.2.211007 Chocolate ¡Beta!
+[+] Version 0.2.230430 Satoshi Quest, developed by AlbertoBSD
 [+] Quiet thread output
 [+] Stats output every 10 seconds
+[+] Random mode
 [+] Mode BSGS random
 [+] Opening file tests/120.txt
 [+] Added 1 points from file
@@ -700,107 +718,127 @@ Example Output:
 [+] -- from : 0x800000000000000000000000000000
 [+] -- to   : 0x1000000000000000000000000000000
 [+] N = 0x100000000000
-[+] Bloom filter for 4194304 elements : 14.00 MB
-[+] Bloom filter for 209716 elements : 0.72 MB
-[+] Allocating 3.00 MB for 209716 bP Points
+[+] Bloom filter for 4194304 elements : 14.38 MB
+[+] Bloom filter for 131072 elements : 0.88 MB
+[+] Bloom filter for 4096 elements : 0.88 MB
+[+] Allocating 0.00 MB for 4096 bP Points
 [+] processing 4194304/4194304 bP points : 100%
-[+] Sorting 209716 elements... Done!
-^C] Total 439804651110400 keys in 30 seconds: ~14 Tkeys/s (14660155037013 keys/s)
+[+] Making checkums .. ... done
+[+] Sorting 4096 elements... Done!
+^C] Total 158329674399744 keys in 10 seconds: ~15 Tkeys/s (15832967439974 keys/s)
 ```
 
-Good speed no? 14.6 Terakeys/s for one single thread
+Good speed no? 15 Terakeys/s for one single thread
 
-**[+] Total 439804651110400 keys in 30 seconds: ~14 Tkeys/s (14660155037013 keys/s)**
+**^C] Total 158329674399744 keys in 10 seconds: ~15 Tkeys/s (15832967439974 keys/s)**
 
 We can speed up our process selecting a bigger K value `-k value` btw the n value is the total length of item tested in the radom range, a bigger k value means more ram to be use:
 
 Example:
 ```
-./keyhunt -m bsgs -f tests/120.txt -b 120 -R -k 20
+./keyhunt -m bsgs -f tests/125.txt -b 125 -R -k 20 -S
 ```
 
 Output:
 
 ```
-[+] Version 0.2.211007 Chocolate ¡Beta!
+./keyhunt -m bsgs -f tests/125.txt -b 125 -R -k 20 -S
+[+] Version 0.2.230430 Satoshi Quest, developed by AlbertoBSD
 [+] Random mode
 [+] K factor 20
 [+] Mode BSGS random
-[+] Opening file tests/120.txt
+[+] Opening file tests/125.txt
 [+] Added 1 points from file
-[+] Bit Range 120
-[+] -- from : 0x800000000000000000000000000000
-[+] -- to   : 0x1000000000000000000000000000000
+[+] Bit Range 125
+[+] -- from : 0x10000000000000000000000000000000
+[+] -- to   : 0x20000000000000000000000000000000
 [+] N = 0xfffff000000
-[+] Bloom filter for 83886080 elements : 287.00 MB
-[+] Bloom filter for 4194304 elements : 14.38 MB
-[+] Allocating 64.00 MB for 4194304 bP Points
+[+] Bloom filter for 83886080 elements : 287.55 MB
+[+] Bloom filter for 2621440 elements : 8.99 MB
+[+] Bloom filter for 81920 elements : 0.88 MB
+[+] Allocating 1.00 MB for 81920 bP Points
 [+] processing 83886080/83886080 bP points : 100%
-^C] Thread 0xc769b6007dccced55c48c28db483f3  : ~252 Tkeys/s (252740831805440 keys/s)
+[+] Making checkums .. ... done
+[+] Sorting 81920 elements... Done!
+[+] Writing bloom filter to file keyhunt_bsgs_4_83886080.blm .... Done!
+[+] Writing bloom filter to file keyhunt_bsgs_6_2621440.blm .... Done!
+[+] Writing bP Table to file keyhunt_bsgs_2_81920.tbl .. Done!
+[+] Writing bloom filter to file keyhunt_bsgs_7_81920.blm .... Done!
+^C] Thread 0x1bbb290563ffcf38724482a45f2bed04  ~256 Tkeys/s (256259265658880 keys/s)
 ```
 
-**~252 Terakeys/s for one single thread**
+**~256 Terakeys/s for one single thread**
 
 Note the value of N `0xfffff000000` with k = 20 this mean that the N value is less than the default value `0x100000000000` that is because k is not a 2^X number
 
-if you want to more Speed use a bigger -k value like 128, it will use some 2.5 GB of RAM
+if you want to more Speed use a bigger -k value like 128, it will use some 2 GB of RAM
 
 
 ```
-./keyhunt -m bsgs -f tests/120.txt -b 120 -R -k 128
+./keyhunt -m bsgs -f tests/125.txt -b 125 -R -k 128 -S
 ```
 
 Output
 
 ```
-[+] Version 0.2.211007 Chocolate ¡Beta!
+[+] Version 0.2.230430 Satoshi Quest, developed by AlbertoBSD
 [+] Random mode
 [+] K factor 128
 [+] Mode BSGS random
-[+] Opening file tests/120.txt
+[+] Opening file tests/125.txt
 [+] Added 1 points from file
-[+] Bit Range 120
-[+] -- from : 0x800000000000000000000000000000
-[+] -- to   : 0x1000000000000000000000000000000
+[+] Bit Range 125
+[+] -- from : 0x10000000000000000000000000000000
+[+] -- to   : 0x20000000000000000000000000000000
 [+] N = 0x100000000000
-[+] Bloom filter for 536870912 elements : 1840.00 MB
-[+] Bloom filter for 26843546 elements : 92.02 MB
-[+] processing 536870912/536870912 bP points : 100%
-^C] Thread 0xa6be81c8ac15f65047f322862e37c4  s: ~1 Pkeys/s (1600302523840375 keys/s
+[+] Bloom filter for 536870912 elements : 1840.33 MB
+[+] Bloom filter for 16777216 elements : 57.51 MB
+[+] Bloom filter for 524288 elements : 1.80 MB
+[+] Allocating 8.00 MB for 524288 bP Points
+[+] Reading bloom filter from file keyhunt_bsgs_4_536870912.blm .... Done!
+[+] Reading bloom filter from file keyhunt_bsgs_6_16777216.blm .... Done!
+[+] Reading bP Table from file keyhunt_bsgs_2_524288.tbl .... Done!
+[+] Reading bloom filter from file keyhunt_bsgs_7_524288.blm .... Done!
+^C] Thread 0x1d0e05e7aaf9eca861fe0b2245579241   ~1 Pkeys/s (1292439268063095 keys/s)
 ```
 
-**~1.6 Pkeys/s for one single thread**
+**~1.2 Pkeys/s for one single thread**
 
-OK at this point maybe you want to use ALL your RAM memory to solve the puzzle 120, just a bigger -k value
+OK at this point maybe you want to use ALL your RAM memory to solve the puzzle 125, just a bigger -k value
 
-I already tested it with some **18 GB ** used with `-k 1024` and I get **~46 Petakeys/s per thread.**
+I already tested it with some **8 GB ** used with `-k 512` and I get **~46 Petakeys/s per thread.**
 
-with **6** threads
+with **8** threads
 
-`./keyhunt -m bsgs -f tests/120.txt -b 120 -R -k 1024 -q -t 6`
+`./keyhunt -m bsgs -f tests/125.txt -b 125 -R -k 512 -q -t 8 -s 10 -S`
 
 Output:
 
 ```
-[+] Version 0.2.211007 Chocolate ¡Beta!
+[+] Version 0.2.230430 Satoshi Quest, developed by AlbertoBSD
 [+] Random mode
-[+] K factor 1024
+[+] K factor 512
 [+] Quiet thread output
-[+] Threads : 6
+[+] Threads : 8
+[+] Stats output every 10 seconds
 [+] Mode BSGS random
-[+] Opening file tests/120.txt
+[+] Opening file tests/125.txt
 [+] Added 1 points from file
-[+] Bit Range 120
-[+] -- from : 0x800000000000000000000000000000
-[+] -- to   : 0x1000000000000000000000000000000
+[+] Bit Range 125
+[+] -- from : 0x10000000000000000000000000000000
+[+] -- to   : 0x20000000000000000000000000000000
 [+] N = 0x100000000000
-[+] Bloom filter for 4294967296 elements : 14722.00 MB
-[+] Bloom filter for 214748365 elements : 736.13 MB
-[+] Allocating 3276.00 MB for 214748365 bP Points
-[+] Sorting 214748365 elements
-[+] Total 5607544486029688832 keys in 120 seconds: ~46 Pkeys/s (46729537383580740 keys/s)
+[+] Bloom filter for 2147483648 elements : 7361.33 MB
+[+] Bloom filter for 67108864 elements : 230.04 MB
+[+] Bloom filter for 2097152 elements : 7.19 MB
+[+] Allocating 32.00 MB for 2097152 bP Points
+[+] Reading bloom filter from file keyhunt_bsgs_4_2147483648.blm .... Done!
+[+] Reading bloom filter from file keyhunt_bsgs_6_67108864.blm .... Done!
+[+] Reading bP Table from file keyhunt_bsgs_2_2097152.tbl .... Done!
+[+] Reading bloom filter from file keyhunt_bsgs_7_2097152.blm .... Done!
+^C] Total 2126103644397895680 keys in 110 seconds: ~19 Pkeys/s (19328214949071778 keys/s)
 ```
-I get ~46 Petakeys/s total
+I get ~19 Petakeys/s total
 
 Warning: the default n value have a maximun K of `4096` if that value is exceed the program can have an unknow behavior or suboptimal speed.
 If you want to use a bigger K I recomend use a bigger N value `-n 0x400000000000` and half your K value.
@@ -861,7 +899,7 @@ time ./keyhunt -m bsgs -t 6 -f tests/in.txt -r 49dccfd96dc5df56487436f5a1b18c4f5
 
 Output:
 ```
-[+] Version 0.2.211007 Chocolate ¡Beta!
+[+] Version 0.2.230430 Satoshi Quest, developed by AlbertoBSD
 [+] Threads : 6
 [+] Matrix screen
 [+] Turn off stats output
@@ -947,7 +985,7 @@ There are several variations to play with the values `-n` and `-k` but there are
 
 To get optimal performance the k values need to be base 2^x values, this is 1,2,4,8,16,32 ... 
 
-### Valid n and k values
+### Valid n and maximun k values for specific 
 
 ```
 +------+----------------------+-------------+
@@ -1035,56 +1073,39 @@ Publickey:
 
 Command
 ```
-time ./keyhunt -m bsgs -t 6 -f tests/63.pub -n 0x1000000000000000 -M -s 0 -S -k 4 -b 63
+time ./keyhunt -m bsgs -t 8 -f tests/63.pub -k 512 -s 0 -S -b 63
 ```
 
 output:
 
 ```
-[+] Version 0.2.211007 Chocolate ¡Beta!
-[+] Threads : 6
-[+] Matrix screen
+[+] Version 0.2.230430 Satoshi Quest, developed by AlbertoBSD
+[+] Threads : 8
+[+] K factor 512
 [+] Turn off stats output
-[+] K factor 4
 [+] Mode BSGS secuential
 [+] Opening file tests/63.pub
 [+] Added 1 points from file
 [+] Bit Range 63
 [+] -- from : 0x4000000000000000
 [+] -- to   : 0x8000000000000000
-[+] N = 0x1000000000000000
-[+] Bloom filter for 4294967296 elements : 14722.00 MB
-[+] Bloom filter for 214748365 elements : 736.13 MB
-[+] Allocating 3276.00 MB for 214748365 bP Points
-[+] Reading bloom filter from file keyhunt_bsgs_0_4294967296.blm .. Done!
-[+] Reading bloom filter from file keyhunt_bsgs_1_214748365.blm .. Done!
-[+] Reading bP Table from file keyhunt_bsgs_2_214748365.tbl ..Done!
-[+] Thread 0x6000000000000000
-[+] Thread 0x5000000000000000
-[+] Thread 0x4000000000000000
-[+] Thread 0x7000000000000000
+[+] N = 0x100000000000
+[+] Bloom filter for 2147483648 elements : 7361.33 MB
+[+] Bloom filter for 67108864 elements : 230.04 MB
+[+] Bloom filter for 2097152 elements : 7.19 MB
+[+] Allocating 32.00 MB for 2097152 bP Points
+[+] Reading bloom filter from file keyhunt_bsgs_4_2147483648.blm .... Done!
+[+] Reading bloom filter from file keyhunt_bsgs_6_67108864.blm .... Done!
+[+] Reading bP Table from file keyhunt_bsgs_2_2097152.tbl .... Done!
+[+] Reading bloom filter from file keyhunt_bsgs_7_2097152.blm .... Done!
 [+] Thread Key found privkey 7cce5efdaccf6808
 [+] Publickey 0365ec2994b8cc0a20d40dd69edfe55ca32a54bcbbaa6b0ddcff36049301a54579
-All points were found
+All points were found00000000
+[+] Thread 0x7cf4d00000000000
+real    4m11.358s
+user    26m23.474s
+sys     0m20.061s
 
-real    4m58.644s
-user    7m52.332s
-sys     0m11.803s
-
-```
-
-Please note that number of threads was setting to 6 but only 4 threads were used, this is because the range 63 bits is small for BSGS and we only need four times the current N value to fill it, to avoid this we can use a smaller N value but with some multiplier K in that way w we can achieve the same speed and also be able to launch more threads. Repeat only in case that the range was small like this.
-
-The next command also solve the Puzzle 63 with more threads
-
-```
-time ./keyhunt -m bsgs -t 6 -f tests/63.pub -n 0x400000000000000 -M -s 0 -S -k 8 -b 63
-```
-
-```
-real    4m4.719s
-user    2m15.706s
-sys     0m13.009s
 ```
 
 ## Is my speed real?
@@ -1145,22 +1166,20 @@ The input file can be an addresses or rmd hashes list of the target keys
 Command example:
 
 ```
-./keyhunt -m minikeys -f minkey_h160.txt -C SG64GZqySYwBm9KxE1wJ28 -n 0x10000
+./keyhunt -m minikeys -f tests/minikeys.txt -C SG64GZqySYwBm9KxE1wJ28 -n 0x10000
 ```
 
 Output:
 
 ```
-[+] Version 0.2.211117 SSE Trick or treat ¡Beta!, developed by AlbertoBSD
+[+] Version 0.2.230430 Satoshi Quest, developed by AlbertoBSD
 [+] Mode minikeys
-[+] Opening file /home/albertobsd/keyhunt/minkey_h160.txt
 [+] N = 0x10000
 [+] Base Minikey : SG64GZqySYwBm9KxE1wJ28
-[+] Allocating memory for 61560 elements: 1.17 MB
-[+] Bloom filter for 61560 elements.
-[+] Loading data to the bloomfilter total: 0.21 MB
-[+] Bloomfilter completed
-[+] Sorting data ... done! 61560 values were loaded and sorted
+[+] Allocating memory for 1 elements: 0.00 MB
+[+] Bloom filter for 1 elements.
+[+] Loading data to the bloomfilter total: 0.03 MB
+[+] Sorting data ... done! 1 values were loaded and sorted
 [+] Base minikey: SG64GZqySYwBm9KxE3QGrg?
 HIT!! Private Key: d1a4fc1f83b2f3b31dcd999acd8288ff346f7df46401596d53964e0c69d5b4d
 pubkey: 048722093a2b5dd05a84c28a18b2a6601320c9eaab9db99e76b850f9574cd3d5c987bf0c9c9ed3bd0f52124a57d9ef292b529536b225b90f8760d9c67cc3aa1c32
@@ -1172,22 +1191,20 @@ address: 15azScMmHvFPAQfQafrKr48E9MqRRXSnVv
 random minikeys command
 
 ```
-./keyhunt -m minikeys -f ~/keyhunt/minkey_h160.txt -q -R -n 0x1000
+./keyhunt -m minikeys -f tests/minikeys.txt -n 0x10000 -q -R
 ```
 
 ```
-[+] Version 0.2.211117 SSE Trick or treat ¡Beta!, developed by AlbertoBSD
+[+] Version 0.2.230430 Satoshi Quest, developed by AlbertoBSD
 [+] Mode minikeys
 [+] Quiet thread output
 [+] Random mode
-[+] Opening file /home/albertobsd/keyhunt/minkey_h160.txt
-[+] N = 0x1000
-[+] Allocating memory for 61560 elements: 1.17 MB
-[+] Bloom filter for 61560 elements.
-[+] Loading data to the bloomfilter total: 0.21 MB
-[+] Bloomfilter completed
-[+] Sorting data ... done! 61560 values were loaded and sorted
-^C] Total 2296832 keys in 120 seconds: 19140 keys/s
+[+] N = 0x10000
+[+] Allocating memory for 1 elements: 0.00 MB
+[+] Bloom filter for 1 elements.
+[+] Loading data to the bloomfilter total: 0.03 MB
+[+] Sorting data ... done! 1 values were loaded and sorted
+^C] Total 830464 keys in 30 seconds: 27682 keys/s
 
 ```
 
@@ -1209,34 +1226,65 @@ command:
 output:
 
 ```
-[+] Version 0.2.211024 Chocolate ¡Beta!, developed by AlbertoBSD
+[+] Version 0.2.230430 Satoshi Quest, developed by AlbertoBSD
 [+] Setting search for ETH adddress.
 [+] Matrix screen
-[+] Stride : 1
-[+] Opening file tests/1to32.eth
 [+] N = 0x100000000
 [+] Range
 [+] -- from : 0x1
 [+] -- to   : 0x100000000
 [+] Allocating memory for 32 elements: 0.00 MB
 [+] Bloom filter for 32 elements.
-[+] Loading data to the bloomfilter total: 0.00 MB
-[+] Bloomfilter completed
+[+] Loading data to the bloomfilter total: 0.03 MB
 [+] Sorting data ... done! 32 values were loaded and sorted
 Base key: 1 thread 0
 
- Hit!!!! PrivKey: 1
+ Hit!!!! Private Key: 1
 address: 0x7e5f4552091a69125d5dfcb7b8c2659029395bdf
 
- Hit!!!! PrivKey: 3
+ Hit!!!! Private Key: 3
 address: 0x6813eb9362372eef6200f3b1dbc3f819671cba69
 
- Hit!!!! PrivKey: 7
+ Hit!!!! Private Key: 7
 address: 0xd41c057fd1c78805aac12b0a94a405c0461a6fbb
+
+ Hit!!!! Private Key: 8
+address: 0xf1f6619b38a98d6de0800f1defc0a6399eb6d30c
 ....
 ```
 
+## Speeds
 
+I already explain the speed for BSGS
+
+But since there is new updates for other modes I want to clarify it.
+
+For the modes `address`, `rmd160`, `xpoint` and `vanity`
+
+Each thread works in groups of 1024 keys, so every time that one inner-cycle 
+of each thread is finished the code update its own coutner in 1
+
+```
+steps[thread_number]++;
+```
+
+So every step represent 1024 keys scanned.
+
+if you enabled endomorphism, the total steps are multiplied by 6 for modes `address`, `rmd160` and `vanity`.
+Becuase with endomorphism we checking  efectively 6 different keys every step
+ 
+For `xpoint` mode plus endomorphism the number is only is multiplied by 3 only becasue we only care
+about the X value and we don't need the negated values ( mirror Y axis)
+
+Special case for `compress` search of the modes`address`, `rmd160` and `vanity` 
+WITHOUT `endomorphism` enabled, for this conditions the speed is multipied by 2 
+because we are checking efectively 2 keys the program calculate one X value and 
+it is checking both prefixes `02 + X value` and `03 + X value`, this is NOT optional
+Y try to do it without this behavior but in that case the speed is worse
+
+This is important because if you targeting an specific range with `compress` and WITHOUT endomorphism by examples puzzles
+ the efective speed is half of the showed speed by the program
+But if you are targeting all the curve then the showed speed is correct.
 
 ## FAQ
 
@@ -1287,7 +1335,6 @@ This program was possible thanks to
 - BTC: 1Coffee1jV4gB5gaXfHgSHDz9xx9QSECVW
 - ETH: 0x6222978c984C22d21b11b5b6b0Dd839C75821069
 - DOGE: DKAG4g2HwVFCLzs7YWdgtcsK6v5jym1ErV
-
 
 All the donations will be use only for two things:
 

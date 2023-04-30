@@ -116,7 +116,7 @@ char *raw_baseminikey = NULL;
 char *minikeyN = NULL;
 int minikey_n_limit;
 	
-const char *version = "0.2.230428 Satoshi Quest";
+const char *version = "0.2.230430 Satoshi Quest";
 
 #define CPU_GRP_SIZE 1024
 
@@ -2158,20 +2158,25 @@ int main(int argc, char **argv)	{
 				i = 0;
 				while(i < NTHREADS) {
 					pretotal.Set(&debugcount_mpz);
-					pretotal.Mult(steps[i]);
-					
-					if(FLAGENDOMORPHISM)	{
-						if(FLAGMODE == MODE_XPOINT)	{
-							pretotal.Mult(3);
-						}
-						else	{
-							pretotal.Mult(6);
-						}
-					}
-					
+					pretotal.Mult(steps[i]);					
 					total.Add(&pretotal);
 					i++;
 				}
+				
+				if(FLAGENDOMORPHISM)	{
+					if(FLAGMODE == MODE_XPOINT)	{
+						total.Mult(3);
+					}
+					else	{
+						total.Mult(6);
+					}
+				}
+				else	{
+					if(FLAGSEARCH == SEARCH_COMPRESS)	{
+						total.Mult(2);
+					}
+				}
+				
 #ifdef _WIN64
 				WaitForSingleObject(bsgs_thread, INFINITE);
 #else
@@ -6629,12 +6634,14 @@ bool processOneVanity()	{
 	if(!initBloomFilter(vanity_bloom, vanity_rmd_total))
 		return false;
 	
+	
 	while(i < vanity_rmd_targets)	{
 		for(int k = 0; k < vanity_rmd_limits[i]; k++)	{
 			bloom_add(vanity_bloom, vanity_rmd_limit_values_A[i][k] ,vanity_rmd_minimun_bytes_check_length);
 		}
 		i++;
 	}
+	
 	return true;
 }
 
@@ -6674,6 +6681,7 @@ bool readFileVanity(char *fileName)	{
 	N = vanity_rmd_total;
 	if(!initBloomFilter(vanity_bloom,N))
 		return false;
+	
 	
 	i = 0;
 	while(i < vanity_rmd_targets)	{
@@ -6896,6 +6904,7 @@ bool forceReadFileAddress(char *fileName)	{
 		
 	if(!initBloomFilter(&bloom,numberItems))
 		return false;
+
 	
 	while(i < numberItems)	{
 		validAddress = false;
@@ -6971,6 +6980,7 @@ bool forceReadFileAddressEth(char *fileName)	{
 	if(!initBloomFilter(&bloom,N))
 		return false;
 	
+	
 	while(i < numberItems)	{
 		validAddress = false;
 		memset(aux,0,100);
@@ -6978,22 +6988,25 @@ bool forceReadFileAddressEth(char *fileName)	{
 		hextemp = fgets(aux,100,fileDescriptor);
 		trim(aux," \t\n\r");			
 		r = strlen(aux);
-		if(r >= 40 && r <= 42 && isValidHex(aux)){
+		if(r >= 40 && r <= 42){
 			switch(r)		{
 				case 40:
-					hexs2bin(aux,rawvalue);
-					bloom_add(&bloom, rawvalue ,sizeof(struct address_value));
-					memcpy(addressTable[i].value,rawvalue+1,sizeof(struct address_value));											
-					i++;
-					validAddress = true;
+					if(isValidHex(aux)){
+						hexs2bin(aux,rawvalue);
+						bloom_add(&bloom, rawvalue ,sizeof(struct address_value));
+						memcpy(addressTable[i].value,rawvalue,sizeof(struct address_value));											
+						i++;
+						validAddress = true;
+					}
 				break;
 				case 42:
-					hexs2bin(aux+2,rawvalue);
-					bloom_add(&bloom, rawvalue ,sizeof(struct address_value));
-					memcpy(addressTable[i].value,rawvalue+1,sizeof(struct address_value));											
-					i++;
-					validAddress = true;
-
+					if(isValidHex(aux+2)){
+						hexs2bin(aux+2,rawvalue);
+						bloom_add(&bloom, rawvalue ,sizeof(struct address_value));
+						memcpy(addressTable[i].value,rawvalue,sizeof(struct address_value));											
+						i++;
+						validAddress = true;
+					}
 				break;
 			}
 		}
@@ -7129,6 +7142,7 @@ bool initBloomFilter(struct bloom *bloom_arg,uint64_t items_bloom)	{
 			r = false;
 		}
 	}
+	printf("[+] Loading data to the bloomfilter total: %.2f MB\n",(double)(((double) bloom_arg->bytes)/(double)1048576));
 	return r;
 }
 

@@ -34,6 +34,9 @@ email: albertobsd@gmail.com
 #include <unistd.h>
 #include <pthread.h>
 #include <sys/random.h>
+#endif
+
+#ifdef __unix__
 #include <linux/random.h>
 #endif
 

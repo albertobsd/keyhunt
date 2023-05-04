@@ -21,6 +21,9 @@
 #if defined(_WIN64) && !defined(__CYGWIN__)
 #else
 #include <sys/random.h>
+#endif
+
+#ifdef __unix__
 #include <linux/random.h>
 #endif
 

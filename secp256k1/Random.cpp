@@ -24,10 +24,7 @@
 #endif
 
 #ifdef __unix__
-#ifdef __CYGWIN__
-#else
 #include <linux/random.h>
-#endif
 #endif
 
 #define  RK_STATE_LEN 624

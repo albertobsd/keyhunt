@@ -486,8 +486,11 @@ int main(int argc, char **argv)	{
 	
 	printf("[+] Version %s, developed by AlbertoBSD\n",version);
 
-	while ((c = getopt(argc, argv, "de6hMqRSB:b:c:C:E:f:I:k:l:m:N:n:p:r:s:t:v:G:8:z:")) != -1) {
+	while ((c = getopt(argc, argv, "deh6MqRSB:b:c:C:E:f:I:k:l:m:N:n:p:r:s:t:v:G:8:z:")) != -1) {
 		switch(c) {
+			case 'h':
+				menu();
+			break;
 			case '6':
 				FLAGSKIPCHECKSUM = 1;
 				fprintf(stderr,"[W] Skipping checksums on files\n");

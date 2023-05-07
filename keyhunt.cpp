@@ -37,7 +37,10 @@ email: albertobsd@gmail.com
 #endif
 
 #ifdef __unix__
+#ifdef __CYGWIN__
+#else
 #include <linux/random.h>
+#endif
 #endif
 
 #define CRYPTO_NONE 0

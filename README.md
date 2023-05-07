@@ -699,24 +699,24 @@ Test the puzzle 120 with the next publickey:
 
 Line of execution in random mode `-R` or -B random
 
-```./keyhunt -m bsgs -f tests/125.txt -b 120 -q -s 10 -R```
+```./keyhunt -m bsgs -f tests/125.txt -b 125 -q -s 10 -R```
 
-```./keyhunt -m bsgs -f tests/125.txt -b 120 -q -s 10 -B random```
+```./keyhunt -m bsgs -f tests/125.txt -b 125 -q -s 10 -B random```
 
 
 Example Output:
 
 ```
-[+] Version 0.2.230430 Satoshi Quest, developed by AlbertoBSD
+[+] Version 0.2.230507 Satoshi Quest, developed by AlbertoBSD
 [+] Quiet thread output
 [+] Stats output every 10 seconds
 [+] Random mode
 [+] Mode BSGS random
-[+] Opening file tests/120.txt
+[+] Opening file tests/125.txt
 [+] Added 1 points from file
-[+] Bit Range 120
-[+] -- from : 0x800000000000000000000000000000
-[+] -- to   : 0x1000000000000000000000000000000
+[+] Bit Range 125
+[+] -- from : 0x10000000000000000000000000000000
+[+] -- to   : 0x20000000000000000000000000000000
 [+] N = 0x100000000000
 [+] Bloom filter for 4194304 elements : 14.38 MB
 [+] Bloom filter for 131072 elements : 0.88 MB
@@ -725,7 +725,7 @@ Example Output:
 [+] processing 4194304/4194304 bP points : 100%
 [+] Making checkums .. ... done
 [+] Sorting 4096 elements... Done!
-^C] Total 158329674399744 keys in 10 seconds: ~15 Tkeys/s (15832967439974 keys/s)
+[+] Total 158329674399744 keys in 10 seconds: ~15 Tkeys/s (15832967439974 keys/s)
 ```
 
 Good speed no? 15 Terakeys/s for one single thread
@@ -1340,3 +1340,11 @@ All the donations will be use only for two things:
 
 - Native Windows version with 0 external dependencies.
 - Get an affordable desktop computer with decent GPU not high end, just to start the GPU version.
+
+## Testnet
+
+I also need to make some test in testnet network if you have some Testnet balance can you help me with donations in my testnet address:
+
+Address: msKcxhizYWVvxCACFEG4GCSK1xYrEkib5A
+
+Thank you.

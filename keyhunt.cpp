@@ -122,7 +122,7 @@ char *raw_baseminikey = NULL;
 char *minikeyN = NULL;
 int minikey_n_limit;
 	
-const char *version = "0.2.230430 Satoshi Quest";
+const char *version = "0.2.230507 Satoshi Quest";
 
 #define CPU_GRP_SIZE 1024
 
@@ -232,7 +232,7 @@ int THREADOUTPUT = 0;
 char *bit_range_str_min;
 char *bit_range_str_max;
 
-const char *bsgs_modes[5] = {"secuential","backward","both","random","dance"};
+const char *bsgs_modes[5] = {"sequential","backward","both","random","dance"};
 const char *modes[7] = {"xpoint","address","bsgs","rmd160","pub2rmd","minikeys","vanity"};
 const char *cryptos[3] = {"btc","eth","all"};
 const char *publicsearch[3] = {"uncompress","compress","both"};
@@ -276,12 +276,13 @@ uint64_t *steps = NULL;
 unsigned int *ends = NULL;
 uint64_t N = 0;
 
-uint64_t N_SECUENTIAL_MAX = 0x100000000;
+uint64_t N_SEQUENTIAL_MAX = 0x100000000;
 uint64_t DEBUGCOUNT = 0x400;
 uint64_t u64range;
 
 Int OUTPUTSECONDS;
 
+int FLAGSKIPCHECKSUM = 0;
 int FLAGENDOMORPHISM = 0;
 
 int FLAGBLOOMMULTIPLIER = 1;
@@ -476,7 +477,7 @@ int main(int argc, char **argv)	{
 			WTF linux without RNG ? 
 		*/
 		fprintf(stderr,"[E] Error getrandom() ?\n");
-		exit(0);
+		exit(EXIT_FAILURE);
 		rseed(clock() + time(NULL) + rand()*rand());
 	}
 #endif
@@ -485,10 +486,11 @@ int main(int argc, char **argv)	{
 	
 	printf("[+] Version %s, developed by AlbertoBSD\n",version);
 
-	while ((c = getopt(argc, argv, "dehMqRSB:b:c:C:E:f:I:k:l:m:N:n:p:r:s:t:v:G:8:z:")) != -1) {
+	while ((c = getopt(argc, argv, "de6hMqRSB:b:c:C:E:f:I:k:l:m:N:n:p:r:s:t:v:G:8:z:")) != -1) {
 		switch(c) {
-			case 'h':
-				menu();
+			case '6':
+				FLAGSKIPCHECKSUM = 1;
+				fprintf(stderr,"[W] Skipping checksums on files\n");
 			break;
 			case 'B':
 				index_value = indexOf(optarg,bsgs_modes,5);
@@ -538,7 +540,7 @@ int main(int argc, char **argv)	{
 					default:
 						FLAGCRYPTO = CRYPTO_NONE;
 						fprintf(stderr,"[E] Unknow crypto value %s\n",optarg);
-						exit(0);
+						exit(EXIT_FAILURE);
 					break;
 				}
 			break;
@@ -556,14 +558,14 @@ int main(int argc, char **argv)	{
 						}
 						else	{
 							fprintf(stderr,"[E] invalid character in minikey\n");
-							exit(0);
+							exit(EXIT_FAILURE);
 						}
 						
 					}
 				}
 				else	{
 					fprintf(stderr,"[E] Invalid Minikey length %li : %s\n",strlen(optarg),optarg);
-					exit(0);
+					exit(EXIT_FAILURE);
 				}
 				
 			break;
@@ -652,7 +654,7 @@ int main(int argc, char **argv)	{
 					break;
 					default:
 						fprintf(stderr,"[E] Unknow mode value %s\n",optarg);
-						exit(0);
+						exit(EXIT_FAILURE);
 					break;
 				}
 			break;
@@ -754,7 +756,7 @@ int main(int argc, char **argv)	{
 				}
 				else	{
 					fprintf(stderr,"[E] The base58 alphabet must be 58 characters long.\n");
-					exit(0);
+					exit(EXIT_FAILURE);
 				}
 			break;
 			case 'z':
@@ -766,7 +768,7 @@ int main(int argc, char **argv)	{
 			break;
 			default:
 				fprintf(stderr,"[E] Unknow opcion -%c\n",c);
-				exit(0);
+				exit(EXIT_FAILURE);
 			break;
 		}
 	}
@@ -776,7 +778,7 @@ int main(int argc, char **argv)	{
 	
 	if( ( FLAGBSGSMODE == MODE_BSGS || FLAGBSGSMODE == MODE_PUB2RMD ) && FLAGSTRIDE)	{
 		fprintf(stderr,"[E] Stride doesn't work with BSGS, pub2rmd\n");
-		exit(0);
+		exit(EXIT_FAILURE);
 	}
 	if(FLAGSTRIDE)	{
 		if(str_stride[0] == '0' && str_stride[1] == 'x')	{
@@ -858,24 +860,24 @@ int main(int argc, char **argv)	{
 	if(FLAGMODE != MODE_BSGS )	{
 		if(FLAG_N){
 			if(str_N[0] == '0' && str_N[1] == 'x')	{
-				N_SECUENTIAL_MAX =strtol(str_N,NULL,16);
+				N_SEQUENTIAL_MAX =strtol(str_N,NULL,16);
 			}
 			else	{
-				N_SECUENTIAL_MAX =strtol(str_N,NULL,10);
+				N_SEQUENTIAL_MAX =strtol(str_N,NULL,10);
 			}
 			
-			if(N_SECUENTIAL_MAX < 1024)	{
+			if(N_SEQUENTIAL_MAX < 1024)	{
 				fprintf(stderr,"[I] n value need to be equal or great than 1024, back to defaults\n");
 				FLAG_N = 0;
-				N_SECUENTIAL_MAX = 0x100000000;
+				N_SEQUENTIAL_MAX = 0x100000000;
 			}
-			if(N_SECUENTIAL_MAX % 1024 != 0)	{
+			if(N_SEQUENTIAL_MAX % 1024 != 0)	{
 				fprintf(stderr,"[I] n value need to be multiplier of  1024\n");
 				FLAG_N = 0;
-				N_SECUENTIAL_MAX = 0x100000000;
+				N_SEQUENTIAL_MAX = 0x100000000;
 			}
 		}
-		printf("[+] N = %p\n",(void*)N_SECUENTIAL_MAX);
+		printf("[+] N = %p\n",(void*)N_SEQUENTIAL_MAX);
 		if(FLAGMODE == MODE_MINIKEYS)	{
 			BSGS_N.SetInt32(DEBUGCOUNT);
 			if(FLAGBASEMINIKEY)	{
@@ -885,9 +887,9 @@ int main(int argc, char **argv)	{
 			checkpointer((void *)minikeyN,__FILE__,"malloc","minikeyN" ,__LINE__ -1);
 			i =0;
 			int58.SetInt32(58);
-			int_aux.SetInt64(N_SECUENTIAL_MAX);
+			int_aux.SetInt64(N_SEQUENTIAL_MAX);
 			int_aux.Mult(253);	
-			/* We get approximately one valid mini key for each 256 candidates mini keys since this is only statistics we multiply N_SECUENTIAL_MAX by 253 to ensure not missed one one candidate minikey between threads... in this approach we repeat from 1 to 3 candidates in each N_SECUENTIAL_MAX cycle IF YOU FOUND some other workaround please let me know */
+			/* We get approximately one valid mini key for each 256 candidates mini keys since this is only statistics we multiply N_SEQUENTIAL_MAX by 253 to ensure not missed one one candidate minikey between threads... in this approach we repeat from 1 to 3 candidates in each N_SEQUENTIAL_MAX cycle IF YOU FOUND some other workaround please let me know */
 			i = 20;
 			salir = 0;
 			do	{
@@ -932,13 +934,13 @@ int main(int argc, char **argv)	{
 			case MODE_XPOINT:
 				if(!readFileAddress(fileName))	{
 					fprintf(stderr,"[E] Unenexpected error\n");
-					exit(0);
+					exit(EXIT_FAILURE);
 				}
 			break;
 			case MODE_VANITY:
 				if(!readFileVanity(fileName))	{
 					fprintf(stderr,"[E] Unenexpected error\n");
-					exit(0);
+					exit(EXIT_FAILURE);
 				}
 			break;
 		}
@@ -956,7 +958,7 @@ int main(int argc, char **argv)	{
 		fd = fopen(fileName,"rb");
 		if(fd == NULL)	{
 			fprintf(stderr,"[E] Can't open file %s\n",fileName);
-			exit(0);
+			exit(EXIT_FAILURE);
 		}
 		aux = (char*) malloc(1024);
 		checkpointer((void *)aux,__FILE__,"malloc","aux" ,__LINE__ - 1);
@@ -974,7 +976,7 @@ int main(int argc, char **argv)	{
 		}
 		if(N == 0)	{
 			fprintf(stderr,"[E] There is no valid data in the file\n");
-			exit(0);
+			exit(EXIT_FAILURE);
 		}
 		bsgs_found = (int*) calloc(N,sizeof(int));
 		checkpointer((void *)bsgs_found,__FILE__,"calloc","bsgs_found" ,__LINE__ -1 );
@@ -1032,7 +1034,7 @@ int main(int argc, char **argv)	{
 		}
 		else	{
 			fprintf(stderr,"[E] The file don't have any valid publickeys\n");
-			exit(0);
+			exit(EXIT_FAILURE);
 		}
 		BSGS_N.SetInt32(0);
 		BSGS_M.SetInt32(0);
@@ -1064,7 +1066,7 @@ int main(int argc, char **argv)	{
 		}
 		else	{
 			fprintf(stderr,"[E] -n param doesn't have exact square root\n");
-			exit(0);
+			exit(EXIT_FAILURE);
 		}
 
 		BSGS_AUX.Set(&BSGS_M);
@@ -1073,7 +1075,7 @@ int main(int argc, char **argv)	{
 		if(!BSGS_AUX.IsZero()){ //If M is not divisible by  BSGS_GROUP_SIZE (1024) 
 			hextemp = BSGS_GROUP_SIZE.GetBase10();
 			fprintf(stderr,"[E] M value is not divisible by %s\n",hextemp);
-			exit(0);
+			exit(EXIT_FAILURE);
 		}
 
 		bsgs_m = BSGS_M.GetInt64();
@@ -1107,7 +1109,7 @@ int main(int argc, char **argv)	{
 
 		if(n_range_diff.IsLower(&BSGS_N) )	{
 			fprintf(stderr,"[E] the given range is small\n");
-			exit(0);
+			exit(EXIT_FAILURE);
 		}
 		
 		/*
@@ -1215,7 +1217,7 @@ int main(int argc, char **argv)	{
 #endif
 			if(bloom_init2(&bloom_bP[i],itemsbloom,0.000001)	== 1){
 				fprintf(stderr,"[E] error bloom_init _ [%" PRIu64 "]\n",i);
-				exit(0);
+				exit(EXIT_FAILURE);
 			}
 			bloom_bP_totalbytes += bloom_bP[i].bytes;
 			//if(FLAGDEBUG) bloom_print(&bloom_bP[i]);
@@ -1244,7 +1246,7 @@ int main(int argc, char **argv)	{
 #endif
 			if(bloom_init2(&bloom_bPx2nd[i],itemsbloom2,0.000001)	== 1){
 				fprintf(stderr,"[E] error bloom_init _ [%" PRIu64 "]\n",i);
-				exit(0);
+				exit(EXIT_FAILURE);
 			}
 			bloom_bP2_totalbytes += bloom_bPx2nd[i].bytes;
 			//if(FLAGDEBUG) bloom_print(&bloom_bPx2nd[i]);
@@ -1273,7 +1275,7 @@ int main(int argc, char **argv)	{
 #endif
 			if(bloom_init2(&bloom_bPx3rd[i],itemsbloom3,0.000001)	== 1){
 				fprintf(stderr,"[E] error bloom_init [%" PRIu64 "]\n",i);
-				exit(0);
+				exit(EXIT_FAILURE);
 			}
 			bloom_bP3_totalbytes += bloom_bPx3rd[i].bytes;
 			//if(FLAGDEBUG) bloom_print(&bloom_bPx3rd[i]);
@@ -1383,24 +1385,25 @@ int main(int argc, char **argv)	{
 					readed = fread(&bloom_bP[i],sizeof(struct bloom),1,fd_aux1);
 					if(readed != 1)	{
 						fprintf(stderr,"[E] Error reading the file %s\n",buffer_bloom_file);
-						exit(0);
+						exit(EXIT_FAILURE);
 					}
 					bloom_bP[i].bf = (uint8_t*)bf_ptr;	/* Restoring the bf pointer*/
 					readed = fread(bloom_bP[i].bf,bloom_bP[i].bytes,1,fd_aux1);
 					if(readed != 1)	{
 						fprintf(stderr,"[E] Error reading the file %s\n",buffer_bloom_file);
-						exit(0);
+						exit(EXIT_FAILURE);
 					}
 					readed = fread(&bloom_bP_checksums[i],sizeof(struct checksumsha256),1,fd_aux1);
 					if(readed != 1)	{
 						fprintf(stderr,"[E] Error reading the file %s\n",buffer_bloom_file);
-						exit(0);
+						exit(EXIT_FAILURE);
 					}
-					memset(rawvalue,0,32);
-					sha256((uint8_t*)bloom_bP[i].bf,bloom_bP[i].bytes,(uint8_t*)rawvalue);
-					if(memcmp(bloom_bP_checksums[i].data,rawvalue,32) != 0 || memcmp(bloom_bP_checksums[i].backup,rawvalue,32) != 0 )	{	/* Verification */
-						fprintf(stderr,"[E] Error checksum file mismatch! %s\n",buffer_bloom_file);
-						exit(0);
+					if(FLAGSKIPCHECKSUM == 0)	{
+						sha256((uint8_t*)bloom_bP[i].bf,bloom_bP[i].bytes,(uint8_t*)rawvalue);
+						if(memcmp(bloom_bP_checksums[i].data,rawvalue,32) != 0 || memcmp(bloom_bP_checksums[i].backup,rawvalue,32) != 0 )	{	/* Verification */
+							fprintf(stderr,"[E] Error checksum file mismatch! %s\n",buffer_bloom_file);
+							exit(EXIT_FAILURE);
+						}
 					}
 					if(i % 64 == 0 )	{
 						printf(".");
@@ -1437,7 +1440,7 @@ int main(int argc, char **argv)	{
 						
 						if(readed != 1)	{
 							fprintf(stderr,"[E] Error reading the file %s\n",buffer_bloom_file);
-							exit(0);
+							exit(EXIT_FAILURE);
 						}
 						memcpy(&bloom_bP[i],&oldbloom_bP,sizeof(struct bloom));//We only need to copy the part data to the new bloom size, not from the old size
 						bloom_bP[i].bf = (uint8_t*)bf_ptr;	/* Restoring the bf pointer*/
@@ -1445,15 +1448,17 @@ int main(int argc, char **argv)	{
 						readed = fread(bloom_bP[i].bf,bloom_bP[i].bytes,1,fd_aux1);
 						if(readed != 1)	{
 							fprintf(stderr,"[E] Error reading the file %s\n",buffer_bloom_file);
-							exit(0);
+							exit(EXIT_FAILURE);
 						}
 						memcpy(bloom_bP_checksums[i].data,oldbloom_bP.checksum,32);
 						memcpy(bloom_bP_checksums[i].backup,oldbloom_bP.checksum_backup,32);
 						memset(rawvalue,0,32);
-						sha256((uint8_t*)bloom_bP[i].bf,bloom_bP[i].bytes,(uint8_t*)rawvalue);
-						if(memcmp(bloom_bP_checksums[i].data,rawvalue,32) != 0 || memcmp(bloom_bP_checksums[i].backup,rawvalue,32) != 0 )	{	/* Verification */
-							fprintf(stderr,"[E] Error checksum file mismatch! %s\n",buffer_bloom_file);
-							exit(0);
+						if(FLAGSKIPCHECKSUM == 0)	{
+							sha256((uint8_t*)bloom_bP[i].bf,bloom_bP[i].bytes,(uint8_t*)rawvalue);
+							if(memcmp(bloom_bP_checksums[i].data,rawvalue,32) != 0 || memcmp(bloom_bP_checksums[i].backup,rawvalue,32) != 0 )	{	/* Verification */
+								fprintf(stderr,"[E] Error checksum file mismatch! %s\n",buffer_bloom_file);
+								exit(EXIT_FAILURE);
+							}
 						}
 						if(i % 32 == 0 )	{
 							printf(".");
@@ -1483,24 +1488,26 @@ int main(int argc, char **argv)	{
 					readed = fread(&bloom_bPx2nd[i],sizeof(struct bloom),1,fd_aux2);
 					if(readed != 1)	{
 						fprintf(stderr,"[E] Error reading the file %s\n",buffer_bloom_file);
-						exit(0);
+						exit(EXIT_FAILURE);
 					}
 					bloom_bPx2nd[i].bf = (uint8_t*)bf_ptr;	/* Restoring the bf pointer*/
 					readed = fread(bloom_bPx2nd[i].bf,bloom_bPx2nd[i].bytes,1,fd_aux2);
 					if(readed != 1)	{
 						fprintf(stderr,"[E] Error reading the file %s\n",buffer_bloom_file);
-						exit(0);
+						exit(EXIT_FAILURE);
 					}
 					readed = fread(&bloom_bPx2nd_checksums[i],sizeof(struct checksumsha256),1,fd_aux2);
 					if(readed != 1)	{
 						fprintf(stderr,"[E] Error reading the file %s\n",buffer_bloom_file);
-						exit(0);
+						exit(EXIT_FAILURE);
 					}
 					memset(rawvalue,0,32);
-					sha256((uint8_t*)bloom_bPx2nd[i].bf,bloom_bPx2nd[i].bytes,(uint8_t*)rawvalue);
-					if(memcmp(bloom_bPx2nd_checksums[i].data,rawvalue,32) != 0 || memcmp(bloom_bPx2nd_checksums[i].backup,rawvalue,32) != 0 )	{		/* Verification */
-						fprintf(stderr,"[E] Error checksum file mismatch! %s\n",buffer_bloom_file);
-						exit(0);
+					if(FLAGSKIPCHECKSUM == 0)	{								
+						sha256((uint8_t*)bloom_bPx2nd[i].bf,bloom_bPx2nd[i].bytes,(uint8_t*)rawvalue);
+						if(memcmp(bloom_bPx2nd_checksums[i].data,rawvalue,32) != 0 || memcmp(bloom_bPx2nd_checksums[i].backup,rawvalue,32) != 0 )	{		/* Verification */
+							fprintf(stderr,"[E] Error checksum file mismatch! %s\n",buffer_bloom_file);
+							exit(EXIT_FAILURE);
+						}
 					}
 					if(i % 64 == 0)	{
 						printf(".");
@@ -1538,13 +1545,15 @@ int main(int argc, char **argv)	{
 				rsize = fread(bPtable,bytes,1,fd_aux3);
 				if(readed != 1)	{
 					fprintf(stderr,"[E] Error reading the file %s\n",buffer_bloom_file);
-					exit(0);
+					exit(EXIT_FAILURE);
 				}
 				rsize = fread(checksum,32,1,fd_aux3);
-				sha256((uint8_t*)bPtable,bytes,(uint8_t*)checksum_backup);
-				if(memcmp(checksum,checksum_backup,32) != 0)	{
-					fprintf(stderr,"[E] Error checksum file mismatch! %s\n",buffer_bloom_file);
-					exit(0);
+				if(FLAGSKIPCHECKSUM == 0)	{
+					sha256((uint8_t*)bPtable,bytes,(uint8_t*)checksum_backup);
+					if(memcmp(checksum,checksum_backup,32) != 0)	{
+						fprintf(stderr,"[E] Error checksum file mismatch! %s\n",buffer_bloom_file);
+						exit(EXIT_FAILURE);
+					}
 				}
 				printf("... Done!\n");
 				fclose(fd_aux3);
@@ -1565,24 +1574,26 @@ int main(int argc, char **argv)	{
 					readed = fread(&bloom_bPx3rd[i],sizeof(struct bloom),1,fd_aux2);
 					if(readed != 1)	{
 						fprintf(stderr,"[E] Error reading the file %s\n",buffer_bloom_file);
-						exit(0);
+						exit(EXIT_FAILURE);
 					}
 					bloom_bPx3rd[i].bf = (uint8_t*)bf_ptr;	/* Restoring the bf pointer*/
 					readed = fread(bloom_bPx3rd[i].bf,bloom_bPx3rd[i].bytes,1,fd_aux2);
 					if(readed != 1)	{
 						fprintf(stderr,"[E] Error reading the file %s\n",buffer_bloom_file);
-						exit(0);
+						exit(EXIT_FAILURE);
 					}
 					readed = fread(&bloom_bPx3rd_checksums[i],sizeof(struct checksumsha256),1,fd_aux2);
 					if(readed != 1)	{
 						fprintf(stderr,"[E] Error reading the file %s\n",buffer_bloom_file);
-						exit(0);
+						exit(EXIT_FAILURE);
 					}
 					memset(rawvalue,0,32);
-					sha256((uint8_t*)bloom_bPx3rd[i].bf,bloom_bPx3rd[i].bytes,(uint8_t*)rawvalue);
-					if(memcmp(bloom_bPx3rd_checksums[i].data,rawvalue,32) != 0 || memcmp(bloom_bPx3rd_checksums[i].backup,rawvalue,32) != 0 )	{		/* Verification */
-						fprintf(stderr,"[E] Error checksum file mismatch! %s\n",buffer_bloom_file);
-						exit(0);
+					if(FLAGSKIPCHECKSUM == 0)	{							
+						sha256((uint8_t*)bloom_bPx3rd[i].bf,bloom_bPx3rd[i].bytes,(uint8_t*)rawvalue);
+						if(memcmp(bloom_bPx3rd_checksums[i].data,rawvalue,32) != 0 || memcmp(bloom_bPx3rd_checksums[i].backup,rawvalue,32) != 0 )	{		/* Verification */
+							fprintf(stderr,"[E] Error checksum file mismatch! %s\n",buffer_bloom_file);
+							exit(EXIT_FAILURE);
+						}
 					}
 					if(i % 64 == 0)	{
 						printf(".");
@@ -1886,17 +1897,17 @@ int main(int argc, char **argv)	{
 						readed = fwrite(&bloom_bP[i],sizeof(struct bloom),1,fd_aux1);
 						if(readed != 1)	{
 							fprintf(stderr,"[E] Error writing the file %s please delete it\n",buffer_bloom_file);
-							exit(0);
+							exit(EXIT_FAILURE);
 						}
 						readed = fwrite(bloom_bP[i].bf,bloom_bP[i].bytes,1,fd_aux1);
 						if(readed != 1)	{
 							fprintf(stderr,"[E] Error writing the file %s please delete it\n",buffer_bloom_file);
-							exit(0);
+							exit(EXIT_FAILURE);
 						}
 						readed = fwrite(&bloom_bP_checksums[i],sizeof(struct checksumsha256),1,fd_aux1);
 						if(readed != 1)	{
 							fprintf(stderr,"[E] Error writing the file %s please delete it\n",buffer_bloom_file);
-							exit(0);
+							exit(EXIT_FAILURE);
 						}
 						if(i % 64 == 0)	{
 							printf(".");
@@ -1908,7 +1919,7 @@ int main(int argc, char **argv)	{
 				}
 				else	{
 					fprintf(stderr,"[E] Error can't create the file %s\n",buffer_bloom_file);
-					exit(0);
+					exit(EXIT_FAILURE);
 				}
 			}
 			if(!FLAGREADEDFILE2  )	{
@@ -1924,17 +1935,17 @@ int main(int argc, char **argv)	{
 						readed = fwrite(&bloom_bPx2nd[i],sizeof(struct bloom),1,fd_aux2);
 						if(readed != 1)	{
 							fprintf(stderr,"[E] Error writing the file %s\n",buffer_bloom_file);
-							exit(0);
+							exit(EXIT_FAILURE);
 						}
 						readed = fwrite(bloom_bPx2nd[i].bf,bloom_bPx2nd[i].bytes,1,fd_aux2);
 						if(readed != 1)	{
 							fprintf(stderr,"[E] Error writing the file %s\n",buffer_bloom_file);
-							exit(0);
+							exit(EXIT_FAILURE);
 						}
 						readed = fwrite(&bloom_bPx2nd_checksums[i],sizeof(struct checksumsha256),1,fd_aux2);
 						if(readed != 1)	{
 							fprintf(stderr,"[E] Error writing the file %s please delete it\n",buffer_bloom_file);
-							exit(0);
+							exit(EXIT_FAILURE);
 						}
 						if(i % 64 == 0)	{
 							printf(".");
@@ -1946,7 +1957,7 @@ int main(int argc, char **argv)	{
 				}
 				else	{
 					fprintf(stderr,"[E] Error can't create the file %s\n",buffer_bloom_file);
-					exit(0);
+					exit(EXIT_FAILURE);
 				}
 			}
 			
@@ -1960,19 +1971,19 @@ int main(int argc, char **argv)	{
 					readed = fwrite(bPtable,bytes,1,fd_aux3);
 					if(readed != 1)	{
 						fprintf(stderr,"[E] Error writing the file %s\n",buffer_bloom_file);
-						exit(0);
+						exit(EXIT_FAILURE);
 					}
 					readed = fwrite(checksum,32,1,fd_aux3);
 					if(readed != 1)	{
 						fprintf(stderr,"[E] Error writing the file %s\n",buffer_bloom_file);
-						exit(0);
+						exit(EXIT_FAILURE);
 					}
 					printf("Done!\n");
 					fclose(fd_aux3);	
 				}
 				else	{
 					fprintf(stderr,"[E] Error can't create the file %s\n",buffer_bloom_file);
-					exit(0);
+					exit(EXIT_FAILURE);
 				}
 			}
 			if(!FLAGREADEDFILE4)	{
@@ -1987,17 +1998,17 @@ int main(int argc, char **argv)	{
 						readed = fwrite(&bloom_bPx3rd[i],sizeof(struct bloom),1,fd_aux2);
 						if(readed != 1)	{
 							fprintf(stderr,"[E] Error writing the file %s\n",buffer_bloom_file);
-							exit(0);
+							exit(EXIT_FAILURE);
 						}
 						readed = fwrite(bloom_bPx3rd[i].bf,bloom_bPx3rd[i].bytes,1,fd_aux2);
 						if(readed != 1)	{
 							fprintf(stderr,"[E] Error writing the file %s\n",buffer_bloom_file);
-							exit(0);
+							exit(EXIT_FAILURE);
 						}
 						readed = fwrite(&bloom_bPx3rd_checksums[i],sizeof(struct checksumsha256),1,fd_aux2);
 						if(readed != 1)	{
 							fprintf(stderr,"[E] Error writing the file %s please delete it\n",buffer_bloom_file);
-							exit(0);
+							exit(EXIT_FAILURE);
 						}
 						if(i % 64 == 0)	{
 							printf(".");
@@ -2009,7 +2020,7 @@ int main(int argc, char **argv)	{
 				}
 				else	{
 					fprintf(stderr,"[E] Error can't create the file %s\n",buffer_bloom_file);
-					exit(0);
+					exit(EXIT_FAILURE);
 				}
 			}
 		}
@@ -2075,7 +2086,7 @@ int main(int argc, char **argv)	{
 			if(s != 0)	{
 #endif
 				fprintf(stderr,"[E] thread thread_process\n");
-				exit(0);
+				exit(EXIT_FAILURE);
 			}
 		}
 
@@ -2130,7 +2141,7 @@ int main(int argc, char **argv)	{
 			}
 			if(s != 0)	{
 				fprintf(stderr,"[E] pthread_create thread_process\n");
-				exit(0);
+				exit(EXIT_FAILURE);
 			}
 		}
 	}
@@ -2527,7 +2538,7 @@ void *thread_process_minikeys(void *vargp)	{
 				}
 				steps[thread_number]++;
 				count+=1024;
-			}while(count < N_SECUENTIAL_MAX && continue_flag);
+			}while(count < N_SEQUENTIAL_MAX && continue_flag);
 		}
 	}while(continue_flag);
 	return NULL;
@@ -2595,12 +2606,12 @@ void *thread_process(void *vargp)	{
 #if defined(_WIN64) && !defined(__CYGWIN__)
 				WaitForSingleObject(write_random, INFINITE);
 				key_mpz.Set(&n_range_start);
-				n_range_start.Add(N_SECUENTIAL_MAX);
+				n_range_start.Add(N_SEQUENTIAL_MAX);
 				ReleaseMutex(write_random);
 #else
 				pthread_mutex_lock(&write_random);
 				key_mpz.Set(&n_range_start);
-				n_range_start.Add(N_SECUENTIAL_MAX);
+				n_range_start.Add(N_SEQUENTIAL_MAX);
 				pthread_mutex_unlock(&write_random);
 #endif
 			}
@@ -3123,7 +3134,7 @@ void *thread_process(void *vargp)	{
 				pp.y.ModMulK1(&_s);
 				pp.y.ModSub(&_2Gn.y);
 				startP = pp;
-			}while(count < N_SECUENTIAL_MAX && continue_flag);
+			}while(count < N_SEQUENTIAL_MAX && continue_flag);
 		}
 	} while(continue_flag);
 	ends[thread_number] = 1;
@@ -3200,12 +3211,12 @@ void *thread_process_vanity(void *vargp)	{
 #if defined(_WIN64) && !defined(__CYGWIN__)
 				WaitForSingleObject(write_random, INFINITE);
 				key_mpz.Set(&n_range_start);
-				n_range_start.Add(N_SECUENTIAL_MAX);
+				n_range_start.Add(N_SEQUENTIAL_MAX);
 				ReleaseMutex(write_random);
 #else
 				pthread_mutex_lock(&write_random);
 				key_mpz.Set(&n_range_start);
-				n_range_start.Add(N_SECUENTIAL_MAX);
+				n_range_start.Add(N_SEQUENTIAL_MAX);
 				pthread_mutex_unlock(&write_random);
 #endif
 			}
@@ -3647,7 +3658,7 @@ void *thread_process_vanity(void *vargp)	{
 				pp.y.ModMulK1(&_s);
 				pp.y.ModSub(&_2Gn.y);
 				startP = pp;
-			}while(count < N_SECUENTIAL_MAX && continue_flag);
+			}while(count < N_SEQUENTIAL_MAX && continue_flag);
 		}
 	} while(continue_flag);
 	ends[thread_number] = 1;
@@ -4019,7 +4030,7 @@ void *thread_process_bsgs(void *vargp)	{
 					}
 					if(salir)	{
 						printf("All points were found\n");
-						exit(0);
+						exit(EXIT_FAILURE);
 					}
 				}
 				else	{
@@ -4165,7 +4176,7 @@ void *thread_process_bsgs(void *vargp)	{
 									}
 									if(salir)	{
 										printf("All points were found\n");
-										exit(0);
+										exit(EXIT_FAILURE);
 									}
 								} //End if second check
 							}//End if first check
@@ -4340,7 +4351,7 @@ void *thread_process_bsgs_random(void *vargp)	{
 					}
 					if(salir)	{
 						printf("All points were found\n");
-						exit(0);
+						exit(EXIT_FAILURE);
 					}
 				}
 				else	{
@@ -4470,7 +4481,7 @@ void *thread_process_bsgs_random(void *vargp)	{
 									}
 									if(salir)	{
 										printf("All points were found\n");
-										exit(0);
+										exit(EXIT_FAILURE);
 									}
 								} //End if second check
 							}//End if first check
@@ -4668,12 +4679,12 @@ void *thread_pub2rmd(void *vargp)	{
 #if defined(_WIN64) && !defined(__CYGWIN__)
 				WaitForSingleObject(write_random, INFINITE);
 				key_mpz.Set(&n_range_start);
-				n_range_start.Add(N_SECUENTIAL_MAX);
+				n_range_start.Add(N_SEQUENTIAL_MAX);
 				ReleaseMutex(write_random);
 #else
 				pthread_mutex_lock(&write_random);
 				key_mpz.Set(&n_range_start);
-				n_range_start.Add(N_SECUENTIAL_MAX);
+				n_range_start.Add(N_SEQUENTIAL_MAX);
 				pthread_mutex_lock(&write_random);
 #endif
 			}
@@ -4726,7 +4737,7 @@ void *thread_pub2rmd(void *vargp)	{
 						}
 						else	{
 							fprintf(stderr,"\nPublickey found %s\nbut the file can't be open\n",temphex);
-							exit(0);
+							exit(EXIT_FAILURE);
 						}
 						free(temphex);
 					}
@@ -4757,7 +4768,7 @@ void *thread_pub2rmd(void *vargp)	{
 						}
 						else	{
 							fprintf(stderr,"\nPublickey found %s\nbut the file can't be open\n",temphex);
-							exit(0);
+							exit(EXIT_FAILURE);
 						}
 						free(temphex);
 					}
@@ -5328,7 +5339,7 @@ void *thread_process_bsgs_dance(void *vargp)	{
 					}
 					if(salir)	{
 						printf("All points were found\n");
-						exit(0);
+						exit(EXIT_FAILURE);
 					}
 				}
 				else	{
@@ -5458,7 +5469,7 @@ void *thread_process_bsgs_dance(void *vargp)	{
 									}
 									if(salir)	{
 										printf("All points were found\n");
-										exit(0);
+										exit(EXIT_FAILURE);
 									}
 								} //End if second check
 							}//End if first check
@@ -5650,7 +5661,7 @@ void *thread_process_bsgs_backward(void *vargp)	{
 					}
 					if(salir)	{
 						printf("All points were found\n");
-						exit(0);
+						exit(EXIT_FAILURE);
 					}
 				}
 				else	{
@@ -5780,7 +5791,7 @@ void *thread_process_bsgs_backward(void *vargp)	{
 									}
 									if(salir)	{
 										printf("All points were found\n");
-										exit(0);
+										exit(EXIT_FAILURE);
 									}
 								} //End if second check
 							}//End if first check
@@ -5980,7 +5991,7 @@ void *thread_process_bsgs_both(void *vargp)	{
 					}
 					if(salir)	{
 						printf("All points were found\n");
-						exit(0);
+						exit(EXIT_FAILURE);
 					}
 				}
 				else	{
@@ -6110,7 +6121,7 @@ void *thread_process_bsgs_both(void *vargp)	{
 									}
 									if(salir)	{
 										printf("All points were found\n");
-										exit(0);
+										exit(EXIT_FAILURE);
 									}
 								} //End if second check
 							}//End if first check
@@ -6338,7 +6349,7 @@ void menu() {
 	printf("This line runs the program with 8 threads from the range 20000000000000000 to 40000000000000000 without stats output\n\n");
 	printf("Developed by AlbertoBSD\tTips BTC: 1Coffee1jV4gB5gaXfHgSHDz9xx9QSECVW\n");
 	printf("Thanks to Iceland always helping and sharing his ideas.\nTips to Iceland: bc1q39meky2mn5qjq704zz0nnkl0v7kj4uz6r529at\n\n");
-	exit(0);
+	exit(EXIT_FAILURE);
 }
 
 bool vanityrmdmatch(unsigned char *rmdhash)	{
@@ -6348,7 +6359,7 @@ bool vanityrmdmatch(unsigned char *rmdhash)	{
 	switch(result)	{
 		case -1:
 			fprintf(stderr,"[E] Bloom is not initialized\n");
-			exit(0);
+			exit(EXIT_FAILURE);
 		break;
 		case 1:
 			for(i = 0; i < vanity_rmd_targets && !r;i++)	{
@@ -6432,13 +6443,17 @@ int addvanity(char *target)	{
 	
 	j = 0;
 	vanity_address_targets = (char**)  realloc(vanity_address_targets,(vanity_rmd_targets+1) * sizeof(char*));
+	vanity_address_targets[vanity_rmd_targets] = NULL;
 	checkpointer((void *)vanity_address_targets,__FILE__,"realloc","vanity_address_targets" ,__LINE__ -1 );
 	vanity_rmd_limits = (int*) realloc(vanity_rmd_limits,(vanity_rmd_targets+1) * sizeof(int));
+	vanity_rmd_limits[vanity_rmd_targets] = 0;
 	checkpointer((void *)vanity_rmd_limits,__FILE__,"realloc","vanity_rmd_limits" ,__LINE__ -1 );
 	vanity_rmd_limit_values_A = (uint8_t***)realloc(vanity_rmd_limit_values_A,(vanity_rmd_targets+1) * sizeof(unsigned char *));
 	checkpointer((void *)vanity_rmd_limit_values_A,__FILE__,"realloc","vanity_rmd_limit_values_A" ,__LINE__ -1 );
+	vanity_rmd_limit_values_A[vanity_rmd_targets] = NULL;
 	vanity_rmd_limit_values_B = (uint8_t***)realloc(vanity_rmd_limit_values_B,(vanity_rmd_targets+1) * sizeof(unsigned char *));
 	checkpointer((void *)vanity_rmd_limit_values_B,__FILE__,"realloc","vanity_rmd_limit_values_B" ,__LINE__ -1 );
+	vanity_rmd_limit_values_B[vanity_rmd_targets] = NULL;
 	do	{
 		raw_value_length = 50;
 		b58tobin(raw_value_A,&raw_value_length,target_copy,stringsize);
@@ -6576,7 +6591,7 @@ int minimum_same_bytes(unsigned char* A,unsigned char* B, int length) {
 void checkpointer(void *ptr,const char *file,const char *function,const  char *name,int line)	{
 	if(ptr == NULL)	{
 		fprintf(stderr,"[E] error in file %s, %s pointer %s on line %i\n",file,function,name,line); 
-		exit(0);
+		exit(EXIT_FAILURE);
 	}
 }
 
@@ -6665,7 +6680,6 @@ bool readFileVanity(char *fileName)	{
 		}
 	}
 	else	{
-	
 		while(!feof(fileDescriptor))	{
 			hextemp = fgets(aux,100,fileDescriptor);
 			if(hextemp == aux)	{
@@ -6773,22 +6787,24 @@ bool readFileAddress(char *fileName)	{
 				fclose(fileDescriptor);
 				return false;
 			}
-
-			//calculate checksum of the current readed data
-			sha256((uint8_t*)bloom.bf,bloom.bytes,(uint8_t*)checksum);
-			
-			//Compare checksums
-			/*
-			if(FLAGDEBUG)	{
-				hextemp = tohex((char*)checksum,32);
-				printf("[D] Current Bloom checksum %s\n",hextemp);
-				free(hextemp);
-			}
-			*/
-			if(memcmp(checksum,bloomChecksum,32) != 0)	{
-				fprintf(stderr,"[E] Error checksum mismatch, code line %i\n",__LINE__ - 2);
-				fclose(fileDescriptor);
-				return false;
+			if(FLAGSKIPCHECKSUM == 0){
+				
+				//calculate checksum of the current readed data
+				sha256((uint8_t*)bloom.bf,bloom.bytes,(uint8_t*)checksum);
+				
+				//Compare checksums
+				/*
+				if(FLAGDEBUG)	{
+					hextemp = tohex((char*)checksum,32);
+					printf("[D] Current Bloom checksum %s\n",hextemp);
+					free(hextemp);
+				}
+				*/
+				if(memcmp(checksum,bloomChecksum,32) != 0)	{
+					fprintf(stderr,"[E] Error checksum mismatch, code line %i\n",__LINE__ - 2);
+					fclose(fileDescriptor);
+					return false;
+				}
 			}
 			
 			/*
@@ -6830,12 +6846,14 @@ bool readFileAddress(char *fileName)	{
 				fclose(fileDescriptor);
 				return false;
 			}
-			
-			sha256((uint8_t*)addressTable,dataSize,(uint8_t*)checksum);
-			if(memcmp(checksum,dataChecksum,32) != 0)	{
-				fprintf(stderr,"[E] Error checksum mismatch, code line %i\n",__LINE__ - 2);
-				fclose(fileDescriptor);
-				return false;
+			if(FLAGSKIPCHECKSUM == 0)	{
+					
+				sha256((uint8_t*)addressTable,dataSize,(uint8_t*)checksum);
+				if(memcmp(checksum,dataChecksum,32) != 0)	{
+					fprintf(stderr,"[E] Error checksum mismatch, code line %i\n",__LINE__ - 2);
+					fclose(fileDescriptor);
+					return false;
+				}
 			}
 			//printf("[D] bloom.bf points to %p\n",bloom.bf);
 			FLAGREADEDFILE1 = 1;	/* We mark the file as readed*/
@@ -7163,7 +7181,7 @@ void writeFileIfNeeded(const char *fileName)	{
 		uint64_t dataSize;
 		if(!sha256_file((const char*)fileName,checksum)){
 			fprintf(stderr,"[E] sha256_file error line %i\n",__LINE__ - 1);
-			exit(0);
+			exit(EXIT_FAILURE);
 		}
 		tohex_dst((char*)checksum,4,(char*)hexPrefix); // we save the prefix (last fourt bytes) hexadecimal value
 		snprintf(fileBloomName,30,"data_%s.dat",hexPrefix);
@@ -7193,14 +7211,14 @@ void writeFileIfNeeded(const char *fileName)	{
 			bytesWrite = fwrite(bloomChecksum,1,32,fileDescriptor);
 			if(bytesWrite != 32)	{
 				fprintf(stderr,"[E] Errore writing file, code line %i\n",__LINE__ - 2);
-				exit(0);
+				exit(EXIT_FAILURE);
 			}
 			printf(".");
 			
 			bytesWrite = fwrite(&bloom,1,sizeof(struct bloom),fileDescriptor);
 			if(bytesWrite != sizeof(struct bloom))	{
 				fprintf(stderr,"[E] Error writing file, code line %i\n",__LINE__ - 2);
-				exit(0);
+				exit(EXIT_FAILURE);
 			}
 			printf(".");
 			
@@ -7208,7 +7226,7 @@ void writeFileIfNeeded(const char *fileName)	{
 			if(bytesWrite != bloom.bytes)	{
 				fprintf(stderr,"[E] Error writing file, code line %i\n",__LINE__ - 2);
 				fclose(fileDescriptor);
-				exit(0);
+				exit(EXIT_FAILURE);
 			}
 			printf(".");
 			
@@ -7229,21 +7247,21 @@ void writeFileIfNeeded(const char *fileName)	{
 			bytesWrite = fwrite(dataChecksum,1,32,fileDescriptor);
 			if(bytesWrite != 32)	{
 				fprintf(stderr,"[E] Errore writing file, code line %i\n",__LINE__ - 2);
-				exit(0);
+				exit(EXIT_FAILURE);
 			}
 			printf(".");	
 			
 			bytesWrite = fwrite(&dataSize,1,sizeof(uint64_t),fileDescriptor);
 			if(bytesWrite != sizeof(uint64_t))	{
 				fprintf(stderr,"[E] Errore writing file, code line %i\n",__LINE__ - 2);
-				exit(0);
+				exit(EXIT_FAILURE);
 			}
 			printf(".");
 			
 			bytesWrite = fwrite(addressTable,1,dataSize,fileDescriptor);
 			if(bytesWrite != dataSize)	{
 				fprintf(stderr,"[E] Error writing file, code line %i\n",__LINE__ - 2);
-				exit(0);
+				exit(EXIT_FAILURE);
 			}
 			printf(".");
 			

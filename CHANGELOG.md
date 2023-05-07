@@ -1,3 +1,8 @@
+# Version 0.2.230507 Satoshi Quest
+- fixed some variables names
+- fixed bug in addvanity (realloc problem with dirty memory)
+- Added option -6 to skip SHA256 checksum when you read the files (Improved startup process)
+
 # Version 0.2.230430 Satoshi Quest
 - fixed typos in README
 - Speed counter fixed for Compress search without endomorphism check https://github.com/albertobsd/keyhunt/tree/development#Speeds

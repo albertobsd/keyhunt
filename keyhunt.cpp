@@ -776,7 +776,10 @@ int main(int argc, char **argv)	{
 		}
 	}
 	
-	
+	if(  FLAGBSGSMODE == MODE_BSGS && FLAGENDOMORPHISM)	{
+		fprintf(stderr,"[E] Endomorphism doesn't work with BSGS\n");
+		exit(EXIT_FAILURE);
+	}
 	
 	
 	if( ( FLAGBSGSMODE == MODE_BSGS || FLAGBSGSMODE == MODE_PUB2RMD ) && FLAGSTRIDE)	{

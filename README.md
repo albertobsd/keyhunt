@@ -14,10 +14,10 @@ Work for Bitcoin
 Work for Ethereum
 - address
 
-# TL;TR
+# TL:DR
 
 - Download and build
-- Run againts puzzle 66 (addres mode)
+- Run against puzzle 66 (address mode)
 
 ```
 ./keyhunt -m address -f tests/66.txt -b 66 -l compress -R -q -s 10
@@ -26,7 +26,7 @@ Work for Ethereum
 
 You need to add `-t numberThreads` to get better speed
 
-- Run againts Puzzle 125 (bsgs mode)
+- Run against Puzzle 125 (bsgs mode)
 
 ```
 ./keyhunt -m bsgs -f tests/125.txt -b 125 -q -s 10 -R
@@ -47,16 +47,16 @@ If you would like to support this project, please consider donating at https://g
 I made this tool as a generic tool for the Puzzles.
 I recommend to everyone to stay in puzzles
 
-Several of users requestme to add sopport for ethereum and minikeys, I did it.
-But again i recommed only use this program for puzzles.
+Several of users request me to add support for ethereum and minikeys, I did it.
+But again i recommend only use this program for puzzles.
 
-## For regulars users
+## For regular users
 
 Please read the CHANGELOG.md to see the new changes
 
 # Download and build
 
-This program was made in a linux enviroment.
+This program was made in a linux environment.
 if you are windows user i strongly recommend to use WSL enviroment on Windows.
 it is available in the Microsoft store
 
@@ -228,7 +228,7 @@ rmd160 ad63f02cb68254ce12982e5e312bd51e8a239a84
 ```
 
 
-command to search multiple vanity address from a file `-f filename.txt`.
+command to search multiple vanity addresses from a file `-f filename.txt`.
 
 ```
 ./keyhunt -m vanity -f ~/main/keyhunt/vanitytargets.txt -l compress -R -b 256 -e -s 10 -q 
@@ -257,7 +257,7 @@ All the vanity address and his privatekeys will be saved in the file `VANITYKEYF
 
 ## rmd160 mode
 
-rmd stand for RIPE Message Digest (see https://en.wikipedia.org/wiki/RIPEMD )
+rmd stands for RIPE Message Digest (see https://en.wikipedia.org/wiki/RIPEMD )
 
 mode rmd160 work in the same way than address, but the diference is that file need to have hash rmd160 instead of addresses.
 
@@ -305,7 +305,7 @@ rmd160 7dd65592d0ab2fe0d0257d571abf032cd9db93dc
 (Output omitted)
 ```
 
-test your luck with the next file for th puzzle #66
+test your luck with the next file for the puzzle #66
 
 
 ```
@@ -336,7 +336,7 @@ Output:
 
 This method can target the X value of the publickey in the same way that the tool search for address or rmd160 hash, this tool can search for the X values
 
-The speed for this method is is better than the speed for address or rmd160
+The speed for this method is better than the speed for address or rmd160
 
 The input file can had one publickey per line compress or uncompress:
 
@@ -564,9 +564,9 @@ You can let it run for a while together with others scripts, if you get one of t
 
 ## bsgs mode (baby step giant step)
 
-Keyhunt implement the BSGS algorithm to search privatekeys for a knowed publickey.
+Keyhunt implement the BSGS algorithm to search privatekeys for a known public key.
 
-The input file need to have a list of publickeys compress or uncompress those publickey can be mixed in the same file, one publickey per line and any other word followed by an space is ignored example of the file:
+The input file need to have a list of publickeys compress or uncompress those publickey can be mixed in the same file, one public key per line and any other word followed by an space is ignored example of the file:
 
 ```
 043ffa1cc011a8d23dec502c7656fb3f93dbe4c61f91fd443ba444b4ec2dd8e6f0406c36edf3d8a0dfaa7b8f309b8f1276a5c04131762c23594f130a023742bdde # 0000000000000000000000000000000000800000000000000000100000000000
@@ -624,7 +624,7 @@ example of file creation:
 ^C] Total 457396837154816 keys in 30 seconds: ~15 Tkeys/s (15246561238493 keys/s)
 ```
 
-when we run the program for second time the files are now readed and the bP Points processing is omited:
+When we run the program for second time the files are now readed and the bP Points processing is omitted:
 
 ```
 ./keyhunt -m bsgs -f tests/125.txt -R -b 125 -q -S -s 10
@@ -969,7 +969,7 @@ user    973m8.387s
 sys     0m26.803s
 ```
 
-Amount of RAM used ~4.5 GB, time to solve the sixteen publickeys in the range of 64 bits key-space: 164 min (~2.7 hrs) using 6 threads
+Amount of RAM used ~4.5 GB, time to solve the sixteen public keys in the range of 64 bits key-space: 164 min (~2.7 hrs) using 6 threads
 
 if we run the same command with `-n 0x1000000000000000 -k 4 -t 6` it use ~18 GB or RAM and solve the same keys in 60 minutes
 
@@ -1017,9 +1017,9 @@ To get optimal performance the k values need to be base 2^x values, this is 1,2,
 +------+----------------------+-------------+
 ```
  
-**if you exceed the Max value of K the program can have a unknow behavior, the program can have a suboptimal performance, or in the wrong cases you can missing some hits and have an incorrect SPEED.**
+**If you exceed the max value of K the program can have a unknow behavior, the program can have a suboptimal performance, or in the wrong cases you can missing some hits and have an incorrect SPEED.**
 
-Note for user that want use it with SWAP memory. IT DON'T WORK swap memory was made to small chucks of memory also is slowly.   
+Note for user that want use it with SWAP memory. IT DOESN'T WORK with Swap Memory was made to small chucks of memory also is slowly.   
 
 ### What values use according to my current RAM:
 

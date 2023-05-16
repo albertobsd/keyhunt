@@ -136,7 +136,6 @@ int bloom_check(struct bloom * bloom, const void * buffer, int len)
   uint64_t b = XXH64(buffer, len, a);
   uint64_t x;
   uint8_t i;
-  int r;
   for (i = 0; i < bloom->hashes; i++) {
     x = (a + b*i) % bloom->bits;
     if (test_bit(bloom->bf, x)) {

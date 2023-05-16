@@ -2,7 +2,8 @@
 - fixed some variables names
 - fixed bug in addvanity (realloc problem with dirty memory)
 - Added option -6 to skip SHA256 checksum when you read the files (Improved startup process)
-- Added warning when you Endomorphism and BSGS, THEY DON'T WORK together! 
+- Added warning when you Endomorphism and BSGS, THEY DON'T WORK together!
+- Legacy version for ARM processor and other systems
 
 # Version 0.2.230430 Satoshi Quest
 - fixed typos in README

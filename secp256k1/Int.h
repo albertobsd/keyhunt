@@ -42,7 +42,7 @@ class Int {
 public:
 
   Int();
-  Int(uint32_t i32);
+  Int(int32_t i32);
   Int(int64_t i64);
   Int(uint64_t u64);
   Int(Int *a);

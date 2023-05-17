@@ -18,6 +18,10 @@
 #ifndef SHA256_H
 #define SHA256_H
 #include <string>
+#include <string.h>
+#include <stdio.h>
+#include <stdint.h>
+#include <inttypes.h>
 
 void sha256(uint8_t *input,size_t length, uint8_t *digest);
 void sha256_33(uint8_t *input, uint8_t *digest);

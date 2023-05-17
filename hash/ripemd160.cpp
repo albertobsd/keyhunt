@@ -16,7 +16,12 @@
 */
 
 #include "ripemd160.h"
+#include <stdint.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <inttypes.h>
 #include <string.h>
+#include <string>
 
 /// Internal RIPEMD-160 implementation.
 namespace _ripemd160 {

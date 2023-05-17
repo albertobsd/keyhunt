@@ -44,7 +44,7 @@ Secp256K1::~Secp256K1() {
 
 Point Secp256K1::Negation(Point &p) {
 	Point Q;
-	Q.Clear();
+	//Q.Clear();
 	Q.x.Set(&p.x);
 	Q.y.Set(&this->P);
 	Q.y.Sub(&p.y);
@@ -562,10 +562,57 @@ void Secp256K1::GetHash160(int type, bool compressed, Point &pubKey, unsigned ch
 void Secp256K1::GetHash160(int type,bool compressed,
   Point &k0,Point &k1,Point &k2,Point &k3,
   uint8_t *h0,uint8_t *h1,uint8_t *h2,uint8_t *h3) {
-	GetHash160(type,compressed,k0,h0);
-	GetHash160(type,compressed,k1,h1);
-	GetHash160(type,compressed,k2,h2);
-	GetHash160(type,compressed,k3,h3);
+	
+	switch (type) {
+		case P2PKH:
+		case BECH32:
+			unsigned char digests[4][65];
+
+			if (!compressed) {
+				// Full public key
+				digests[0][0] = 0x4;
+				digests[1][0] = 0x4;
+				digests[2][0] = 0x4;
+				digests[3][0] = 0x4;
+				k0.x.Get32Bytes(digests[0] + 1);
+				k0.y.Get32Bytes(digests[0] + 33);
+				k1.x.Get32Bytes(digests[1] + 1);
+				k1.y.Get32Bytes(digests[1] + 33);
+				k2.x.Get32Bytes(digests[2] + 1);
+				k2.y.Get32Bytes(digests[2] + 33);
+				k3.x.Get32Bytes(digests[3] + 1);
+				k3.y.Get32Bytes(digests[3] + 33);
+				
+				sha256_4(65, digests[0], digests[1],digests[2],digests[3],digests[0], digests[1],digests[2],digests[3]);
+			} else {
+				// Compressed public key
+				digests[0][0] = (unsigned char) k0.y.IsEven() ? 0x2 : 0x3;
+				digests[1][0] = (unsigned char) k1.y.IsEven() ? 0x2 : 0x3;
+				digests[2][0] = (unsigned char) k2.y.IsEven() ? 0x2 : 0x3;
+				digests[3][0] = (unsigned char) k3.y.IsEven() ? 0x2 : 0x3;
+				k0.x.Get32Bytes(digests[0] + 1);
+				k1.x.Get32Bytes(digests[1] + 1);
+				k2.x.Get32Bytes(digests[2] + 1);
+				k3.x.Get32Bytes(digests[3] + 1);
+				sha256_4(33, digests[0], digests[1],digests[2],digests[3],digests[0], digests[1],digests[2],digests[3]);
+			}
+			rmd160_4(32, digests[0], digests[1],digests[2],digests[3],h0,h1,h2,h3);
+		
+		break;
+			case P2SH:
+			printf("Unsoported P2SH\n");
+			exit(0);
+			/*
+			// Redeem Script (1 to 1 P2SH)
+			unsigned char script[64];
+			script[0] = 0x00;  // OP_0
+			script[1] = 0x14;  // PUSH 20 bytes
+			GetHash160(P2PKH, compressed, pubKey, script + 2);
+			sha256(script, 22, shapk);
+			rmd160(shapk,32,hash);
+			*/
+		break;
+	}
 }
 
 
@@ -573,7 +620,7 @@ void Secp256K1::GetHash160_fromX(int type,unsigned char prefix,
   Int *k0,Int *k1,Int *k2,Int *k3,
   uint8_t *h0,uint8_t *h1,uint8_t *h2,uint8_t *h3) {
 	unsigned char digests[4][33];
-	int i;
+	//int i;
 	switch (type) {
 		case P2PKH:
 			
@@ -581,14 +628,14 @@ void Secp256K1::GetHash160_fromX(int type,unsigned char prefix,
 			k1->Get32Bytes((unsigned char*)(digests[1] + 1));
 			k2->Get32Bytes((unsigned char*)(digests[2] + 1));
 			k3->Get32Bytes((unsigned char*)(digests[3] + 1));
-			for(i = 0; i < 4; i++)	{
-				digests[i][0] = prefix;
-				sha256(digests[i],33,digests[i]);
-			}
-			rmd160(digests[0],32,h0);
-			rmd160(digests[1],32,h1);
-			rmd160(digests[2],32,h2);
-			rmd160(digests[3],32,h3);
+			digests[0][0] = prefix;
+			digests[1][0] = prefix;
+			digests[2][0] = prefix;
+			digests[3][0] = prefix;
+			
+			sha256_4(33, digests[0], digests[1],digests[2],digests[3],digests[0], digests[1],digests[2],digests[3]);
+			rmd160_4(32, digests[0], digests[1],digests[2],digests[3],h0,h1,h2,h3);
+
 		break;
 
 		case P2SH:

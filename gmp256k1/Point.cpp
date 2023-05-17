@@ -19,6 +19,9 @@
 #include <stdio.h>
 
 Point::Point() {
+	mpz_set_ui(x.num,0);
+	mpz_set_ui(y.num,0);
+	mpz_set_ui(z.num,0);
 	
 }
 
@@ -87,22 +90,7 @@ void Point::Reduce() {
 	i.ModInv();
 	x.ModMul(&x,&i);
 	y.ModMul(&y,&i);
-	z.SetInt32(1);
-/*
-Yes, exactly. The Reduce function you mentioned converts the point from projective coordinates back to affine coordinates.
-
-In elliptic curve computations, it's often more efficient to work with projective coordinates because they allow addition and doubling operations to be performed without needing to do division operations, which are computationally expensive.
-
-However, at the end of your computation, or at certain intermediate stages, you might need to convert the point back to affine coordinates. That's what this Reduce function is doing.
-
-Here's what each line in Reduce is doing:
-
-Int i(&z); creates an integer i from the z coordinate of the point.
-i.ModInv(); computes the modular inverse of i, effectively performing a division operation. Note that this operation is only valid if i is not zero.
-x.ModMul(&x,&i); and y.ModMul(&y,&i); multiply the x and y coordinates by the modular inverse of z, effectively dividing them by z. This converts the x and y coordinates from projective back to affine coordinates.
-z.SetInt32(1); sets the z coordinate to 1, completing the conversion to affine coordinates.
-In the end, Reduce leaves the point in the form (X/Z, Y/Z, 1), which is equivalent to (X, Y) in affine coordinates.
-*/  
+	z.SetInt32(1); 
 }
 
 bool Point::equals(Point &p) {
@@ -120,19 +108,7 @@ Point& Point::operator=(const Point& other)  {
 	mpz_set(x.num,other.x.num);
 	mpz_set(y.num,other.y.num);
 	mpz_set(z.num,other.z.num);
-	/*
-	ptrs[0] = x.GetBase16();
-	ptrs[1] = y.GetBase16();
-	ptrs[2] = z.GetBase16();
-	printf("Point\n");
-	printf("X: %s\n",ptrs[0]);
-	printf("Y: %s\n",ptrs[1]);
-	printf("Z: %s\n",ptrs[2]);
-	printf("End Point\n");
-	for(int i = 0; i<3; i++)	{
-		free(ptrs[i]);
-	}
-	*/
+
 	// Return the current object
 	return *this;
 }

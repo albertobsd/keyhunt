@@ -40,8 +40,7 @@ Int::Int(Int *a) {
   else CLEAR();
 }
 
-Int::Int(uint32_t i32) {
-
+Int::Int(int32_t i32) {
   if (i32 < 0) {
 	  CLEARFF();
   } else {

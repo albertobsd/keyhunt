@@ -131,13 +131,13 @@ Point _2Gn;
 
 std::vector<Point> GSn;
 Point _2GSn;
-
+/*
 std::vector<Point> GSn2;
 Point _2GSn2;
 
 std::vector<Point> GSn3;
 Point _2GSn3;
-
+*/
 
 void menu();
 void init_generator();
@@ -201,7 +201,6 @@ DWORD WINAPI thread_process_bsgs_random(LPVOID vargp);
 DWORD WINAPI thread_process_bsgs_dance(LPVOID vargp);
 DWORD WINAPI thread_bPload(LPVOID vargp);
 DWORD WINAPI thread_bPload_2blooms(LPVOID vargp);
-DWORD WINAPI thread_pub2rmd(LPVOID vargp);
 #else
 void *thread_process_vanity(void *vargp);
 void *thread_process_minikeys(void *vargp);	
@@ -213,7 +212,6 @@ void *thread_process_bsgs_random(void *vargp);
 void *thread_process_bsgs_dance(void *vargp);
 void *thread_bPload(void *vargp);
 void *thread_bPload_2blooms(void *vargp);
-void *thread_pub2rmd(void *vargp);
 #endif
 
 char *publickeytohashrmd160(char *pkey,int length);
@@ -243,13 +241,13 @@ HANDLE* tid = NULL;
 HANDLE write_keys;
 HANDLE write_random;
 HANDLE bsgs_thread;
-HANDLE *bPload_mutex;
+HANDLE *bPload_mutex = NULL;
 #else
 pthread_t *tid = NULL;
 pthread_mutex_t write_keys;
 pthread_mutex_t write_random;
 pthread_mutex_t bsgs_thread;
-pthread_mutex_t *bPload_mutex;
+pthread_mutex_t *bPload_mutex = NULL;
 #endif
 
 uint64_t FINISHED_THREADS_COUNTER = 0;
@@ -369,7 +367,7 @@ uint64_t bloom_bP3_totalbytes = 0;
 uint64_t bsgs_m = 4194304;
 uint64_t bsgs_m2;
 uint64_t bsgs_m3;
-unsigned long int bsgs_aux;
+uint64_t bsgs_aux;
 uint32_t bsgs_point_number;
 
 const char *str_limits_prefixs[7] = {"Mkeys/s","Gkeys/s","Tkeys/s","Pkeys/s","Ekeys/s","Zkeys/s","Ykeys/s"};
@@ -412,12 +410,10 @@ Secp256K1 *secp;
 
 int main(int argc, char **argv)	{
 	char buffer[2048];
-	char temporal[65];
 	char rawvalue[32];
 	struct tothread *tt;	//tothread
 	Tokenizer t,tokenizerbsgs;	//tokenizer
 	char *fileName = NULL;
-	char *precalculated_mp_fileName = NULL;
 	char *hextemp = NULL;
 	char *aux = NULL;
 	char *aux2 = NULL;
@@ -430,12 +426,12 @@ int main(int argc, char **argv)	{
 	char *bf_ptr = NULL;
 	char *bPload_threads_available;
 	FILE *fd,*fd_aux1,*fd_aux2,*fd_aux3;
-	uint64_t j,total_precalculated,i,PERTHREAD,BASE,PERTHREAD_R,itemsbloom,itemsbloom2,itemsbloom3;
+	uint64_t i,BASE,PERTHREAD_R,itemsbloom,itemsbloom2,itemsbloom3;
 	uint32_t finished;
-	int readed,continue_flag,check_flag,r,lenaux,lendiff,c,salir,index_value;
+	int readed,continue_flag,check_flag,c,salir,index_value,j;
 	Int total,pretotal,debugcount_mpz,seconds,div_pretotal,int_aux,int_r,int_q,int58;
 	struct bPload *bPload_temp_ptr;
-	size_t rsize,raw_value_length;
+	size_t rsize;
 	
 #if defined(_WIN64) && !defined(__CYGWIN__)
 	DWORD s;
@@ -641,7 +637,8 @@ int main(int argc, char **argv)	{
 					break;
 					case MODE_PUB2RMD:
 						FLAGMODE = MODE_PUB2RMD;
-						printf("[+] Mode pub2rmd\n");
+						printf("[+] Mode pub2rmd was removed\n");
+						exit(0);
 					break;
 					case MODE_MINIKEYS:
 						FLAGMODE = MODE_MINIKEYS;
@@ -782,8 +779,8 @@ int main(int argc, char **argv)	{
 	}
 	
 	
-	if( ( FLAGBSGSMODE == MODE_BSGS || FLAGBSGSMODE == MODE_PUB2RMD ) && FLAGSTRIDE)	{
-		fprintf(stderr,"[E] Stride doesn't work with BSGS, pub2rmd\n");
+	if(  FLAGBSGSMODE == MODE_BSGS  && FLAGSTRIDE)	{
+		fprintf(stderr,"[E] Stride doesn't work with BSGS\n");
 		exit(EXIT_FAILURE);
 	}
 	if(FLAGSTRIDE)	{
@@ -934,7 +931,6 @@ int main(int argc, char **argv)	{
 
 		switch(FLAGMODE)	{
 			case MODE_MINIKEYS:
-			case MODE_PUB2RMD:
 			case MODE_RMD160:
 			case MODE_ADDRESS:
 			case MODE_XPOINT:
@@ -1299,9 +1295,10 @@ int main(int argc, char **argv)	{
 		BSGS_AMP2.reserve(32);
 		BSGS_AMP3.reserve(32);
 		GSn.reserve(CPU_GRP_SIZE/2);
+		/*
 		GSn2.reserve(16);
 		GSn3.reserve(16);
-
+		*/
 		i= 0;
 
 
@@ -1322,6 +1319,7 @@ int main(int argc, char **argv)	{
 		
 		
 		/*Auxiliar Points to speed up calculations for the second bloom filter check */
+		/*
 		bsP = secp->Negation(BSGS_MP2);
 		g = bsP;
 		GSn2[0] = g;
@@ -1333,8 +1331,9 @@ int main(int argc, char **argv)	{
 
 		}
 		_2GSn2 = secp->DoubleDirect(GSn2[16 - 1]);
-		
+		*/
 		/*Auxiliar Points to speed up calculations for the third bloom filter check */
+		/*
 		bsP = secp->Negation(BSGS_MP3);
 		g = bsP;
 		GSn3[0] = g;
@@ -1346,7 +1345,7 @@ int main(int argc, char **argv)	{
 
 		}
 		_2GSn3 = secp->DoubleDirect(GSn3[16 - 1]);
-		
+		*/
 		
 		
 		
@@ -1549,11 +1548,15 @@ int main(int argc, char **argv)	{
 				printf("[+] Reading bP Table from file %s .",buffer_bloom_file);
 				fflush(stdout);
 				rsize = fread(bPtable,bytes,1,fd_aux3);
-				if(readed != 1)	{
+				if(rsize != 1)	{
 					fprintf(stderr,"[E] Error reading the file %s\n",buffer_bloom_file);
 					exit(EXIT_FAILURE);
 				}
 				rsize = fread(checksum,32,1,fd_aux3);
+				if(rsize != 1)	{
+					fprintf(stderr,"[E] Error reading the file %s\n",buffer_bloom_file);
+					exit(EXIT_FAILURE);
+				}
 				if(FLAGSKIPCHECKSUM == 0)	{
 					sha256((uint8_t*)bPtable,bytes,(uint8_t*)checksum_backup);
 					if(memcmp(checksum,checksum_backup,32) != 0)	{
@@ -1659,38 +1662,36 @@ int main(int argc, char **argv)	{
 				
 				memset(bPload_threads_available,1,NTHREADS);
 				
-				for(i = 0; i < NTHREADS; i++)	{
+				for(j = 0; j < NTHREADS; j++)	{
 #if defined(_WIN64) && !defined(__CYGWIN__)
-					bPload_mutex[i] = CreateMutex(NULL, FALSE, NULL);
+					bPload_mutex[j] = CreateMutex(NULL, FALSE, NULL);
 #else
-					pthread_mutex_init(&bPload_mutex[i],NULL);
+					pthread_mutex_init(&bPload_mutex[j],NULL);
 #endif
 				}
 				
 				do	{
-					for(i = 0; i < NTHREADS && !salir; i++)	{
+					for(j = 0; j < NTHREADS && !salir; j++)	{
 
-						if(bPload_threads_available[i] && !salir)	{
-							bPload_threads_available[i] = 0;
-							bPload_temp_ptr[i].from = BASE;
-							bPload_temp_ptr[i].threadid = i;
-							bPload_temp_ptr[i].finished = 0;
+						if(bPload_threads_available[j] && !salir)	{
+							bPload_threads_available[j] = 0;
+							bPload_temp_ptr[j].from = BASE;
+							bPload_temp_ptr[j].threadid = j;
+							bPload_temp_ptr[j].finished = 0;
 							if( THREADCOUNTER < THREADCYCLES-1)	{
-								bPload_temp_ptr[i].to = BASE + THREADBPWORKLOAD;
-								bPload_temp_ptr[i].workload = THREADBPWORKLOAD;
+								bPload_temp_ptr[j].to = BASE + THREADBPWORKLOAD;
+								bPload_temp_ptr[j].workload = THREADBPWORKLOAD;
 							}
 							else	{
-								bPload_temp_ptr[i].to = BASE + THREADBPWORKLOAD + PERTHREAD_R;
-								bPload_temp_ptr[i].workload = THREADBPWORKLOAD + PERTHREAD_R;
+								bPload_temp_ptr[j].to = BASE + THREADBPWORKLOAD + PERTHREAD_R;
+								bPload_temp_ptr[j].workload = THREADBPWORKLOAD + PERTHREAD_R;
 								salir = 1;
-								//if(FLAGDEBUG) printf("[D] Salir OK\n");
 							}
-							//if(FLAGDEBUG) printf("[I] %lu to %lu\n",bPload_temp_ptr[i].from,bPload_temp_ptr[i].to);
 #if defined(_WIN64) && !defined(__CYGWIN__)
-							tid[i] = CreateThread(NULL, 0, thread_bPload_2blooms, (void*) &bPload_temp_ptr[i], 0, &s);
+							tid[j] = CreateThread(NULL, 0, thread_bPload_2blooms, (void*) &bPload_temp_ptr[j], 0, &s);
 #else
-							s = pthread_create(&tid[i],NULL,thread_bPload_2blooms,(void*) &bPload_temp_ptr[i]);
-							pthread_detach(tid[i]);
+							s = pthread_create(&tid[j],NULL,thread_bPload_2blooms,(void*) &bPload_temp_ptr[j]);
+							pthread_detach(tid[j]);
 #endif
 							BASE+=THREADBPWORKLOAD;
 							THREADCOUNTER++;
@@ -1703,25 +1704,24 @@ int main(int argc, char **argv)	{
 						OLDFINISHED_ITEMS = FINISHED_ITEMS;
 					}
 					
-					for(i = 0 ; i < NTHREADS ; i++)	{
+					for(j = 0 ; j < NTHREADS ; j++)	{
 
 #if defined(_WIN64) && !defined(__CYGWIN__)
-						WaitForSingleObject(bPload_mutex[i], INFINITE);
-						finished = bPload_temp_ptr[i].finished;
-						ReleaseMutex(bPload_mutex[i]);
+						WaitForSingleObject(bPload_mutex[j], INFINITE);
+						finished = bPload_temp_ptr[j].finished;
+						ReleaseMutex(bPload_mutex[j]);
 #else
-						pthread_mutex_lock(&bPload_mutex[i]);
-						finished = bPload_temp_ptr[i].finished;
-						pthread_mutex_unlock(&bPload_mutex[i]);
+						pthread_mutex_lock(&bPload_mutex[j]);
+						finished = bPload_temp_ptr[j].finished;
+						pthread_mutex_unlock(&bPload_mutex[j]);
 #endif
 						if(finished)	{
-							bPload_temp_ptr[i].finished = 0;
-							bPload_threads_available[i] = 1;
-							FINISHED_ITEMS += bPload_temp_ptr[i].workload;
+							bPload_temp_ptr[j].finished = 0;
+							bPload_threads_available[j] = 1;
+							FINISHED_ITEMS += bPload_temp_ptr[j].workload;
 							FINISHED_THREADS_COUNTER++;
 						}
 					}
-					
 				}while(FINISHED_THREADS_COUNTER < THREADCYCLES);
 				printf("\r[+] processing %lu/%lu bP points : 100%%     \n",bsgs_m2,bsgs_m2);
 				
@@ -1775,38 +1775,38 @@ int main(int argc, char **argv)	{
 
 				memset(bPload_threads_available,1,NTHREADS);
 				
-				for(i = 0; i < NTHREADS; i++)	{
+				for(j = 0; j < NTHREADS; j++)	{
 #if defined(_WIN64) && !defined(__CYGWIN__)
 					bPload_mutex = CreateMutex(NULL, FALSE, NULL);
 #else
-					pthread_mutex_init(&bPload_mutex[i],NULL);
+					pthread_mutex_init(&bPload_mutex[j],NULL);
 #endif
 				}
 				
 				do	{
-					for(i = 0; i < NTHREADS && !salir; i++)	{
+					for(j = 0; j < NTHREADS && !salir; j++)	{
 
-						if(bPload_threads_available[i] && !salir)	{
-							bPload_threads_available[i] = 0;
-							bPload_temp_ptr[i].from = BASE;
-							bPload_temp_ptr[i].threadid = i;
-							bPload_temp_ptr[i].finished = 0;
+						if(bPload_threads_available[j] && !salir)	{
+							bPload_threads_available[j] = 0;
+							bPload_temp_ptr[j].from = BASE;
+							bPload_temp_ptr[j].threadid = j;
+							bPload_temp_ptr[j].finished = 0;
 							if( THREADCOUNTER < THREADCYCLES-1)	{
-								bPload_temp_ptr[i].to = BASE + THREADBPWORKLOAD;
-								bPload_temp_ptr[i].workload = THREADBPWORKLOAD;
+								bPload_temp_ptr[j].to = BASE + THREADBPWORKLOAD;
+								bPload_temp_ptr[j].workload = THREADBPWORKLOAD;
 							}
 							else	{
-								bPload_temp_ptr[i].to = BASE + THREADBPWORKLOAD + PERTHREAD_R;
-								bPload_temp_ptr[i].workload = THREADBPWORKLOAD + PERTHREAD_R;
+								bPload_temp_ptr[j].to = BASE + THREADBPWORKLOAD + PERTHREAD_R;
+								bPload_temp_ptr[j].workload = THREADBPWORKLOAD + PERTHREAD_R;
 								salir = 1;
 								//if(FLAGDEBUG) printf("[D] Salir OK\n");
 							}
 							//if(FLAGDEBUG) printf("[I] %lu to %lu\n",bPload_temp_ptr[i].from,bPload_temp_ptr[i].to);
 #if defined(_WIN64) && !defined(__CYGWIN__)
-							tid[i] = CreateThread(NULL, 0, thread_bPload, (void*) &bPload_temp_ptr[i], 0, &s);
+							tid[j] = CreateThread(NULL, 0, thread_bPload, (void*) &bPload_temp_ptr[j], 0, &s);
 #else
-							s = pthread_create(&tid[i],NULL,thread_bPload,(void*) &bPload_temp_ptr[i]);
-							pthread_detach(tid[i]);
+							s = pthread_create(&tid[j],NULL,thread_bPload,(void*) &bPload_temp_ptr[j]);
+							pthread_detach(tid[j]);
 #endif
 							BASE+=THREADBPWORKLOAD;
 							THREADCOUNTER++;
@@ -1818,21 +1818,21 @@ int main(int argc, char **argv)	{
 						OLDFINISHED_ITEMS = FINISHED_ITEMS;
 					}
 					
-					for(i = 0 ; i < NTHREADS ; i++)	{
+					for(j = 0 ; j < NTHREADS ; j++)	{
 
 #if defined(_WIN64) && !defined(__CYGWIN__)
-						WaitForSingleObject(bPload_mutex[i], INFINITE);
-						finished = bPload_temp_ptr[i].finished;
-						ReleaseMutex(bPload_mutex[i]);
+						WaitForSingleObject(bPload_mutex[j], INFINITE);
+						finished = bPload_temp_ptr[j].finished;
+						ReleaseMutex(bPload_mutex[j]);
 #else
-						pthread_mutex_lock(&bPload_mutex[i]);
-						finished = bPload_temp_ptr[i].finished;
-						pthread_mutex_unlock(&bPload_mutex[i]);
+						pthread_mutex_lock(&bPload_mutex[j]);
+						finished = bPload_temp_ptr[j].finished;
+						pthread_mutex_unlock(&bPload_mutex[j]);
 #endif
 						if(finished)	{
-							bPload_temp_ptr[i].finished = 0;
-							bPload_threads_available[i] = 1;
-							FINISHED_ITEMS += bPload_temp_ptr[i].workload;
+							bPload_temp_ptr[j].finished = 0;
+							bPload_threads_available[j] = 1;
+							FINISHED_ITEMS += bPload_temp_ptr[j].workload;
 							FINISHED_THREADS_COUNTER++;
 						}
 					}
@@ -2045,49 +2045,50 @@ int main(int argc, char **argv)	{
 #endif
 		checkpointer((void *)tid,__FILE__,"calloc","tid" ,__LINE__ -1 );
 		
-		for(i= 0;i < NTHREADS; i++)	{
+		for(j= 0;j < NTHREADS; j++)	{
 			tt = (tothread*) malloc(sizeof(struct tothread));
 			checkpointer((void *)tt,__FILE__,"malloc","tt" ,__LINE__ -1 );
-			tt->nt = i;
+			tt->nt = j;
+			steps[j] = 0;
+			s = 0;
 			switch(FLAGBSGSMODE)	{
 #if defined(_WIN64) && !defined(__CYGWIN__)
 				case 0:
-					tid[i] = CreateThread(NULL, 0, thread_process_bsgs, (void*)tt, 0, &s);
+					tid[j] = CreateThread(NULL, 0, thread_process_bsgs, (void*)tt, 0, &s);
 					break;
 				case 1:
-					tid[i] = CreateThread(NULL, 0, thread_process_bsgs_backward, (void*)tt, 0, &s);
+					tid[j] = CreateThread(NULL, 0, thread_process_bsgs_backward, (void*)tt, 0, &s);
 					break;
 				case 2:
-					tid[i] = CreateThread(NULL, 0, thread_process_bsgs_both, (void*)tt, 0, &s);
+					tid[j] = CreateThread(NULL, 0, thread_process_bsgs_both, (void*)tt, 0, &s);
 					break;
 				case 3:
-					tid[i] = CreateThread(NULL, 0, thread_process_bsgs_random, (void*)tt, 0, &s);
+					tid[j] = CreateThread(NULL, 0, thread_process_bsgs_random, (void*)tt, 0, &s);
 					break;
 				case 4:
-					tid[i] = CreateThread(NULL, 0, thread_process_bsgs_dance, (void*)tt, 0, &s);
+					tid[j] = CreateThread(NULL, 0, thread_process_bsgs_dance, (void*)tt, 0, &s);
 					break;
 				}
 #else
-
 				case 0:
-					s = pthread_create(&tid[i],NULL,thread_process_bsgs,(void *)tt);
+					s = pthread_create(&tid[j],NULL,thread_process_bsgs,(void *)tt);
 				break;
 				case 1:
-					s = pthread_create(&tid[i],NULL,thread_process_bsgs_backward,(void *)tt);
+					s = pthread_create(&tid[j],NULL,thread_process_bsgs_backward,(void *)tt);
 				break;
 				case 2:
-					s = pthread_create(&tid[i],NULL,thread_process_bsgs_both,(void *)tt);
+					s = pthread_create(&tid[j],NULL,thread_process_bsgs_both,(void *)tt);
 				break;
 				case 3:
-					s = pthread_create(&tid[i],NULL,thread_process_bsgs_random,(void *)tt);
+					s = pthread_create(&tid[j],NULL,thread_process_bsgs_random,(void *)tt);
 				break;
 				case 4:
-					s = pthread_create(&tid[i],NULL,thread_process_bsgs_dance,(void *)tt);
+					s = pthread_create(&tid[j],NULL,thread_process_bsgs_dance,(void *)tt);
 				break;
 #endif
 			}
 #if defined(_WIN64) && !defined(__CYGWIN__)
-			if (tid[i] == NULL) {
+			if (tid[j] == NULL) {
 #else
 			if(s != 0)	{
 #endif
@@ -2095,8 +2096,6 @@ int main(int argc, char **argv)	{
 				exit(EXIT_FAILURE);
 			}
 		}
-
-		
 		free(aux);
 	}
 	if(FLAGMODE != MODE_BSGS)	{
@@ -2110,39 +2109,36 @@ int main(int argc, char **argv)	{
 		tid = (pthread_t *) calloc(NTHREADS,sizeof(pthread_t));
 #endif
 		checkpointer((void *)tid,__FILE__,"calloc","tid" ,__LINE__ -1 );
-		for(i= 0;i < NTHREADS; i++)	{
+		for(j= 0;j < NTHREADS; j++)	{
 			tt = (tothread*) malloc(sizeof(struct tothread));
 			checkpointer((void *)tt,__FILE__,"malloc","tt" ,__LINE__ -1 );
-			tt->nt = i;
-			steps[i] = 0;
+			tt->nt = j;
+			steps[j] = 0;
 			s = 0;
 			switch(FLAGMODE)	{
 #if defined(_WIN64) && !defined(__CYGWIN__)
 				case MODE_ADDRESS:
 				case MODE_XPOINT:
 				case MODE_RMD160:
-					tid[i] = CreateThread(NULL, 0, thread_process, (void*)tt, 0, &s);
-				break;
-				case MODE_PUB2RMD:
-					tid[i] = CreateThread(NULL, 0, thread_pub2rmd, (void*)tt, 0, &s);
+					tid[j] = CreateThread(NULL, 0, thread_process, (void*)tt, 0, &s);
 				break;
 				case MODE_MINIKEYS:
-					tid[i] = CreateThread(NULL, 0, thread_process_minikeys, (void*)tt, 0, &s);
+					tid[j] = CreateThread(NULL, 0, thread_process_minikeys, (void*)tt, 0, &s);
+				break;
+				case MODE_VANITY:
+					tid[j] = CreateThread(NULL, 0, thread_process_vanity, (void*)tt, 0, &s);
 				break;
 #else
 				case MODE_ADDRESS:
 				case MODE_XPOINT:
 				case MODE_RMD160:
-					s = pthread_create(&tid[i],NULL,thread_process,(void *)tt);
-				break;
-				case MODE_PUB2RMD:
-					s = pthread_create(&tid[i],NULL,thread_pub2rmd,(void *)tt);
+					s = pthread_create(&tid[j],NULL,thread_process,(void *)tt);
 				break;
 				case MODE_MINIKEYS:
-					s = pthread_create(&tid[i],NULL,thread_process_minikeys,(void *)tt);
+					s = pthread_create(&tid[j],NULL,thread_process_minikeys,(void *)tt);
 				break;
 				case MODE_VANITY:
-					s = pthread_create(&tid[i],NULL,thread_process_vanity,(void *)tt);
+					s = pthread_create(&tid[j],NULL,thread_process_vanity,(void *)tt);
 				break;
 #endif
 			}
@@ -2152,11 +2148,9 @@ int main(int argc, char **argv)	{
 			}
 		}
 	}
-	i = 0;
 	
-	while(i < 7)	{
-		int_limits[i].SetBase10((char*)str_limits[i]);
-		i++;
+	for(j =0; j < 7; j++)	{
+		int_limits[j].SetBase10((char*)str_limits[j]);
 	}
 	
 	continue_flag = 1;
@@ -2168,8 +2162,8 @@ int main(int argc, char **argv)	{
 		sleep_ms(1000);
 		seconds.AddOne();
 		check_flag = 1;
-		for(i = 0; i <NTHREADS && check_flag; i++) {
-			check_flag &= ends[i];
+		for(j = 0; j <NTHREADS && check_flag; j++) {
+			check_flag &= ends[j];
 		}
 		if(check_flag)	{
 			continue_flag = 0;
@@ -2179,12 +2173,10 @@ int main(int argc, char **argv)	{
 			MPZAUX.Mod(&OUTPUTSECONDS);
 			if(MPZAUX.IsZero()) {
 				total.SetInt32(0);
-				i = 0;
-				while(i < NTHREADS) {
+				for(j = 0; j < NTHREADS; j++) {
 					pretotal.Set(&debugcount_mpz);
-					pretotal.Mult(steps[i]);					
+					pretotal.Mult(steps[j]);					
 					total.Add(&pretotal);
-					i++;
 				}
 				
 				if(FLAGENDOMORPHISM)	{
@@ -2383,9 +2375,8 @@ void *thread_process_minikeys(void *vargp)	{
 	struct tothread *tt;
 	uint64_t count;
 	char publickeyhashrmd160_uncompress[4][20];
-	char public_key_compressed_hex[67],public_key_uncompressed_hex[131];
-	char hexstrpoint[65],rawvalue[4][32];
-	char address[4][40],minikey[4][24],minikeys[8][24], buffer[1024],digest[32],buffer_b58[21],minikey2check[24];
+	char public_key_uncompressed_hex[131];
+	char address[4][40],minikey[4][24],minikeys[8][24],buffer_b58[21],minikey2check[24],rawvalue[4][32];
 	char *hextemp,*rawbuffer;
 	int r,thread_number,continue_flag = 1,k,j,count_valid;
 	Int counter;
@@ -2564,25 +2555,20 @@ void *thread_process(void *vargp)	{
 	Int _p;
 	Point pp;
 	Point pn;
-	int l,pp_offset,pn_offset;
-	int hLength = (CPU_GRP_SIZE / 2 - 1);
-	uint64_t i,j,count;
+	int i,l,pp_offset,pn_offset,hLength = (CPU_GRP_SIZE / 2 - 1);
+	uint64_t j,count;
 	Point R,temporal,publickey;
-	int r,thread_number,continue_flag = 1,i_vanity,k;
-	char *hextemp = NULL,checksum[32];
-	char *eth_address = NULL;
+	int r,thread_number,continue_flag = 1,k;
+	char *hextemp = NULL;
 	
 	char publickeyhashrmd160[20];
-	char publickeyhashrmd160_uncompress[4][20],publickeyhashrmd160_compress[4][20];
-	char public_key_compressed_hex[67],public_key_uncompressed_hex[131];
-	char public_key_compressed[33],public_key_uncompressed[65];
+	char publickeyhashrmd160_uncompress[4][20];
 	char hexstrpoint[65],rawvalue[32];
-	char address_compressed[4][40],address_uncompressed[4][40];
 	
-	char publickeyhashrmd160_endomorphism[12][4][20],address[50];
+	char publickeyhashrmd160_endomorphism[12][4][20];
 	
 	bool calculate_y = FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH;
-	FILE *keys,*vanityKeys;
+	FILE *keys;
 	Int key_mpz,keyfound,temp_stride;
 	tt = (struct tothread *)vargp;
 	thread_number = tt->nt;
@@ -2729,12 +2715,6 @@ void *thread_process(void *vargp)	{
 					}
 				}
 				/*
-				if(FLAGDEBUG) {
-					printf("\n[D] thread_process %i\n",__LINE__ -1 );
-					fflush(stdout);
-				}
-				*/
-				/*
 					Half point for endomorphism because pts[CPU_GRP_SIZE / 2] was not calcualte in the previous cycle
 				*/
 				if(FLAGENDOMORPHISM)	{
@@ -2779,14 +2759,7 @@ void *thread_process(void *vargp)	{
 					endomorphism_beta[0].x.ModMulK1(&pn.x, &beta);
 					endomorphism_beta2[0].x.ModMulK1(&pn.x, &beta2);
 				}
-				
-				/*
-				if(FLAGDEBUG) {
-					printf("\n[D] thread_process %i\n",__LINE__ -1 );
-					fflush(stdout);
-				}
-				*/
-				
+								
 				for(j = 0; j < CPU_GRP_SIZE/4;j++){
 					switch(FLAGMODE)	{
 						case MODE_RMD160:
@@ -3162,20 +3135,15 @@ void *thread_process_vanity(void *vargp)	{
 	Int _p;
 	Point pp;	//point positive
 	Point pn;	//point negative
-	int hLength = (CPU_GRP_SIZE / 2 - 1);
-	int l,pp_offset,pn_offset;
-	uint64_t i,j,count;
+	int l,pp_offset,pn_offset,i,hLength = (CPU_GRP_SIZE / 2 - 1);
+	uint64_t j,count;
 	Point R,temporal,publickey;
-	int r,thread_number,continue_flag = 1,k;
+	int thread_number,continue_flag = 1,k;
 	char *hextemp = NULL;
 	char publickeyhashrmd160[20];
-	char publickeyhashrmd160_uncompress[4][20],publickeyhashrmd160_compress[4][20];
+	char publickeyhashrmd160_uncompress[4][20];
 	
-	char publickeyhashrmd160_endomorphism[12][4][20],address[50];
-	
-	char public_key_compressed_hex[67],public_key_uncompressed_hex[131];
-	char public_key_compressed[33],public_key_uncompressed[65];
-	char hexstrpoint[65],rawvalue[32];
+	char publickeyhashrmd160_endomorphism[12][4][20];
 	
 	Int key_mpz,temp_stride,keyfound;
 	tt = (struct tothread *)vargp;
@@ -3318,45 +3286,6 @@ void *thread_process_vanity(void *vargp)	{
 						endomorphism_beta[pn_offset].x.ModMulK1(&pn.x, &beta);
 						endomorphism_beta2[pp_offset].x.ModMulK1(&pp.x, &beta2);
 						endomorphism_beta2[pn_offset].x.ModMulK1(&pn.x, &beta2);
-
-						/*
-						if(FLAGDEBUG)	{
-							hextemp = secp->GetPublicKeyHex(false,pp);
-							secp->GetHash160(P2PKH,false, pp,(uint8_t*)publickeyhashrmd160_uncompress[0]);
-							rmd160toaddress_dst(publickeyhashrmd160_uncompress[0],address);
-							printf("[D] pp[%i] = %s , %s y = %s\n",pp_offset,hextemp,address,pp.y.IsEven() ? "Even" : "Odd");
-							free(hextemp);		
-
-							hextemp = secp->GetPublicKeyHex(false,pn);
-							secp->GetHash160(P2PKH,false, pn,(uint8_t*)publickeyhashrmd160_uncompress[0]);
-							rmd160toaddress_dst(publickeyhashrmd160_uncompress[0],address);
-							printf("[D] pn[%i] = %s , %s y = %s\n",pn_offset,hextemp,address,pn.y.IsEven() ? "Even" : "Odd");
-							free(hextemp);								
-							
-							
-							hextemp = secp->GetPublicKeyHex(false,endomorphism_beta[pp_offset]);
-							secp->GetHash160(P2PKH,false, endomorphism_beta[pp_offset],(uint8_t*)publickeyhashrmd160_uncompress[0]);
-							rmd160toaddress_dst(publickeyhashrmd160_uncompress[0],address);
-							printf("[D] endomorphism_beta[%i] = %s , %s y = %s\n",pp_offset,hextemp,address,endomorphism_beta[pp_offset].y.IsEven() ? "Even" : "Odd");
-							free(hextemp);
-							hextemp = secp->GetPublicKeyHex(false,endomorphism_beta[pn_offset]);
-							secp->GetHash160(P2PKH,false, endomorphism_beta[pn_offset],(uint8_t*)publickeyhashrmd160_uncompress[0]);
-							rmd160toaddress_dst(publickeyhashrmd160_uncompress[0],address);
-
-							printf("[D] endomorphism_beta[%i] = %s , %s y = %s\n",pn_offset,hextemp,address,endomorphism_beta[pn_offset].y.IsEven() ? "Even" : "Odd");
-							free(hextemp);
-							hextemp = secp->GetPublicKeyHex(false,endomorphism_beta2[pp_offset]);
-							secp->GetHash160(P2PKH,false, endomorphism_beta2[pp_offset],(uint8_t*)publickeyhashrmd160_uncompress[0]);
-							rmd160toaddress_dst(publickeyhashrmd160_uncompress[0],address);
-							printf("[D] endomorphism_beta2[%i] = %s , %s y = %s\n",pp_offset,hextemp,address,endomorphism_beta2[pp_offset].y.IsEven() ? "Even" : "Odd");
-							free(hextemp);
-							hextemp = secp->GetPublicKeyHex(false,endomorphism_beta2[pn_offset]);
-							secp->GetHash160(P2PKH,false, endomorphism_beta2[pn_offset],(uint8_t*)publickeyhashrmd160_uncompress[0]);
-							rmd160toaddress_dst(publickeyhashrmd160_uncompress[0],address);
-							printf("[D] endomorphism_beta2[%i] = %s , %s y = %s\n",pn_offset,hextemp,address,endomorphism_beta2[pn_offset].y.IsEven() ? "Even" : "Odd");
-							free(hextemp);
-						}
-						*/
 					}
 				}
 				/*
@@ -3403,7 +3332,6 @@ void *thread_process_vanity(void *vargp)	{
 					endomorphism_beta[0].x.ModMulK1(&pn.x, &beta);
 					endomorphism_beta2[0].x.ModMulK1(&pn.x, &beta2);
 				}
-				
 				
 				for(j = 0; j < CPU_GRP_SIZE/4;j++)	{
 					if(FLAGSEARCH == SEARCH_COMPRESS || FLAGSEARCH == SEARCH_BOTH ){
@@ -3459,27 +3387,6 @@ void *thread_process_vanity(void *vargp)	{
 										keyfound.Mult(&stride);
 										keyfound.Add(&key_mpz);
 										publickey = secp->ComputePublicKey(&keyfound);
-
-										/*
-										if(FLAGDEBUG) {
-											
-											rmd160toaddress_dst(publickeyhashrmd160_endomorphism[l][k],address);
-											
-											hextemp = tohex(publickeyhashrmd160_endomorphism[l][k],20);
-											printf("[D] hash found: %s : address %s\n",hextemp,address);
-											free(hextemp);
-											hextemp = keyfound.GetBase16();
-											printf("[D] key: %s\n",hextemp);
-											free(hextemp);
-											
-											hextemp = secp->GetPublicKeyHex(true,publickey);
-											printf("[D] GetPublicKeyHex: %s\n",hextemp);
-											free(hextemp);
-											
-											printf("[D] found something l = %i\n",l);
-
-										}
-										*/
 										
 										switch(l)	{
 											case 0:	//Original point, prefix 02
@@ -3564,27 +3471,6 @@ void *thread_process_vanity(void *vargp)	{
 										keyfound.Mult(&stride);
 										keyfound.Add(&key_mpz);
 										
-
-										/*
-										if(FLAGDEBUG) {
-											
-											rmd160toaddress_dst(publickeyhashrmd160_endomorphism[l][k],address);
-											
-											hextemp = tohex(publickeyhashrmd160_endomorphism[l][k],20);
-											printf("[D] hash found: %s : address %s\n",hextemp,address);
-											free(hextemp);
-											hextemp = keyfound.GetBase16();
-											printf("[D] key: %s\n",hextemp);
-											free(hextemp);
-											
-											hextemp = secp->GetPublicKeyHex(true,publickey);
-											printf("[D] GetPublicKeyHex: %s\n",hextemp);
-											free(hextemp);
-											
-											printf("[D] found something l = %i\n",l);
-
-										}
-										*/
 										
 										switch(l)	{
 											case 6:
@@ -3713,7 +3599,6 @@ void _insertionsort(struct address_value *arr, int64_t n) {
 int64_t _partition(struct address_value *arr, int64_t n)	{
 	struct address_value pivot;
 	int64_t r,left,right;
-	char *hextemp;
 	r = n/2;
 	pivot = arr[r];
 	left = 0;
@@ -3821,7 +3706,6 @@ void bsgs_insertionsort(struct bsgs_xvalue *arr, int64_t n) {
 int64_t bsgs_partition(struct bsgs_xvalue *arr, int64_t n)	{
 	struct bsgs_xvalue pivot;
 	int64_t r,left,right;
-	char *hextemp;
 	r = n/2;
 	pivot = arr[r];
 	left = 0;
@@ -3877,7 +3761,6 @@ void bsgs_myheapsort(struct bsgs_xvalue	*arr, int64_t n)	{
 }
 
 int bsgs_searchbinary(struct bsgs_xvalue *buffer,char *data,int64_t array_length,uint64_t *r_value) {
-	char *temp_read;
 	int64_t min,max,half,current;
 	int r = 0,rcmp;
 	min = 0;
@@ -3909,32 +3792,32 @@ DWORD WINAPI thread_process_bsgs(LPVOID vargp) {
 #else
 void *thread_process_bsgs(void *vargp)	{
 #endif
+	// File-related variables
+	FILE* filekey;
+	struct tothread* tt;
 
-	FILE *filekey;
-	struct tothread *tt;
-	char xpoint_raw[32],*aux_c,*hextemp;
-	Int base_key,keyfound;
-	Point base_point,point_aux,point_found;
-	uint32_t i,j,k,l,r,salir,thread_number, cycles;
-	
-	IntGroup *grp = new IntGroup(CPU_GRP_SIZE / 2 + 1);
-	Point startP;
-	
-	int hLength = (CPU_GRP_SIZE / 2 - 1);
-	
+	// Character variables
+	char xpoint_raw[32], *aux_c, *hextemp;
+
+	// Integer variables
+	Int base_key, keyfound;
+	IntGroup* grp = new IntGroup(CPU_GRP_SIZE / 2 + 1);
 	Int dx[CPU_GRP_SIZE / 2 + 1];
+	Int dy, dyn, _s, _p, km, intaux;
+
+	// Point variables
+	Point base_point, point_aux, point_found;
+	Point startP;
+	Point pp, pn;
 	Point pts[CPU_GRP_SIZE];
 
-	Int dy;
-	Int dyn;
-	Int _s;
-	Int _p;
-	Int km,intaux;
-	Point pp;
-	Point pn;
+	// Unsigned integer variables
+	uint32_t k, l, r, salir, thread_number, cycles;
+
+	// Other variables
+	int hLength = (CPU_GRP_SIZE / 2 - 1);
 	grp->Set(dx);
 
-	
 	tt = (struct tothread *)vargp;
 	thread_number = tt->nt;
 	free(tt);
@@ -3943,17 +3826,11 @@ void *thread_process_bsgs(void *vargp)	{
 	if(bsgs_aux % 1024 != 0)	{
 		cycles++;
 	}
-	
-	/*
-		We do this in an atomic pthread_mutex operation to not affect others threads
-		so BSGS_CURRENT is never the same between threads
-	*/
 #if defined(_WIN64) && !defined(__CYGWIN__)
 	WaitForSingleObject(bsgs_thread, INFINITE);
 #else
 	pthread_mutex_lock(&bsgs_thread);
 #endif
-	
 	base_key.Set(&BSGS_CURRENT);	/* we need to set our base_key to the current BSGS_CURRENT value*/
 	BSGS_CURRENT.Add(&BSGS_N);	/*Then add BSGS_N to BSGS_CURRENT*/
 #if defined(_WIN64) && !defined(__CYGWIN__)
@@ -3961,15 +3838,8 @@ void *thread_process_bsgs(void *vargp)	{
 #else
 	pthread_mutex_unlock(&bsgs_thread);
 #endif
-	
 	intaux.Set(&BSGS_M);
 	intaux.Mult(CPU_GRP_SIZE/2);
-	
-	//if(FLAGDEBUG)	{ printf("bsgs_aux: %lu\n",bsgs_aux);}
-
-	/*
-		while base_key is less than n_range_end then:
-	*/
 	while(base_key.IsLower(&n_range_end) )	{
 		if(FLAGMATRIX)	{
 			aux_c = base_key.GetBase16();
@@ -3986,42 +3856,37 @@ void *thread_process_bsgs(void *vargp)	{
 				THREADOUTPUT = 1;
 			}
 		}
-		
 		base_point = secp->ComputePublicKey(&base_key);
-
 		km.Set(&base_key);
 		km.Neg();
-		
 		km.Add(&secp->order);
 		km.Sub(&intaux);
 		point_aux = secp->ComputePublicKey(&km);
-		
 		for(k = 0; k < bsgs_point_number ; k++)	{
 			if(bsgs_found[k] == 0)	{
 				if(base_point.equals(OriginalPointsBSGS[k]))	{
 					hextemp = base_key.GetBase16();
 					printf("[+] Thread Key found privkey %s  \n",hextemp);
 					aux_c = secp->GetPublicKeyHex(OriginalPointsBSGScompressed[k],base_point);
-					printf("[+] Publickey %s\n",aux_c);
-					
+					printf("[+] Publickey %s\n",aux_c);			
 #if defined(_WIN64) && !defined(__CYGWIN__)
 					WaitForSingleObject(write_keys, INFINITE);
 #else
 					pthread_mutex_lock(&write_keys);
 #endif
-
 					filekey = fopen("KEYFOUNDKEYFOUND.txt","a");
 					if(filekey != NULL)	{
 						fprintf(filekey,"Key found privkey %s\nPublickey %s\n",hextemp,aux_c);
 						fclose(filekey);
 					}
-					free(hextemp);
-					free(aux_c);
+
 #if defined(_WIN64) && !defined(__CYGWIN__)
 					ReleaseMutex(write_keys);
 #else
 					pthread_mutex_unlock(&write_keys);
 #endif
+					free(hextemp);
+					free(aux_c);
 					bsgs_found[k] = 1;
 					salir = 1;
 					for(l = 0; l < bsgs_point_number && salir; l++)	{
@@ -4034,30 +3899,23 @@ void *thread_process_bsgs(void *vargp)	{
 				}
 				else	{
 					startP  = secp->AddDirect(OriginalPointsBSGS[k],point_aux);
-					int j = 0;
+					uint32_t j = 0;
 					while( j < cycles && bsgs_found[k]== 0 )	{
-					
 						int i;
-						
 						for(i = 0; i < hLength; i++) {
 							dx[i].ModSub(&GSn[i].x,&startP.x);
 						}
 						dx[i].ModSub(&GSn[i].x,&startP.x);  // For the first point
 						dx[i+1].ModSub(&_2GSn.x,&startP.x); // For the next center point
-
 						// Grouped ModInv
 						grp->ModInv();
-						
 						/*
 						We use the fact that P + i*G and P - i*G has the same deltax, so the same inverse
 						We compute key in the positive and negative way from the center of the group
 						*/
-
 						// center point
 						pts[CPU_GRP_SIZE / 2] = startP;
-						
 						for(i = 0; i<hLength; i++) {
-
 							pp = startP;
 							pn = startP;
 
@@ -4070,13 +3928,11 @@ void *thread_process_bsgs(void *vargp)	{
 							pp.x.ModNeg();
 							pp.x.ModAdd(&_p);
 							pp.x.ModSub(&GSn[i].x);           // rx = pow2(s) - p1.x - p2.x;
-							
 #if 0
 	  pp.y.ModSub(&GSn[i].x,&pp.x);
 	  pp.y.ModMulK1(&_s);
 	  pp.y.ModSub(&GSn[i].y);           // ry = - p2.y - s*(ret.x-p2.x);  
 #endif
-
 							// P = startP - i*G  , if (x,y) = i*G then (x,-y) = -i*G
 							dyn.Set(&GSn[i].y);
 							dyn.ModNeg();
@@ -4100,7 +3956,6 @@ void *thread_process_bsgs(void *vargp)	{
 							pts[CPU_GRP_SIZE / 2 - (i + 1)] = pn;
 
 						}
-
 						// First point (startP - (GRP_SZIE/2)*G)
 						pn = startP;
 						dyn.Set(&GSn[i].y);
@@ -4119,31 +3974,12 @@ void *thread_process_bsgs(void *vargp)	{
 	pn.y.ModMulK1(&_s);
 	pn.y.ModAdd(&GSn[i].y);
 #endif
-
 						pts[0] = pn;
-						
 						for(int i = 0; i<CPU_GRP_SIZE && bsgs_found[k]== 0; i++) {
 							pts[i].x.Get32Bytes((unsigned char*)xpoint_raw);
-							/*
-							if(FLAGDEBUG)	{
-								hextemp = tohex(xpoint_raw,32);
-								printf("Checking for : %s\nJ: %i\nI: %i\nK: %i\n",hextemp,j,i,k);
-								free(hextemp);
-							}
-							*/
 							r = bloom_check(&bloom_bP[((unsigned char)xpoint_raw[0])],xpoint_raw,32);
 							if(r) {
-								/*
-								if(FLAGDEBUG)	{
-									hextemp = tohex(xpoint_raw,32);
-									printf("bloom_check OK : %s\nJ: %i\nI: %i\n",hextemp,j,i);
-									free(hextemp);
-								}
-								*/
 								r = bsgs_secondcheck(&base_key,((j*1024) + i),k,&keyfound);
-								/*
-								if(FLAGDEBUG)	{ printf(" ======= End Second check\n");}
-								*/
 								if(r)	{
 									hextemp = keyfound.GetBase16();
 									printf("[+] Thread Key found privkey %s   \n",hextemp);
@@ -4179,11 +4015,8 @@ void *thread_process_bsgs(void *vargp)	{
 									}
 								} //End if second check
 							}//End if first check
-							
 						}// For for pts variable
-						
 						// Next start point (startP += (bsSize*GRP_SIZE).G)
-						
 						pp = startP;
 						dy.ModSub(&_2GSn.y,&pp.y);
 
@@ -4235,7 +4068,7 @@ void *thread_process_bsgs_random(void *vargp)	{
 	char xpoint_raw[32],*aux_c,*hextemp;
 	Int base_key,keyfound,n_range_random;
 	Point base_point,point_aux,point_found;
-	uint32_t i,j,l,k,r,salir,thread_number,cycles;
+	uint32_t l,k,r,salir,thread_number,cycles;
 	
 	IntGroup *grp = new IntGroup(CPU_GRP_SIZE / 2 + 1);
 	Point startP;
@@ -4356,7 +4189,7 @@ void *thread_process_bsgs_random(void *vargp)	{
 				else	{
 				
 					startP  = secp->AddDirect(OriginalPointsBSGS[k],point_aux);
-					int j = 0;
+					uint32_t j = 0;
 					while( j < cycles && bsgs_found[k]== 0 )	{
 					
 						int i;
@@ -4531,17 +4364,17 @@ void *thread_process_bsgs_random(void *vargp)	{
 	return NULL;
 }
 
+
 /*
 	The bsgs_secondcheck function is made to perform a second BSGS search in a Range of less size.
 	This funtion is made with the especific purpouse to USE a smaller bPtable in RAM.
 */
 int bsgs_secondcheck(Int *start_range,uint32_t a,uint32_t k_index,Int *privatekey)	{
-	uint64_t j = 0;
 	int i = 0,found = 0,r = 0;
 	Int base_key;
 	Point base_point,point_aux;
 	Point BSGS_Q, BSGS_S,BSGS_Q_AMP;
-	char xpoint_raw[32],*hextemp;
+	char xpoint_raw[32];
 
 	base_key.Set(&BSGS_M);
 	base_key.Mult((uint64_t) a);
@@ -4572,7 +4405,7 @@ int bsgs_thirdcheck(Int *start_range,uint32_t a,uint32_t k_index,Int *privatekey
 	Int base_key;
 	Point base_point,point_aux;
 	Point BSGS_Q, BSGS_S,BSGS_Q_AMP;
-	char xpoint_raw[32],*hextemp,*hextemp2;
+	char xpoint_raw[32];
 
 	base_key.Set(&BSGS_M2);
 	base_key.Mult((uint64_t) a);
@@ -4651,137 +4484,6 @@ void sleep_ms(int milliseconds)	{ // cross-platform sleep function
 #endif
 }
 
-#if defined(_WIN64) && !defined(__CYGWIN__)
-DWORD WINAPI thread_pub2rmd(LPVOID vargp) {
-#else
-void *thread_pub2rmd(void *vargp)	{
-#endif
-	FILE *fd;
-	Int key_mpz;
-	struct tothread *tt;
-	uint64_t i,limit,j;
-	char digest160[20];
-	char digest256[32];
-	char *temphex;
-	int thread_number,r;
-	int pub2rmd_continue = 1;
-	struct publickey pub;
-	limit = 0xFFFFFFFF;
-	tt = (struct tothread *)vargp;
-	thread_number = tt->nt;
-	do {
-		if(FLAGRANDOM){
-			key_mpz.Rand(&n_range_start,&n_range_diff);
-		}
-		else	{
-			if(n_range_start.IsLower(&n_range_end))	{
-#if defined(_WIN64) && !defined(__CYGWIN__)
-				WaitForSingleObject(write_random, INFINITE);
-				key_mpz.Set(&n_range_start);
-				n_range_start.Add(N_SEQUENTIAL_MAX);
-				ReleaseMutex(write_random);
-#else
-				pthread_mutex_lock(&write_random);
-				key_mpz.Set(&n_range_start);
-				n_range_start.Add(N_SEQUENTIAL_MAX);
-				pthread_mutex_lock(&write_random);
-#endif
-			}
-			else	{
-				pub2rmd_continue = 0;
-			}
-		}
-		if(pub2rmd_continue)	{
-			key_mpz.Get32Bytes(pub.X.data8);
-			pub.parity = 0x02;
-			pub.X.data32[7] = 0;
-			if(FLAGMATRIX)	{
-				temphex = tohex((char*)&pub,33);
-				printf("[+] Thread 0x%s  \n",temphex);
-				free(temphex);
-				fflush(stdout);
-			}
-			else	{
-				if(FLAGQUIET == 0)	{
-					temphex = tohex((char*)&pub,33);
-					printf("\r[+] Thread %s  \r",temphex);
-					free(temphex);
-					fflush(stdout);
-					THREADOUTPUT = 1;
-				}
-			}
-			for(i = 0 ; i < limit ; i++) {
-				pub.parity = 0x02;
-				sha256((uint8_t*)&pub, 33, (uint8_t*)digest256);
-				RMD160Data((const unsigned char*)digest256,32, digest160);
-				r = bloom_check(&bloom,digest160,MAXLENGTHADDRESS);
-				if(r)  {
-					r = searchbinary(addressTable,digest160,N);
-					if(r)	{
-						temphex = tohex((char*)&pub,33);
-						printf("\nHit: Publickey found %s\n",temphex);
-						fd = fopen("KEYFOUNDKEYFOUND.txt","a+");
-						if(fd != NULL)	{
-#if defined(_WIN64) && !defined(__CYGWIN__)
-							WaitForSingleObject(write_keys, INFINITE);
-							fprintf(fd,"Publickey found %s\n",temphex);
-							fclose(fd);
-							ReleaseMutex(write_keys);
-#else
-							pthread_mutex_lock(&write_keys);
-							fprintf(fd,"Publickey found %s\n",temphex);
-							fclose(fd);
-							pthread_mutex_unlock(&write_keys);
-#endif
-						}
-						else	{
-							fprintf(stderr,"\nPublickey found %s\nbut the file can't be open\n",temphex);
-							exit(EXIT_FAILURE);
-						}
-						free(temphex);
-					}
-				}
-				pub.parity = 0x03;
-				sha256((uint8_t*)&pub, 33,(uint8_t*) digest256);
-				RMD160Data((const unsigned char*)digest256,32, digest160);
-				r = bloom_check(&bloom,digest160,MAXLENGTHADDRESS);
-				if(r)  {
-					r = searchbinary(addressTable,digest160,N);
-					if(r)  {
-						temphex = tohex((char*)&pub,33);
-						printf("\nHit: Publickey found %s\n",temphex);
-						fd = fopen("KEYFOUNDKEYFOUND.txt","a+");
-						if(fd != NULL)	{
-#if defined(_WIN64) && !defined(__CYGWIN__)
-							WaitForSingleObject(write_keys, INFINITE);
-							fprintf(fd,"Publickey found %s\n",temphex);
-							fclose(fd);
-							ReleaseMutex(write_keys);
-
-#else
-							pthread_mutex_lock(&write_keys);
-							fprintf(fd,"Publickey found %s\n",temphex);
-							fclose(fd);
-							pthread_mutex_unlock(&write_keys);
-#endif
-						}
-						else	{
-							fprintf(stderr,"\nPublickey found %s\nbut the file can't be open\n",temphex);
-							exit(EXIT_FAILURE);
-						}
-						free(temphex);
-					}
-				}
-				pub.X.data32[7]++;
-				if(pub.X.data32[7] % DEBUGCOUNT == 0)  {
-					steps[thread_number]++;
-				}
-			}	
-		}	
-	}while(pub2rmd_continue);
-	ends[thread_number] = 1;
-	return NULL;
-}
 
 void init_generator()	{
 	Point G = secp->ComputePublicKey(&stride);
@@ -4804,9 +4506,9 @@ DWORD WINAPI thread_bPload(LPVOID vargp) {
 void *thread_bPload(void *vargp)	{
 #endif
 
-	char rawvalue[32],hexraw[65];
+	char rawvalue[32];
 	struct bPload *tt;
-	uint64_t i_counter,i,j,nbStep,to;
+	uint64_t i_counter,j,nbStep,to;
 	
 	IntGroup *grp = new IntGroup(CPU_GRP_SIZE / 2 + 1);
 	Point startP;
@@ -4815,7 +4517,7 @@ void *thread_bPload(void *vargp)	{
 	Int dy,dyn,_s,_p;
 	Point pp,pn;
 	
-	int bloom_bP_index,hLength = (CPU_GRP_SIZE / 2 - 1) ,threadid;
+	int i,bloom_bP_index,hLength = (CPU_GRP_SIZE / 2 - 1) ,threadid;
 	tt = (struct bPload *)vargp;
 	Int km((uint64_t)(tt->from + 1));
 	threadid = tt->threadid;
@@ -4998,14 +4700,14 @@ void *thread_bPload_2blooms(void *vargp)	{
 #endif
 	char rawvalue[32];
 	struct bPload *tt;
-	uint64_t i_counter,i,j,nbStep,to;
+	uint64_t i_counter,j,nbStep; //,to;
 	IntGroup *grp = new IntGroup(CPU_GRP_SIZE / 2 + 1);
 	Point startP;
 	Int dx[CPU_GRP_SIZE / 2 + 1];
 	Point pts[CPU_GRP_SIZE];
 	Int dy,dyn,_s,_p;
 	Point pp,pn;
-	int bloom_bP_index,hLength = (CPU_GRP_SIZE / 2 - 1) ,threadid;
+	int i,bloom_bP_index,hLength = (CPU_GRP_SIZE / 2 - 1) ,threadid;
 	tt = (struct bPload *)vargp;
 	Int km((uint64_t)(tt->from +1 ));
 	threadid = tt->threadid;
@@ -5018,7 +4720,7 @@ void *thread_bPload_2blooms(void *vargp)	{
 		nbStep++;
 	}
 	//if(FLAGDEBUG) printf("[D] thread %i nbStep %" PRIu64 "\n",threadid,nbStep);
-	to = tt->to;
+	//to = tt->to;
 	
 	km.Add((uint64_t)(CPU_GRP_SIZE / 2));
 	startP = secp->ComputePublicKey(&km);
@@ -5194,30 +4896,18 @@ DWORD WINAPI thread_process_bsgs_dance(LPVOID vargp) {
 void *thread_process_bsgs_dance(void *vargp)	{
 #endif
 
+	Point pts[CPU_GRP_SIZE];
+	Int dx[CPU_GRP_SIZE / 2 + 1];
+	Point pp,pn,startP,base_point,point_aux,point_found;
 	FILE *filekey;
 	struct tothread *tt;
 	char xpoint_raw[32],*aux_c,*hextemp;
-	Int base_key,keyfound;
-	Point base_point,point_aux,point_found;
-	uint32_t i,j,k,l,r,salir,thread_number,entrar,cycles;
-	
+	Int base_key,keyfound,dy,dyn,_s,_p,km,intaux;
 	IntGroup *grp = new IntGroup(CPU_GRP_SIZE / 2 + 1);
-	Point startP;
-	
-	int hLength = (CPU_GRP_SIZE / 2 - 1);
-	
-	Int dx[CPU_GRP_SIZE / 2 + 1];
-	Point pts[CPU_GRP_SIZE];
+	uint32_t k,l,r,salir,thread_number,entrar,cycles;
+	int hLength = (CPU_GRP_SIZE / 2 - 1);	
 
-	Int dy;
-	Int dyn;
-	Int _s;
-	Int _p;
-	Int km,intaux;
-	Point pp;
-	Point pn;
 	grp->Set(dx);
-
 	
 	tt = (struct tothread *)vargp;
 	thread_number = tt->nt;
@@ -5230,31 +4920,44 @@ void *thread_process_bsgs_dance(void *vargp)	{
 	
 	entrar = 1;
 	
+	intaux.Set(&BSGS_M);
+	intaux.Mult(CPU_GRP_SIZE/2);
+	
+	
+	
+	/*
+		while base_key is less than n_range_end then:
+	*/
+	do	{
+		r = rand();
+		
 #if defined(_WIN64) && !defined(__CYGWIN__)
 	WaitForSingleObject(bsgs_thread, INFINITE);
 #else
 	pthread_mutex_lock(&bsgs_thread);
 #endif
-
-	switch(rand() % 3)	{
+	switch(r % 3)	{
 		case 0:	//TOP
-			base_key.Set(&n_range_end);
-			base_key.Sub(&BSGS_N);
-			n_range_end.Sub(&BSGS_N);
-			if(base_key.IsLower(&BSGS_CURRENT))	{
-				entrar = 0;
+			if(n_range_end.IsGreater(&BSGS_CURRENT))	{
+					n_range_end.Sub(&BSGS_N);
+					if(n_range_end.IsLower(&BSGS_CURRENT))	{
+						base_key.Set(&BSGS_CURRENT);
+					}
+					else	{
+						base_key.Set(&n_range_end);
+					}
 			}
 			else	{
-				n_range_end.Sub(&BSGS_N);
+				entrar = 0;
 			}
 		break;
 		case 1: //BOTTOM
-			base_key.Set(&BSGS_CURRENT);
-			if(base_key.IsGreater(&n_range_end))	{
-				entrar = 0;
+			if(BSGS_CURRENT.IsLower(&n_range_end))	{
+				base_key.Set(&BSGS_CURRENT);
+				BSGS_CURRENT.Add(&BSGS_N);
 			}
 			else	{
-				BSGS_CURRENT.Add(&BSGS_N);
+				entrar = 0;
 			}
 		break;
 		case 2: //random - middle
@@ -5267,18 +4970,9 @@ void *thread_process_bsgs_dance(void *vargp)	{
 	pthread_mutex_unlock(&bsgs_thread);
 #endif
 
-	
-
-	intaux.Set(&BSGS_M);
-	intaux.Mult(CPU_GRP_SIZE/2);
-	
-	
-	
-	/*
-		while base_key is less than n_range_end then:
-	*/
-	while( entrar )	{
-		
+		if(entrar == 0)
+			break;
+			
 		if(FLAGMATRIX)	{
 			aux_c = base_key.GetBase16();
 			printf("[+] Thread 0x%s \n",aux_c);
@@ -5343,7 +5037,7 @@ void *thread_process_bsgs_dance(void *vargp)	{
 				}
 				else	{
 					startP  = secp->AddDirect(OriginalPointsBSGS[k],point_aux);
-					int j = 0;
+					uint32_t j = 0;
 					while( j < cycles && bsgs_found[k]== 0 )	{
 					
 						int i;
@@ -5499,44 +5193,7 @@ void *thread_process_bsgs_dance(void *vargp)	{
 		}
 			
 		steps[thread_number]++;
-		
-#if defined(_WIN64) && !defined(__CYGWIN__)
-		WaitForSingleObject(bsgs_thread, INFINITE);
-#else
-		pthread_mutex_lock(&bsgs_thread);
-#endif
-
-		switch(rand() % 3)	{
-			case 0:	//TOP
-				base_key.Set(&n_range_end);
-				base_key.Sub(&BSGS_N);
-				n_range_end.Sub(&BSGS_N);
-				if(base_key.IsLower(&BSGS_CURRENT))	{
-					entrar = 0;
-				}
-				else	{
-					n_range_end.Sub(&BSGS_N);
-				}
-			break;
-			case 1: //BOTTOM
-				base_key.Set(&BSGS_CURRENT);
-				if(base_key.IsGreater(&n_range_end))	{
-					entrar = 0;
-				}
-				else	{
-					BSGS_CURRENT.Add(&BSGS_N);
-				}
-			break;
-			case 2: //random - middle
-				base_key.Rand(&BSGS_CURRENT,&n_range_end);
-			break;
-		}
-#if defined(_WIN64) && !defined(__CYGWIN__)
-		ReleaseMutex(bsgs_thread);
-#else
-		pthread_mutex_unlock(&bsgs_thread);
-#endif		
-	}
+	}while(1);
 	ends[thread_number] = 1;
 	return NULL;
 }
@@ -5551,7 +5208,7 @@ void *thread_process_bsgs_backward(void *vargp)	{
 	char xpoint_raw[32],*aux_c,*hextemp;
 	Int base_key,keyfound;
 	Point base_point,point_aux,point_found;
-	uint32_t i,j,k,l,r,salir,thread_number,entrar,cycles;
+	uint32_t k,l,r,salir,thread_number,entrar,cycles;
 	
 	IntGroup *grp = new IntGroup(CPU_GRP_SIZE / 2 + 1);
 	Point startP;
@@ -5665,7 +5322,7 @@ void *thread_process_bsgs_backward(void *vargp)	{
 				}
 				else	{
 					startP  = secp->AddDirect(OriginalPointsBSGS[k],point_aux);
-					int j = 0;
+					uint32_t j = 0;
 					while( j < cycles && bsgs_found[k]== 0 )	{
 					
 						int i;
@@ -5846,7 +5503,6 @@ void *thread_process_bsgs_backward(void *vargp)	{
 	return NULL;
 }
 
-
 #if defined(_WIN64) && !defined(__CYGWIN__)
 DWORD WINAPI thread_process_bsgs_both(LPVOID vargp) {
 #else
@@ -5857,7 +5513,7 @@ void *thread_process_bsgs_both(void *vargp)	{
 	char xpoint_raw[32],*aux_c,*hextemp;
 	Int base_key,keyfound;
 	Point base_point,point_aux,point_found;
-	uint32_t i,j,k,l,r,salir,thread_number,entrar,cycles;
+	uint32_t k,l,r,salir,thread_number,entrar,cycles;
 	
 	IntGroup *grp = new IntGroup(CPU_GRP_SIZE / 2 + 1);
 	Point startP;
@@ -5985,7 +5641,7 @@ void *thread_process_bsgs_both(void *vargp)	{
 					
 					bsgs_found[k] = 1;
 					salir = 1;
-					for(j = 0; l < bsgs_point_number && salir; l++)	{
+					for(l = 0; l < bsgs_point_number && salir; l++)	{
 						salir &= bsgs_found[l];
 					}
 					if(salir)	{
@@ -5995,7 +5651,7 @@ void *thread_process_bsgs_both(void *vargp)	{
 				}
 				else	{
 					startP  = secp->AddDirect(OriginalPointsBSGS[k],point_aux);
-					int j = 0;
+					uint32_t j = 0;
 					while( j < cycles && bsgs_found[k]== 0 )	{
 					
 						int i;
@@ -6189,6 +5845,7 @@ void *thread_process_bsgs_both(void *vargp)	{
 	return NULL;
 }
 
+
 /* This function takes in three parameters:
 
 buffer: a pointer to a char array where the minikey will be stored.
@@ -6217,7 +5874,7 @@ case the function returns false. The function returns true otherwise.
 bool increment_minikey_index(char *buffer,char *rawbuffer,int index)	{
 	if(rawbuffer[index] < 57){
 		rawbuffer[index]++;
-		buffer[index] = Ccoinbuffer[rawbuffer[index]];
+		buffer[index] = Ccoinbuffer[(uint8_t)rawbuffer[index]];
 	}
 	else	{
 		rawbuffer[index] = 0x00;
@@ -6340,8 +5997,9 @@ void menu() {
 	printf("-R          Random, this is the default behavior\n");
 	printf("-s ns       Number of seconds for the stats output, 0 to omit output.\n");
 	printf("-S          S is for SAVING in files BSGS data (Bloom filters and bPtable)\n");
+	printf("-6          to skip sha256 Checksum on data files");
 	printf("-t tn       Threads number, must be a positive integer\n");
-	printf("-v value    Search for vanity Address, only with -m address and rmd160\n");
+	printf("-v value    Search for vanity Address, only with -m vanity\n");
 	printf("-z value    Bloom size multiplier, only address,rmd160,vanity, xpoint, value >= 1\n");
 	printf("\nExample:\n\n");
 	printf("./keyhunt -m rmd160 -f tests/unsolvedpuzzles.rmd -b 66 -l compress -R -q -t 8\n\n");
@@ -6416,30 +6074,18 @@ void writevanitykey(bool compressed,Int *key)	{
 int addvanity(char *target)	{
 	unsigned char raw_value_A[50],raw_value_B[50];
 	char target_copy[50];
-	char *hextemp;
 	int stringsize,targetsize,j,r = 0;
 	size_t raw_value_length;
 	int values_A_size = 0,values_B_size = 0,minimun_bytes;
-	
-	//if(FLAGDEBUG) printf("[D] addvanity(%s)\n",target);
 	raw_value_length = 50;
-	stringsize = strlen(target);
-	targetsize = stringsize;
+	targetsize = strlen(target);
+	stringsize = targetsize;
 	memset(raw_value_A,0,50);
 	memset(target_copy,0,50);
-	
-	//if(FLAGDEBUG) printf("[D] target = %s , size %i\n",target,stringsize);
-	
-	if(stringsize >= 30 )	{
-		//if(FLAGDEBUG) printf("[D] not added %s\n",target);
+	if(targetsize >= 30 )	{
 		return 0;
 	}
-	/* I was getting some warnings abouts strncpy regadless to have the correct size of the target string so i change it to memcpy*/
-	//strncpy(target_copy,target,stringsize);
-
-	memcpy(target_copy,target,stringsize);
-	//if(FLAGDEBUG) printf("[D] target = %s\n",target_copy);
-	
+	memcpy(target_copy,target,targetsize);
 	j = 0;
 	vanity_address_targets = (char**)  realloc(vanity_address_targets,(vanity_rmd_targets+1) * sizeof(char*));
 	vanity_address_targets[vanity_rmd_targets] = NULL;
@@ -6470,14 +6116,6 @@ int addvanity(char *target)	{
 			
 			memcpy(vanity_rmd_limit_values_A[vanity_rmd_targets][j] ,raw_value_A +1,20);
 			
-			/*
-			if(FLAGDEBUG)	{
-				hextemp = tohex((char*)vanity_rmd_limit_values_A[vanity_rmd_targets][j],20);
-				printf("[D] Raw size: %li, Encoded size: %i : expected string %s, base string %s => hex %s\n", raw_value_length,stringsize,target,target_copy,hextemp);
-				free(hextemp);
-			}
-			*/
-			
 			j++;	
 			values_A_size = j;
 			target_copy[stringsize] = '1';
@@ -6485,11 +6123,10 @@ int addvanity(char *target)	{
 		}	
 	}while(raw_value_length <= 25);
 	
-	stringsize = strlen(target);
+	stringsize = targetsize;
 	memset(raw_value_B,0,50);
 	memset(target_copy,0,50);
-	memcpy(target_copy,target,stringsize);
-	//if(FLAGDEBUG) printf("[D] target = %s\n",target_copy);
+	memcpy(target_copy,target,targetsize);
 
 	j = 0;
 	do	{
@@ -6508,14 +6145,6 @@ int addvanity(char *target)	{
 			vanity_rmd_limit_values_B[vanity_rmd_targets][j] = (uint8_t*)calloc(20,1);
 			checkpointer((void *)vanity_rmd_limit_values_B[vanity_rmd_targets][j],__FILE__,"calloc","vanity_rmd_limit_values_B" ,__LINE__ -1 );
 			memcpy(vanity_rmd_limit_values_B[vanity_rmd_targets][j],raw_value_B+1,20);
-			
-			/*
-			if(FLAGDEBUG)	{
-				hextemp = tohex((char*)vanity_rmd_limit_values_B[vanity_rmd_targets][j],20);
-				printf("[D] Raw size: %li, Encoded size: %i : expected string %s, base string %s => hex %s\n", raw_value_length,stringsize,target,target_copy,hextemp);
-				free(hextemp);
-			}
-			*/
 			
 			j++;				
 			values_B_size = j;
@@ -6543,7 +6172,7 @@ int addvanity(char *target)	{
 		}
 		vanity_address_targets[vanity_rmd_targets] = (char*) calloc(targetsize+1,sizeof(char));
 		checkpointer((void *)vanity_address_targets[vanity_rmd_targets],__FILE__,"calloc","vanity_address_targets" ,__LINE__ -1 );
-		strncpy(vanity_address_targets[vanity_rmd_targets],target,targetsize);
+		memcpy(vanity_address_targets[vanity_rmd_targets],target,targetsize+1);	// +1 to copy the null character
 		vanity_rmd_limits[vanity_rmd_targets] = r;
 		vanity_rmd_total+=r;
 		vanity_rmd_targets++;
@@ -6645,7 +6274,7 @@ bool isValidBase58String(char *str)	{
 }
 
 bool processOneVanity()	{
-	int i,K;
+	int i,k;
 	if(vanity_rmd_targets == 0)	{
 		fprintf(stderr,"[E] There aren't any vanity targets\n");
 		return false;
@@ -6654,21 +6283,18 @@ bool processOneVanity()	{
 	if(!initBloomFilter(vanity_bloom, vanity_rmd_total))
 		return false;
 	
-	
-	while(i < vanity_rmd_targets)	{
-		for(int k = 0; k < vanity_rmd_limits[i]; k++)	{
+	for(i = 0; i < vanity_rmd_targets;i++)	{
+		for(k = 0; k < vanity_rmd_limits[i]; k++)	{
 			bloom_add(vanity_bloom, vanity_rmd_limit_values_A[i][k] ,vanity_rmd_minimun_bytes_check_length);
 		}
-		i++;
 	}
-	
 	return true;
 }
 
 
 bool readFileVanity(char *fileName)	{
 	FILE *fileDescriptor;
-	int i,K,len;
+	int i,k,len;
 	char aux[100],*hextemp;
 
 	fileDescriptor = fopen(fileName,"r");
@@ -6701,29 +6327,17 @@ bool readFileVanity(char *fileName)	{
 	if(!initBloomFilter(vanity_bloom,N))
 		return false;
 	
-	
-	i = 0;
-	while(i < vanity_rmd_targets)	{
-		for(int k = 0; k < vanity_rmd_limits[i]; k++)	{
-			/*
-			if(FLAGDEBUG)	{
-				printf("[D] i %i ; k %i\n",i,k);
-				hextemp = tohex((char*)vanity_rmd_limit_values_A[i][k],vanity_rmd_minimun_bytes_check_length);
-				printf("[D] Adding %s\n",hextemp);
-				fflush(stdout);
-				free(hextemp);
-			}
-			*/
+	for(i = 0; i < vanity_rmd_targets ; i++)	{
+		for(k = 0; k < vanity_rmd_limits[i]; k++)	{
 			bloom_add(vanity_bloom, vanity_rmd_limit_values_A[i][k] ,vanity_rmd_minimun_bytes_check_length);
 		}
-		i++;
 	}
 	return true;
 }
 
 bool readFileAddress(char *fileName)	{
 	FILE *fileDescriptor;
-	char fileBloomName[30],*hextemp;	/* Actually it is Bloom and Table but just to keep the variable name short*/
+	char fileBloomName[30];	/* Actually it is Bloom and Table but just to keep the variable name short*/
 	uint8_t checksum[32],hexPrefix[9];
 	char dataChecksum[32],bloomChecksum[32];
 	size_t bytesRead;
@@ -6877,7 +6491,6 @@ bool readFileAddress(char *fileName)	{
 				}
 			break;
 			case MODE_MINIKEYS:
-			case MODE_PUB2RMD:
 			case MODE_RMD160:
 				return forceReadFileAddress(fileName);
 			break;
@@ -6970,7 +6583,7 @@ bool forceReadFileAddressEth(char *fileName)	{
 	FILE *fileDescriptor;
 	bool validAddress;
 	uint64_t numberItems,i;
-	size_t r,raw_value_length;
+	size_t r;
 	uint8_t rawvalue[50];
 	char aux[100],*hextemp;
 	fileDescriptor = fopen(fileName,"r");	
@@ -7048,9 +6661,8 @@ bool forceReadFileAddressEth(char *fileName)	{
 bool forceReadFileXPoint(char *fileName)	{
 	/* Here we read the original file as usual */
 	FILE *fileDescriptor;
-	bool validAddress;
 	uint64_t numberItems,i;
-	size_t r,raw_value_length,lenaux;
+	size_t r,lenaux;
 	uint8_t rawvalue[100];
 	char aux[1000],*hextemp;
 	Tokenizer tokenizer_xpoint;	//tokenizer
@@ -7083,7 +6695,8 @@ bool forceReadFileXPoint(char *fileName)	{
 	
 	if(!initBloomFilter(&bloom,N))
 		return false;
-		
+	
+	i= 0;
 	while(i < N)	{
 		memset(aux,0,1000);
 		hextemp = fgets(aux,1000,fileDescriptor);
@@ -7173,7 +6786,7 @@ void writeFileIfNeeded(const char *fileName)	{
 	//printf("[D] FLAGSAVEREADFILE %i, FLAGREADEDFILE1 %i\n",FLAGSAVEREADFILE,FLAGREADEDFILE1);
 	if(FLAGSAVEREADFILE && !FLAGREADEDFILE1)	{
 		FILE *fileDescriptor;
-		char fileBloomName[30],*hextemp;
+		char fileBloomName[30];
 		uint8_t checksum[32],hexPrefix[9];
 		char dataChecksum[32],bloomChecksum[32];
 		size_t bytesWrite;

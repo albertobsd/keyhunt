@@ -18,9 +18,12 @@
 #ifndef RIPEMD160_H
 #define RIPEMD160_H
 
+#include <string>
 #include <stdint.h>
 #include <stdlib.h>
-#include <string>
+#include <stdio.h>
+#include <inttypes.h>
+#include <string.h>
 
 /** A hasher class for RIPEMD-160. */
 class CRIPEMD160

@@ -2115,6 +2115,7 @@ int main(int argc, char **argv)	{
 			checkpointer((void *)tt,__FILE__,"malloc","tt" ,__LINE__ -1 );
 			tt->nt = i;
 			steps[i] = 0;
+			s = 0;
 			switch(FLAGMODE)	{
 #if defined(_WIN64) && !defined(__CYGWIN__)
 				case MODE_ADDRESS:
@@ -2404,15 +2405,7 @@ void *thread_process_minikeys(void *vargp)	{
 	
 	do	{
 		if(FLAGRANDOM)	{
-#if defined(_WIN64) && !defined(__CYGWIN__)
-			WaitForSingleObject(write_random, INFINITE);
 			counter.Rand(256);
-			ReleaseMutex(write_random);
-#else
-			pthread_mutex_lock(&write_random);
-			counter.Rand(256);
-			pthread_mutex_unlock(&write_random);
-#endif
 			for(k = 0; k < 21; k++)	{
 				buffer_b58[k] =(uint8_t)((uint8_t) rawbuffer[k] % 58);
 			}
@@ -2823,18 +2816,18 @@ void *thread_process(void *vargp)	{
 											endomorphism_negeted_point[l] = secp->Negation(pts[(j*4)+l]);
 										}
 										secp->GetHash160(P2PKH,false, pts[(j*4)], pts[(j*4)+1], pts[(j*4)+2], pts[(j*4)+3],(uint8_t*)publickeyhashrmd160_endomorphism[6][0],(uint8_t*)publickeyhashrmd160_endomorphism[6][1],(uint8_t*)publickeyhashrmd160_endomorphism[6][2],(uint8_t*)publickeyhashrmd160_endomorphism[6][3]);
-										secp->GetHash160(P2PKH,false,endomorphism_negeted_point[(j*4)] ,endomorphism_negeted_point[(j*4)+1],endomorphism_negeted_point[(j*4)+2],endomorphism_negeted_point[(j*4)+3],(uint8_t*)publickeyhashrmd160_endomorphism[7][0],(uint8_t*)publickeyhashrmd160_endomorphism[7][1],(uint8_t*)publickeyhashrmd160_endomorphism[7][2],(uint8_t*)publickeyhashrmd160_endomorphism[7][3]);
+										secp->GetHash160(P2PKH,false,endomorphism_negeted_point[0] ,endomorphism_negeted_point[1],endomorphism_negeted_point[2],endomorphism_negeted_point[3],(uint8_t*)publickeyhashrmd160_endomorphism[7][0],(uint8_t*)publickeyhashrmd160_endomorphism[7][1],(uint8_t*)publickeyhashrmd160_endomorphism[7][2],(uint8_t*)publickeyhashrmd160_endomorphism[7][3]);
 										for(l = 0; l < 4; l++)	{
 											endomorphism_negeted_point[l] = secp->Negation(endomorphism_beta[(j*4)+l]);
 										}
 										secp->GetHash160(P2PKH,false,endomorphism_beta[(j*4)],  endomorphism_beta[(j*4)+1], endomorphism_beta[(j*4)+2], endomorphism_beta[(j*4)+3] ,(uint8_t*)publickeyhashrmd160_endomorphism[8][0],(uint8_t*)publickeyhashrmd160_endomorphism[8][1],(uint8_t*)publickeyhashrmd160_endomorphism[8][2],(uint8_t*)publickeyhashrmd160_endomorphism[8][3]);
-										secp->GetHash160(P2PKH,false,endomorphism_negeted_point[(j*4)],endomorphism_negeted_point[(j*4)+1],endomorphism_negeted_point[(j*4)+2],endomorphism_negeted_point[(j*4)+3],(uint8_t*)publickeyhashrmd160_endomorphism[9][0],(uint8_t*)publickeyhashrmd160_endomorphism[9][1],(uint8_t*)publickeyhashrmd160_endomorphism[9][2],(uint8_t*)publickeyhashrmd160_endomorphism[9][3]);
+										secp->GetHash160(P2PKH,false,endomorphism_negeted_point[0],endomorphism_negeted_point[1],endomorphism_negeted_point[2],endomorphism_negeted_point[3],(uint8_t*)publickeyhashrmd160_endomorphism[9][0],(uint8_t*)publickeyhashrmd160_endomorphism[9][1],(uint8_t*)publickeyhashrmd160_endomorphism[9][2],(uint8_t*)publickeyhashrmd160_endomorphism[9][3]);
 
 										for(l = 0; l < 4; l++)	{
 											endomorphism_negeted_point[l] = secp->Negation(endomorphism_beta2[(j*4)+l]);
 										}
 										secp->GetHash160(P2PKH,false, endomorphism_beta2[(j*4)],  endomorphism_beta2[(j*4)+1] ,  endomorphism_beta2[(j*4)+2] ,  endomorphism_beta2[(j*4)+3] ,(uint8_t*)publickeyhashrmd160_endomorphism[10][0],(uint8_t*)publickeyhashrmd160_endomorphism[10][1],(uint8_t*)publickeyhashrmd160_endomorphism[10][2],(uint8_t*)publickeyhashrmd160_endomorphism[10][3]);
-										secp->GetHash160(P2PKH,false, endomorphism_negeted_point[(j*4)], endomorphism_negeted_point[(j*4)+1],   endomorphism_negeted_point[(j*4)+2],endomorphism_negeted_point[(j*4)+3],(uint8_t*)publickeyhashrmd160_endomorphism[11][0],(uint8_t*)publickeyhashrmd160_endomorphism[11][1],(uint8_t*)publickeyhashrmd160_endomorphism[11][2],(uint8_t*)publickeyhashrmd160_endomorphism[11][3]);
+										secp->GetHash160(P2PKH,false, endomorphism_negeted_point[0], endomorphism_negeted_point[1],   endomorphism_negeted_point[2],endomorphism_negeted_point[3],(uint8_t*)publickeyhashrmd160_endomorphism[11][0],(uint8_t*)publickeyhashrmd160_endomorphism[11][1],(uint8_t*)publickeyhashrmd160_endomorphism[11][2],(uint8_t*)publickeyhashrmd160_endomorphism[11][3]);
 
 									}
 									else	{
@@ -3436,18 +3429,18 @@ void *thread_process_vanity(void *vargp)	{
 								endomorphism_negeted_point[l] = secp->Negation(pts[(j*4)+l]);
 							}
 							secp->GetHash160(P2PKH,false, pts[(j*4)], pts[(j*4)+1], pts[(j*4)+2], pts[(j*4)+3],(uint8_t*)publickeyhashrmd160_endomorphism[6][0],(uint8_t*)publickeyhashrmd160_endomorphism[6][1],(uint8_t*)publickeyhashrmd160_endomorphism[6][2],(uint8_t*)publickeyhashrmd160_endomorphism[6][3]);
-							secp->GetHash160(P2PKH,false,endomorphism_negeted_point[(j*4)] ,endomorphism_negeted_point[(j*4)+1],endomorphism_negeted_point[(j*4)+2],endomorphism_negeted_point[(j*4)+3],(uint8_t*)publickeyhashrmd160_endomorphism[7][0],(uint8_t*)publickeyhashrmd160_endomorphism[7][1],(uint8_t*)publickeyhashrmd160_endomorphism[7][2],(uint8_t*)publickeyhashrmd160_endomorphism[7][3]);
+							secp->GetHash160(P2PKH,false,endomorphism_negeted_point[0] ,endomorphism_negeted_point[1],endomorphism_negeted_point[2],endomorphism_negeted_point[3],(uint8_t*)publickeyhashrmd160_endomorphism[7][0],(uint8_t*)publickeyhashrmd160_endomorphism[7][1],(uint8_t*)publickeyhashrmd160_endomorphism[7][2],(uint8_t*)publickeyhashrmd160_endomorphism[7][3]);
 							for(l = 0; l < 4; l++)	{
 								endomorphism_negeted_point[l] = secp->Negation(endomorphism_beta[(j*4)+l]);
 							}
 							secp->GetHash160(P2PKH,false,endomorphism_beta[(j*4)],  endomorphism_beta[(j*4)+1], endomorphism_beta[(j*4)+2], endomorphism_beta[(j*4)+3] ,(uint8_t*)publickeyhashrmd160_endomorphism[8][0],(uint8_t*)publickeyhashrmd160_endomorphism[8][1],(uint8_t*)publickeyhashrmd160_endomorphism[8][2],(uint8_t*)publickeyhashrmd160_endomorphism[8][3]);
-							secp->GetHash160(P2PKH,false,endomorphism_negeted_point[(j*4)],endomorphism_negeted_point[(j*4)+1],endomorphism_negeted_point[(j*4)+2],endomorphism_negeted_point[(j*4)+3],(uint8_t*)publickeyhashrmd160_endomorphism[9][0],(uint8_t*)publickeyhashrmd160_endomorphism[9][1],(uint8_t*)publickeyhashrmd160_endomorphism[9][2],(uint8_t*)publickeyhashrmd160_endomorphism[9][3]);
+							secp->GetHash160(P2PKH,false,endomorphism_negeted_point[0],endomorphism_negeted_point[1],endomorphism_negeted_point[2],endomorphism_negeted_point[3],(uint8_t*)publickeyhashrmd160_endomorphism[9][0],(uint8_t*)publickeyhashrmd160_endomorphism[9][1],(uint8_t*)publickeyhashrmd160_endomorphism[9][2],(uint8_t*)publickeyhashrmd160_endomorphism[9][3]);
 
 							for(l = 0; l < 4; l++)	{
 								endomorphism_negeted_point[l] = secp->Negation(endomorphism_beta2[(j*4)+l]);
 							}
 							secp->GetHash160(P2PKH,false, endomorphism_beta2[(j*4)],  endomorphism_beta2[(j*4)+1] ,  endomorphism_beta2[(j*4)+2] ,  endomorphism_beta2[(j*4)+3] ,(uint8_t*)publickeyhashrmd160_endomorphism[10][0],(uint8_t*)publickeyhashrmd160_endomorphism[10][1],(uint8_t*)publickeyhashrmd160_endomorphism[10][2],(uint8_t*)publickeyhashrmd160_endomorphism[10][3]);
-							secp->GetHash160(P2PKH,false, endomorphism_negeted_point[(j*4)], endomorphism_negeted_point[(j*4)+1],   endomorphism_negeted_point[(j*4)+2],endomorphism_negeted_point[(j*4)+3],(uint8_t*)publickeyhashrmd160_endomorphism[11][0],(uint8_t*)publickeyhashrmd160_endomorphism[11][1],(uint8_t*)publickeyhashrmd160_endomorphism[11][2],(uint8_t*)publickeyhashrmd160_endomorphism[11][3]);
+							secp->GetHash160(P2PKH,false, endomorphism_negeted_point[0], endomorphism_negeted_point[1],   endomorphism_negeted_point[2],endomorphism_negeted_point[3],(uint8_t*)publickeyhashrmd160_endomorphism[11][0],(uint8_t*)publickeyhashrmd160_endomorphism[11][1],(uint8_t*)publickeyhashrmd160_endomorphism[11][2],(uint8_t*)publickeyhashrmd160_endomorphism[11][3]);
 						}
 						else	{
 							secp->GetHash160(P2PKH,false,pts[(j*4)],pts[(j*4)+1],pts[(j*4)+2],pts[(j*4)+3],(uint8_t*)publickeyhashrmd160_uncompress[0],(uint8_t*)publickeyhashrmd160_uncompress[1],(uint8_t*)publickeyhashrmd160_uncompress[2],(uint8_t*)publickeyhashrmd160_uncompress[3]);
@@ -6935,7 +6928,7 @@ bool forceReadFileAddress(char *fileName)	{
 	if(!initBloomFilter(&bloom,numberItems))
 		return false;
 
-	
+	i = 0;
 	while(i < numberItems)	{
 		validAddress = false;
 		memset(aux,0,100);
@@ -7010,7 +7003,7 @@ bool forceReadFileAddressEth(char *fileName)	{
 	if(!initBloomFilter(&bloom,N))
 		return false;
 	
-	
+	i = 0;
 	while(i < numberItems)	{
 		validAddress = false;
 		memset(aux,0,100);

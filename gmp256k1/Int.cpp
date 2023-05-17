@@ -204,6 +204,10 @@ bool Int::IsOdd()	{
 }
 	
 int Int::GetSize()	{
+	/*
+	gmp_printf("GetSize of %Zi\n",num);
+	fflush(stdout);
+	*/
 	int r = mpz_sizeinbase(num,2);
 	if(r % 8 == 0)
 		return (int)(r/8);
@@ -280,13 +284,6 @@ char* Int::GetBase10()	{
 char* Int::GetBase16()	{
 	return mpz_get_str(NULL,16,num);
 }
-
-/*
-char* Int::GetBaseN(int n,const char *charset);
-char* Int::GetBlockStr();
-char* Int::GetC64Str(int nbDigit);
-*/
-
 
 void Int::SetInt64(uint64_t value)	{
 	char my_str_value[U64STRINGSIZE]; // 30 digits + null terminator

@@ -839,7 +839,7 @@ int main(int argc, char **argv)	{
 			FLAGRANGE = 0;
 		}
 	}
-	if(FLAGDEBUG) { printf("[D] File: %s Line %i\n",__FILE__,__LINE__); fflush(stdout); }
+	//if(FLAGDEBUG) { printf("[D] File: %s Line %i\n",__FILE__,__LINE__); fflush(stdout); }
 	if(FLAGMODE != MODE_BSGS && FLAGMODE != MODE_MINIKEYS)	{
 		BSGS_N.SetInt32(DEBUGCOUNT);
 		if(FLAGRANGE == 0 && FLAGBITRANGE == 0)	{
@@ -863,7 +863,7 @@ int main(int argc, char **argv)	{
 		}
 	}
 	N = 0;
-	if(FLAGDEBUG) { printf("[D] File: %s Line %i\n",__FILE__,__LINE__); fflush(stdout); }
+	//if(FLAGDEBUG) { printf("[D] File: %s Line %i\n",__FILE__,__LINE__); fflush(stdout); }
 	if(FLAGMODE != MODE_BSGS )	{
 		if(FLAG_N){
 			if(str_N[0] == '0' && str_N[1] == 'x')	{
@@ -951,7 +951,7 @@ int main(int argc, char **argv)	{
 				}
 			break;
 		}
-		if(FLAGDEBUG) { printf("[D] File: %s Line %i\n",__FILE__,__LINE__); fflush(stdout); }
+		//if(FLAGDEBUG) { printf("[D] File: %s Line %i\n",__FILE__,__LINE__); fflush(stdout); }
 		if(FLAGMODE != MODE_VANITY && !FLAGREADEDFILE1)	{
 			printf("[+] Sorting data ...");
 			_sort(addressTable,N);
@@ -959,7 +959,7 @@ int main(int argc, char **argv)	{
 			writeFileIfNeeded(fileName);
 		}
 	}
-	if(FLAGDEBUG) { printf("[D] File: %s Line %i\n",__FILE__,__LINE__); fflush(stdout); }
+	//if(FLAGDEBUG) { printf("[D] File: %s Line %i\n",__FILE__,__LINE__); fflush(stdout); }
 	if(FLAGMODE == MODE_BSGS )	{
 		printf("[+] Opening file %s\n",fileName);
 		fd = fopen(fileName,"rb");
@@ -2111,7 +2111,7 @@ int main(int argc, char **argv)	{
 		free(aux);
 	}
 	if(FLAGMODE != MODE_BSGS)	{
-		if(FLAGDEBUG) { printf("[D] File: %s Line %i\n",__FILE__,__LINE__); fflush(stdout); }
+		//if(FLAGDEBUG) { printf("[D] File: %s Line %i\n",__FILE__,__LINE__); fflush(stdout); }
 		steps = (uint64_t *) calloc(NTHREADS,sizeof(uint64_t));
 		checkpointer((void *)steps,__FILE__,"calloc","steps" ,__LINE__ -1 );
 		ends = (unsigned int *) calloc(NTHREADS,sizeof(int));
@@ -2122,7 +2122,7 @@ int main(int argc, char **argv)	{
 		tid = (pthread_t *) calloc(NTHREADS,sizeof(pthread_t));
 #endif
 		checkpointer((void *)tid,__FILE__,"calloc","tid" ,__LINE__ -1 );
-		if(FLAGDEBUG) { printf("[D] File: %s Line %i\n",__FILE__,__LINE__); fflush(stdout); }
+		//if(FLAGDEBUG) { printf("[D] File: %s Line %i\n",__FILE__,__LINE__); fflush(stdout); }
 		for(i= 0;i < NTHREADS; i++)	{
 			tt = (tothread*) malloc(sizeof(struct tothread));
 			checkpointer((void *)tt,__FILE__,"malloc","tt" ,__LINE__ -1 );
@@ -2134,7 +2134,7 @@ int main(int argc, char **argv)	{
 				case MODE_ADDRESS:
 				case MODE_XPOINT:
 				case MODE_RMD160:
-					if(FLAGDEBUG) { printf("[D] File: %s Line %i\n",__FILE__,__LINE__); fflush(stdout); }
+					//if(FLAGDEBUG) { printf("[D] File: %s Line %i\n",__FILE__,__LINE__); fflush(stdout); }
 					tid[i] = CreateThread(NULL, 0, thread_process, (void*)tt, 0, &s);
 				break;
 				case MODE_PUB2RMD:
@@ -2569,10 +2569,12 @@ DWORD WINAPI thread_process(LPVOID vargp) {
 void *thread_process(void *vargp)	{
 #endif
 	struct tothread *tt;
+
 	Point pts[CPU_GRP_SIZE];
 	Point endomorphism_beta[CPU_GRP_SIZE];
 	Point endomorphism_beta2[CPU_GRP_SIZE];
 	Point endomorphism_negeted_point[4];
+
 	
 	Int dx[CPU_GRP_SIZE / 2 + 1];
 	IntGroup *grp = new IntGroup(CPU_GRP_SIZE / 2 + 1);
@@ -2603,7 +2605,11 @@ void *thread_process(void *vargp)	{
 	thread_number = tt->nt;
 	free(tt);
 	grp->Set(dx);
-		
+	//printf("[D] Thread %i calculate_y = %s \n",thread_number,calculate_y ? "true": "false");
+	//sleep_ms(1000);
+	
+	
+	
 	do {
 		if(FLAGRANDOM){
 			key_mpz.Rand(&n_range_start,&n_range_end);
@@ -2797,21 +2803,35 @@ void *thread_process(void *vargp)	{
 								if(FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH){
 									if(FLAGENDOMORPHISM)	{
 										for(l = 0; l < 4; l++)	{
+											/*											
+											pthread_mutex_lock(&write_keys);
+											printf("Valores thread, %i ,l = %i, j = %li\n",thread_number,l,j);
+											hextemp = secp->GetPublicKeyHex(false,pts[(j*4)+l]);
+											printf("Negating %s\n",hextemp);
+											free(hextemp);
+											*/
 											endomorphism_negeted_point[l] = secp->Negation(pts[(j*4)+l]);
+											/*
+											hextemp = secp->GetPublicKeyHex(false,endomorphism_negeted_point[l]);
+											printf("Result   %s\n",hextemp);
+											free(hextemp);
+											fflush(stdout);
+											pthread_mutex_unlock(&write_keys);
+											*/
 										}
 										secp->GetHash160(P2PKH,false, pts[(j*4)], pts[(j*4)+1], pts[(j*4)+2], pts[(j*4)+3],(uint8_t*)publickeyhashrmd160_endomorphism[6][0],(uint8_t*)publickeyhashrmd160_endomorphism[6][1],(uint8_t*)publickeyhashrmd160_endomorphism[6][2],(uint8_t*)publickeyhashrmd160_endomorphism[6][3]);
-										secp->GetHash160(P2PKH,false,endomorphism_negeted_point[(j*4)] ,endomorphism_negeted_point[(j*4)+1],endomorphism_negeted_point[(j*4)+2],endomorphism_negeted_point[(j*4)+3],(uint8_t*)publickeyhashrmd160_endomorphism[7][0],(uint8_t*)publickeyhashrmd160_endomorphism[7][1],(uint8_t*)publickeyhashrmd160_endomorphism[7][2],(uint8_t*)publickeyhashrmd160_endomorphism[7][3]);
+										secp->GetHash160(P2PKH,false,endomorphism_negeted_point[0] ,endomorphism_negeted_point[1],endomorphism_negeted_point[2],endomorphism_negeted_point[3],(uint8_t*)publickeyhashrmd160_endomorphism[7][0],(uint8_t*)publickeyhashrmd160_endomorphism[7][1],(uint8_t*)publickeyhashrmd160_endomorphism[7][2],(uint8_t*)publickeyhashrmd160_endomorphism[7][3]);
 										for(l = 0; l < 4; l++)	{
 											endomorphism_negeted_point[l] = secp->Negation(endomorphism_beta[(j*4)+l]);
 										}
 										secp->GetHash160(P2PKH,false,endomorphism_beta[(j*4)],  endomorphism_beta[(j*4)+1], endomorphism_beta[(j*4)+2], endomorphism_beta[(j*4)+3] ,(uint8_t*)publickeyhashrmd160_endomorphism[8][0],(uint8_t*)publickeyhashrmd160_endomorphism[8][1],(uint8_t*)publickeyhashrmd160_endomorphism[8][2],(uint8_t*)publickeyhashrmd160_endomorphism[8][3]);
-										secp->GetHash160(P2PKH,false,endomorphism_negeted_point[(j*4)],endomorphism_negeted_point[(j*4)+1],endomorphism_negeted_point[(j*4)+2],endomorphism_negeted_point[(j*4)+3],(uint8_t*)publickeyhashrmd160_endomorphism[9][0],(uint8_t*)publickeyhashrmd160_endomorphism[9][1],(uint8_t*)publickeyhashrmd160_endomorphism[9][2],(uint8_t*)publickeyhashrmd160_endomorphism[9][3]);
+										secp->GetHash160(P2PKH,false,endomorphism_negeted_point[0],endomorphism_negeted_point[1],endomorphism_negeted_point[2],endomorphism_negeted_point[3],(uint8_t*)publickeyhashrmd160_endomorphism[9][0],(uint8_t*)publickeyhashrmd160_endomorphism[9][1],(uint8_t*)publickeyhashrmd160_endomorphism[9][2],(uint8_t*)publickeyhashrmd160_endomorphism[9][3]);
 
 										for(l = 0; l < 4; l++)	{
 											endomorphism_negeted_point[l] = secp->Negation(endomorphism_beta2[(j*4)+l]);
 										}
 										secp->GetHash160(P2PKH,false, endomorphism_beta2[(j*4)],  endomorphism_beta2[(j*4)+1] ,  endomorphism_beta2[(j*4)+2] ,  endomorphism_beta2[(j*4)+3] ,(uint8_t*)publickeyhashrmd160_endomorphism[10][0],(uint8_t*)publickeyhashrmd160_endomorphism[10][1],(uint8_t*)publickeyhashrmd160_endomorphism[10][2],(uint8_t*)publickeyhashrmd160_endomorphism[10][3]);
-										secp->GetHash160(P2PKH,false, endomorphism_negeted_point[(j*4)], endomorphism_negeted_point[(j*4)+1],   endomorphism_negeted_point[(j*4)+2],endomorphism_negeted_point[(j*4)+3],(uint8_t*)publickeyhashrmd160_endomorphism[11][0],(uint8_t*)publickeyhashrmd160_endomorphism[11][1],(uint8_t*)publickeyhashrmd160_endomorphism[11][2],(uint8_t*)publickeyhashrmd160_endomorphism[11][3]);
+										secp->GetHash160(P2PKH,false, endomorphism_negeted_point[0], endomorphism_negeted_point[1],   endomorphism_negeted_point[2],endomorphism_negeted_point[3],(uint8_t*)publickeyhashrmd160_endomorphism[11][0],(uint8_t*)publickeyhashrmd160_endomorphism[11][1],(uint8_t*)publickeyhashrmd160_endomorphism[11][2],(uint8_t*)publickeyhashrmd160_endomorphism[11][3]);
 
 									}
 									else	{
@@ -3396,18 +3416,18 @@ void *thread_process_vanity(void *vargp)	{
 								endomorphism_negeted_point[l] = secp->Negation(pts[(j*4)+l]);
 							}
 							secp->GetHash160(P2PKH,false, pts[(j*4)], pts[(j*4)+1], pts[(j*4)+2], pts[(j*4)+3],(uint8_t*)publickeyhashrmd160_endomorphism[6][0],(uint8_t*)publickeyhashrmd160_endomorphism[6][1],(uint8_t*)publickeyhashrmd160_endomorphism[6][2],(uint8_t*)publickeyhashrmd160_endomorphism[6][3]);
-							secp->GetHash160(P2PKH,false,endomorphism_negeted_point[(j*4)] ,endomorphism_negeted_point[(j*4)+1],endomorphism_negeted_point[(j*4)+2],endomorphism_negeted_point[(j*4)+3],(uint8_t*)publickeyhashrmd160_endomorphism[7][0],(uint8_t*)publickeyhashrmd160_endomorphism[7][1],(uint8_t*)publickeyhashrmd160_endomorphism[7][2],(uint8_t*)publickeyhashrmd160_endomorphism[7][3]);
+							secp->GetHash160(P2PKH,false,endomorphism_negeted_point[0] ,endomorphism_negeted_point[1],endomorphism_negeted_point[2],endomorphism_negeted_point[3],(uint8_t*)publickeyhashrmd160_endomorphism[7][0],(uint8_t*)publickeyhashrmd160_endomorphism[7][1],(uint8_t*)publickeyhashrmd160_endomorphism[7][2],(uint8_t*)publickeyhashrmd160_endomorphism[7][3]);
 							for(l = 0; l < 4; l++)	{
 								endomorphism_negeted_point[l] = secp->Negation(endomorphism_beta[(j*4)+l]);
 							}
 							secp->GetHash160(P2PKH,false,endomorphism_beta[(j*4)],  endomorphism_beta[(j*4)+1], endomorphism_beta[(j*4)+2], endomorphism_beta[(j*4)+3] ,(uint8_t*)publickeyhashrmd160_endomorphism[8][0],(uint8_t*)publickeyhashrmd160_endomorphism[8][1],(uint8_t*)publickeyhashrmd160_endomorphism[8][2],(uint8_t*)publickeyhashrmd160_endomorphism[8][3]);
-							secp->GetHash160(P2PKH,false,endomorphism_negeted_point[(j*4)],endomorphism_negeted_point[(j*4)+1],endomorphism_negeted_point[(j*4)+2],endomorphism_negeted_point[(j*4)+3],(uint8_t*)publickeyhashrmd160_endomorphism[9][0],(uint8_t*)publickeyhashrmd160_endomorphism[9][1],(uint8_t*)publickeyhashrmd160_endomorphism[9][2],(uint8_t*)publickeyhashrmd160_endomorphism[9][3]);
+							secp->GetHash160(P2PKH,false,endomorphism_negeted_point[0],endomorphism_negeted_point[1],endomorphism_negeted_point[2],endomorphism_negeted_point[3],(uint8_t*)publickeyhashrmd160_endomorphism[9][0],(uint8_t*)publickeyhashrmd160_endomorphism[9][1],(uint8_t*)publickeyhashrmd160_endomorphism[9][2],(uint8_t*)publickeyhashrmd160_endomorphism[9][3]);
 
 							for(l = 0; l < 4; l++)	{
 								endomorphism_negeted_point[l] = secp->Negation(endomorphism_beta2[(j*4)+l]);
 							}
 							secp->GetHash160(P2PKH,false, endomorphism_beta2[(j*4)],  endomorphism_beta2[(j*4)+1] ,  endomorphism_beta2[(j*4)+2] ,  endomorphism_beta2[(j*4)+3] ,(uint8_t*)publickeyhashrmd160_endomorphism[10][0],(uint8_t*)publickeyhashrmd160_endomorphism[10][1],(uint8_t*)publickeyhashrmd160_endomorphism[10][2],(uint8_t*)publickeyhashrmd160_endomorphism[10][3]);
-							secp->GetHash160(P2PKH,false, endomorphism_negeted_point[(j*4)], endomorphism_negeted_point[(j*4)+1],   endomorphism_negeted_point[(j*4)+2],endomorphism_negeted_point[(j*4)+3],(uint8_t*)publickeyhashrmd160_endomorphism[11][0],(uint8_t*)publickeyhashrmd160_endomorphism[11][1],(uint8_t*)publickeyhashrmd160_endomorphism[11][2],(uint8_t*)publickeyhashrmd160_endomorphism[11][3]);
+							secp->GetHash160(P2PKH,false, endomorphism_negeted_point[0], endomorphism_negeted_point[1],   endomorphism_negeted_point[2],endomorphism_negeted_point[3],(uint8_t*)publickeyhashrmd160_endomorphism[11][0],(uint8_t*)publickeyhashrmd160_endomorphism[11][1],(uint8_t*)publickeyhashrmd160_endomorphism[11][2],(uint8_t*)publickeyhashrmd160_endomorphism[11][3]);
 						}
 						else	{
 							secp->GetHash160(P2PKH,false,pts[(j*4)],pts[(j*4)+1],pts[(j*4)+2],pts[(j*4)+3],(uint8_t*)publickeyhashrmd160_uncompress[0],(uint8_t*)publickeyhashrmd160_uncompress[1],(uint8_t*)publickeyhashrmd160_uncompress[2],(uint8_t*)publickeyhashrmd160_uncompress[3]);

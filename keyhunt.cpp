@@ -131,13 +131,6 @@ Point _2Gn;
 
 std::vector<Point> GSn;
 Point _2GSn;
-/*
-std::vector<Point> GSn2;
-Point _2GSn2;
-
-std::vector<Point> GSn3;
-Point _2GSn3;
-*/
 
 void menu();
 void init_generator();
@@ -174,7 +167,6 @@ int addvanity(char *target);
 int minimum_same_bytes(unsigned char* A,unsigned char* B, int length);
 
 void writekey(bool compressed,Int *key);
-
 void writekeyeth(Int *key);
 
 void checkpointer(void *ptr,const char *file,const char *function,const  char *name,int line);
@@ -217,8 +209,6 @@ void *thread_bPload(void *vargp);
 void *thread_bPload_2blooms(void *vargp);
 #endif
 
-char *publickeytohashrmd160(char *pkey,int length);
-void publickeytohashrmd160_dst(char *pkey,int length,char *dst);
 char *pubkeytopubaddress(char *pkey,int length);
 void pubkeytopubaddress_dst(char *pkey,int length,char *dst);
 void rmd160toaddress_dst(char *rmd,char *dst);
@@ -2318,29 +2308,6 @@ char *pubkeytopubaddress(char *pkey,int length)	{
 	return pubaddress;	// pubaddress need to be free by te caller funtion
 }
 
-void publickeytohashrmd160_dst(char *pkey,int length,char *dst)	{
-	char digest[32];
-	//digest [000...0]
- 	sha256((uint8_t*)pkey, length,(uint8_t*) digest);
-	//digest [SHA256 32 bytes]
-	RMD160Data((const unsigned char*)digest,32, dst);
-	//hash160 [RMD160 20 bytes]
-}
-
-char *publickeytohashrmd160(char *pkey,int length)	{
-	char *hash160 = (char*) malloc(20);
-	char *digest = (char*) malloc(32);
-	checkpointer((void *)hash160,__FILE__,"malloc","hash160" ,__LINE__ -1 );
-	checkpointer((void *)digest,__FILE__,"malloc","digest" ,__LINE__ -1 );
-	//digest [000...0]
- 	sha256((uint8_t*)pkey, length,(uint8_t*) digest);
-	//digest [SHA256 32 bytes]
-	RMD160Data((const unsigned char*)digest,32, hash160);
-	//hash160 [RMD160 20 bytes]
-	free(digest);
-	return hash160;	// hash160 need to be free by te caller funtion
-}
-
 int searchbinary(struct address_value *buffer,char *data,int64_t array_length) {
 	int64_t half,min,max,current;
 	int r = 0,rcmp;
@@ -2576,14 +2543,7 @@ void *thread_process(void *vargp)	{
 	thread_number = tt->nt;
 	free(tt);
 	grp->Set(dx);
-	
-	/*
-	if(FLAGDEBUG) {
-		printf("\n[D] thread_process\n");
-		fflush(stdout);
-	}
-	*/
-		
+			
 	do {
 		if(FLAGRANDOM){
 			key_mpz.Rand(&n_range_start,&n_range_end);
@@ -2606,12 +2566,6 @@ void *thread_process(void *vargp)	{
 				continue_flag = 0;
 			}
 		}
-		/*
-		if(FLAGDEBUG) {
-			printf("\n[D] thread_process %i\n",__LINE__ -1 );
-			fflush(stdout);
-		}
-		*/
 		if(continue_flag)	{
 			count = 0;
 			if(FLAGMATRIX)	{
@@ -2629,12 +2583,6 @@ void *thread_process(void *vargp)	{
 					THREADOUTPUT = 1;
 				}
 			}
-			/*
-			if(FLAGDEBUG) {
-				printf("\n[D] thread_process %i\n",__LINE__ -1 );
-				fflush(stdout);
-			}
-			*/
 			do {
 				temp_stride.SetInt32(CPU_GRP_SIZE / 2);
 				temp_stride.Mult(&stride);
@@ -2810,9 +2758,8 @@ void *thread_process(void *vargp)	{
 										
 									}
 								}
-							}
-								
-							if(FLAGCRYPTO == CRYPTO_ETH){
+							}								
+							else if(FLAGCRYPTO == CRYPTO_ETH){
 								if(FLAGENDOMORPHISM)	{
 									for(k = 0; k < 4;k++)	{
 										endomorphism_negeted_point[k] = secp->Negation(pts[(j*4)+k]);
@@ -2984,16 +2931,14 @@ void *thread_process(void *vargp)	{
 													keyfound.SetInt32(k);
 													keyfound.Mult(&stride);
 													keyfound.Add(&key_mpz);
-													
 													writekey(false,&keyfound);
-													
 												}
 											}
 										}
 									}
 								}
 							}
-							if( FLAGCRYPTO == CRYPTO_ETH) {
+							else if( FLAGCRYPTO == CRYPTO_ETH) {
 								if(FLAGENDOMORPHISM)	{
 									for(k = 0; k < 4;k++)	{
 										for(l = 0;l < 6; l++)	{
@@ -4927,9 +4872,8 @@ void generate_binaddress_eth(Point &publickey,unsigned char *dst_address)	{
 	publickey.x.Get32Bytes(bin_publickey);
 	publickey.y.Get32Bytes(bin_publickey+32);
 	KECCAK_256(bin_publickey, 64, bin_publickey);
-	memcpy(dst_address,bin_publickey+12,20);	
+	memcpy(dst_address,bin_publickey+12,20);
 }
-
 
 #if defined(_WIN64) && !defined(__CYGWIN__)
 DWORD WINAPI thread_process_bsgs_dance(LPVOID vargp) {
@@ -6325,10 +6269,7 @@ void writekeyeth(Int *key)	{
 #else
 	pthread_mutex_unlock(&write_keys);
 #endif
-
 	free(hextemp);
-
-	
 }
 
 bool isBase58(char c) {

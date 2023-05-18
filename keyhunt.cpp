@@ -174,6 +174,9 @@ int addvanity(char *target);
 int minimum_same_bytes(unsigned char* A,unsigned char* B, int length);
 
 void writekey(bool compressed,Int *key);
+
+void writekeyeth(Int *key);
+
 void checkpointer(void *ptr,const char *file,const char *function,const  char *name,int line);
 
 bool isBase58(char c);
@@ -2563,12 +2566,11 @@ void *thread_process(void *vargp)	{
 	
 	char publickeyhashrmd160[20];
 	char publickeyhashrmd160_uncompress[4][20];
-	char hexstrpoint[65],rawvalue[32];
+	char rawvalue[32];
 	
 	char publickeyhashrmd160_endomorphism[12][4][20];
 	
-	bool calculate_y = FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH;
-	FILE *keys;
+	bool calculate_y = FLAGSEARCH == SEARCH_UNCOMPRESS || FLAGSEARCH == SEARCH_BOTH || FLAGCRYPTO  == CRYPTO_ETH;
 	Int key_mpz,keyfound,temp_stride;
 	tt = (struct tothread *)vargp;
 	thread_number = tt->nt;
@@ -2809,6 +2811,28 @@ void *thread_process(void *vargp)	{
 									}
 								}
 							}
+								
+							if(FLAGCRYPTO == CRYPTO_ETH){
+								if(FLAGENDOMORPHISM)	{
+									for(k = 0; k < 4;k++)	{
+										endomorphism_negeted_point[k] = secp->Negation(pts[(j*4)+k]);
+										generate_binaddress_eth(pts[(4*j)+k],(uint8_t*)publickeyhashrmd160_endomorphism[0][k]);
+										generate_binaddress_eth(endomorphism_negeted_point[k],(uint8_t*)publickeyhashrmd160_endomorphism[1][k]);
+										endomorphism_negeted_point[k] = secp->Negation(endomorphism_beta[(j*4)+k]);
+										generate_binaddress_eth(endomorphism_beta[(4*j)+k],(uint8_t*)publickeyhashrmd160_endomorphism[2][k]);
+										generate_binaddress_eth(endomorphism_negeted_point[k],(uint8_t*)publickeyhashrmd160_endomorphism[3][k]);
+										endomorphism_negeted_point[k] = secp->Negation(endomorphism_beta2[(j*4)+k]);
+										generate_binaddress_eth(endomorphism_beta[(4*j)+k],(uint8_t*)publickeyhashrmd160_endomorphism[4][k]);
+										generate_binaddress_eth(endomorphism_negeted_point[k],(uint8_t*)publickeyhashrmd160_endomorphism[5][k]);
+									}
+								}
+								else	{
+									for(k = 0; k < 4;k++)	{
+										generate_binaddress_eth(pts[(4*j)+k],(uint8_t*)publickeyhashrmd160_uncompress[k]);
+									}
+								}
+								
+							}
 						break;
 					}
 
@@ -2969,52 +2993,68 @@ void *thread_process(void *vargp)	{
 									}
 								}
 							}
-							/*
-							if(FLAGDEBUG) {
-								printf("\n[D] thread_process %i\n",__LINE__ -1 );
-								fflush(stdout);
-							}
-							*/
-
 							if( FLAGCRYPTO == CRYPTO_ETH) {
-								for(k = 0; k < 4;k++)	{
-									generate_binaddress_eth(pts[(4*j)+k],(unsigned char*)rawvalue);
-
-									r = bloom_check(&bloom,rawvalue+12,MAXLENGTHADDRESS);
-									if(r) {
-										r = searchbinary(addressTable,rawvalue+12,N);
-										if(r) {
-											keyfound.SetInt32(k);
-											keyfound.Mult(&stride);
-											keyfound.Add(&key_mpz);
-											hextemp = keyfound.GetBase16();
-											hexstrpoint[0] = '0';
-											hexstrpoint[1] = 'x';
-											tohex_dst(rawvalue+12,20,hexstrpoint+2);
-
-#if defined(_WIN64) && !defined(__CYGWIN__)
-											WaitForSingleObject(write_keys, INFINITE);
-#else
-											pthread_mutex_lock(&write_keys);
-#endif
-
-											keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
-											if(keys != NULL)	{
-												fprintf(keys,"Private Key: %s\naddress: %s\n",hextemp,hexstrpoint);
-												fclose(keys);
+								if(FLAGENDOMORPHISM)	{
+									for(k = 0; k < 4;k++)	{
+										for(l = 0;l < 6; l++)	{
+											r = bloom_check(&bloom,publickeyhashrmd160_endomorphism[l][k],MAXLENGTHADDRESS);
+											if(r) {
+												r = searchbinary(addressTable,publickeyhashrmd160_endomorphism[l][k],N);
+												if(r) {												
+													keyfound.SetInt32(k);
+													keyfound.Mult(&stride);
+													keyfound.Add(&key_mpz);
+													switch(l)	{
+														case 0:
+														case 1:
+															publickey = secp->ComputePublicKey(&keyfound);
+															generate_binaddress_eth(publickey,(uint8_t*)publickeyhashrmd160_uncompress[0]);
+															if(memcmp(publickeyhashrmd160_endomorphism[l][k],publickeyhashrmd160_uncompress[0],20) != 0){
+																keyfound.Neg();
+																keyfound.Add(&secp->order);
+															}
+														break;
+														case 2:
+														case 3:
+															keyfound.ModMulK1order(&lambda);
+															publickey = secp->ComputePublicKey(&keyfound);
+															generate_binaddress_eth(publickey,(uint8_t*)publickeyhashrmd160_uncompress[0]);
+															if(memcmp(publickeyhashrmd160_endomorphism[l][k],publickeyhashrmd160_uncompress[0],20) != 0){
+																keyfound.Neg();
+																keyfound.Add(&secp->order);
+															}
+														break;
+														case 4:
+														case 5:
+															keyfound.ModMulK1order(&lambda2);
+															publickey = secp->ComputePublicKey(&keyfound);
+															generate_binaddress_eth(publickey,(uint8_t*)publickeyhashrmd160_uncompress[0]);
+															if(memcmp(publickeyhashrmd160_endomorphism[l][k],publickeyhashrmd160_uncompress[0],20) != 0){
+																keyfound.Neg();
+																keyfound.Add(&secp->order);
+															}
+														break;
+													}
+													writekeyeth(&keyfound);											
+												}
 											}
-											printf("\n Hit!!!! Private Key: %s\naddress: %s\n",hextemp,hexstrpoint);
-#if defined(_WIN64) && !defined(__CYGWIN__)
-											ReleaseMutex(write_keys);
-#else
-											pthread_mutex_unlock(&write_keys);
-#endif
-
-											free(hextemp);
 										}
 									}
 								}
-
+								else	{
+									for(k = 0; k < 4;k++)	{
+										r = bloom_check(&bloom,publickeyhashrmd160_uncompress[k],MAXLENGTHADDRESS);
+										if(r) {
+											r = searchbinary(addressTable,publickeyhashrmd160_uncompress[k],N);
+											if(r) {
+												keyfound.SetInt32(k);
+												keyfound.Mult(&stride);
+												keyfound.Add(&key_mpz);
+												writekeyeth(&keyfound);
+											}
+										}
+									}
+								}
 							}
 						break;
 						case MODE_XPOINT:
@@ -4886,7 +4926,8 @@ void generate_binaddress_eth(Point &publickey,unsigned char *dst_address)	{
 	unsigned char bin_publickey[64];
 	publickey.x.Get32Bytes(bin_publickey);
 	publickey.y.Get32Bytes(bin_publickey+32);
-	KECCAK_256(bin_publickey, 64, dst_address);	
+	KECCAK_256(bin_publickey, 64, bin_publickey);
+	memcpy(dst_address,bin_publickey+12,20);	
 }
 
 
@@ -6255,6 +6296,39 @@ void writekey(bool compressed,Int *key)	{
 #endif
 	free(hextemp);
 	free(hexrmd);
+}
+
+void writekeyeth(Int *key)	{
+	Point publickey;
+	FILE *keys;
+	char *hextemp,address[43],hash[20];
+	hextemp = key->GetBase16();
+	publickey = secp->ComputePublicKey(key);
+	generate_binaddress_eth(publickey,(unsigned char*)hash);
+	address[0] = '0';
+	address[1] = 'x';
+	tohex_dst(hash,20,address+2);
+
+#if defined(_WIN64) && !defined(__CYGWIN__)
+	WaitForSingleObject(write_keys, INFINITE);
+#else
+	pthread_mutex_lock(&write_keys);
+#endif
+	keys = fopen("KEYFOUNDKEYFOUND.txt","a+");
+	if(keys != NULL)	{
+		fprintf(keys,"Private Key: %s\naddress: %s\n",hextemp,address);
+		fclose(keys);
+	}
+	printf("\n Hit!!!! Private Key: %s\naddress: %s\n",hextemp,address);
+#if defined(_WIN64) && !defined(__CYGWIN__)
+	ReleaseMutex(write_keys);
+#else
+	pthread_mutex_unlock(&write_keys);
+#endif
+
+	free(hextemp);
+
+	
 }
 
 bool isBase58(char c) {

@@ -1,9 +1,13 @@
+# Version 0.2.230519 Satoshi Quest
+- Speed x2 in BSGS mode for main version
+
 # Version 0.2.230507 Satoshi Quest
 - fixed some variables names
 - fixed bug in addvanity (realloc problem with dirty memory)
 - Added option -6 to skip SHA256 checksum when you read the files (Improved startup process)
 - Added warning when you Endomorphism and BSGS, THEY DON'T WORK together!
 - Legacy version for ARM processor and other systems
+- remove pub2rmd
 
 # Version 0.2.230430 Satoshi Quest
 - fixed typos in README

@@ -1343,6 +1343,7 @@ int main(int argc, char **argv)	{
 		BSGS_AMP2[0].Reduce();
 		point_temp.Set(BSGS_MP2_double);
 		point_temp = secp->Negation(point_temp);
+		point_temp.Reduce();
 		
 		for(i = 1; i < 32; i++)	{
 			BSGS_AMP2[i] = secp->AddDirect(BSGS_AMP2[i-1],point_temp);
@@ -1355,12 +1356,11 @@ int main(int argc, char **argv)	{
 		BSGS_AMP3[0].Reduce();
 		point_temp.Set(BSGS_MP3_double);
 		point_temp = secp->Negation(point_temp);
-
+		point_temp.Reduce();
 
 		for(i = 1; i < 32; i++)	{
 			BSGS_AMP3[i] = secp->AddDirect(BSGS_AMP3[i-1],point_temp);
 			BSGS_AMP3[i].Reduce();
-
 		}
 
 		bytes = (uint64_t)bsgs_m3 * (uint64_t) sizeof(struct bsgs_xvalue);
@@ -5095,7 +5095,6 @@ void *thread_process_bsgs_backward(void *vargp)	{
 	Point pn;
 	grp->Set(dx);
 
-	
 	tt = (struct tothread *)vargp;
 	thread_number = tt->nt;
 	free(tt);
@@ -5121,18 +5120,13 @@ void *thread_process_bsgs_backward(void *vargp)	{
 		pthread_mutex_lock(&bsgs_thread);
 #endif
 		if(n_range_end.IsGreater(&n_range_start))	{
-			/*
-				n_range_end.Sub(&BSGS_N);
-				n_range_end.Sub(&BSGS_N);
-				*/
-				n_range_end.Sub(&BSGS_N_double);
-				
-				if(n_range_end.IsLower(&n_range_start))	{
-					base_key.Set(&n_range_start);
-				}
-				else	{
-					base_key.Set(&n_range_end);
-				}
+			n_range_end.Sub(&BSGS_N_double);
+			if(n_range_end.IsLower(&n_range_start))	{
+				base_key.Set(&n_range_start);
+			}
+			else	{
+				base_key.Set(&n_range_end);
+			}
 		}
 		else	{
 			entrar = 0;
@@ -5142,7 +5136,6 @@ void *thread_process_bsgs_backward(void *vargp)	{
 #else
 		pthread_mutex_unlock(&bsgs_thread);
 #endif
-
 		if(entrar == 0)
 			break;
 		
@@ -5176,9 +5169,7 @@ void *thread_process_bsgs_backward(void *vargp)	{
 				startP  = secp->AddDirect(OriginalPointsBSGS[k],point_aux);
 				uint32_t j = 0;
 				while( j < cycles && bsgs_found[k]== 0 )	{
-				
 					int i;
-					
 					for(i = 0; i < hLength; i++) {
 						dx[i].ModSub(&GSn[i].x,&startP.x);
 					}
@@ -5322,7 +5313,6 @@ pn.y.ModAdd(&GSn[i].y);
 					pp.y.ModMulK1(&_s);
 					pp.y.ModSub(&_2GSn.y);
 					startP = pp;
-					
 					j++;
 				}//while all the aMP points
 			}// End if 
@@ -5463,9 +5453,7 @@ void *thread_process_bsgs_both(void *vargp)	{
 					startP  = secp->AddDirect(OriginalPointsBSGS[k],point_aux);
 					uint32_t j = 0;
 					while( j < cycles && bsgs_found[k]== 0 )	{
-					
 						int i;
-						
 						for(i = 0; i < hLength; i++) {
 							dx[i].ModSub(&GSn[i].x,&startP.x);
 						}

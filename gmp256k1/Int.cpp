@@ -62,7 +62,6 @@ Int::Int(const Int &value)	{
 }
 
 
-
 void Int::Add(const uint64_t u64)	{
 	mpz_t value;
 	char my_str_value[U64STRINGSIZE]; // 30 digits + null terminator
@@ -81,8 +80,7 @@ void Int::Add(const Int *a)	{
 }
 
 void Int::Add(const Int *a,const Int *b)	{
-	mpz_add(num,num,a->num);
-	mpz_add(num,num,b->num);
+	mpz_add(num,a->num,b->num);
 }
 
 void Int::Sub(const uint32_t u32)	{
@@ -103,8 +101,7 @@ void Int::Sub(Int *a)	{
 }
 
 void Int::Sub(Int *a, Int *b)	{
-	mpz_sub(num,num,a->num);
-	mpz_sub(num,num,b->num);
+	mpz_sub(num,a->num,b->num);
 }
 
 void Int::Mult(Int *a)	{
@@ -204,10 +201,6 @@ bool Int::IsOdd()	{
 }
 	
 int Int::GetSize()	{
-	/*
-	gmp_printf("GetSize of %Zi\n",num);
-	fflush(stdout);
-	*/
 	int r = mpz_sizeinbase(num,2);
 	if(r % 8 == 0)
 		return (int)(r/8);
@@ -236,6 +229,14 @@ int Int::GetBit(uint32_t n)	{
 	return mpz_tstbit(num,n);
 }
 
+void Int::SetBit(uint32_t n)	{
+	mpz_setbit(num,n);
+}
+
+void Int::ClearBit(uint32_t n)	{
+	mpz_clrbit(num,n);
+}
+
 
 void Int::Get32Bytes(unsigned char *buff)	{
 	size_t count, size = this->GetSize();
@@ -254,24 +255,6 @@ unsigned char Int::GetByte(int n)	{
 	mpz_export(buffer + 32 - size, &count, 0, 1, 0, 0, num);
 	return buffer[n];
 }
-
-/*
-void mpz_get_byte(mpz_t num, unsigned char* bytes, size_t index) {
-    size_t num_bytes = (mpz_sizeinbase(num, 2) + 7) / 8; // Calculate the total number of bytes
-    if (index < num_bytes) {
-        mpz_export(bytes, NULL, 1, sizeof(unsigned char), 0, 0, num); // Export the mpz_t variable to bytes
-    } else {
-        // Handle invalid index
-        printf("Error: Index out of range.\n");
-    }
-}
-*/
-
-/*
-unsigned char Int::GetByte(unsigned char *buff)	{
-	
-}
-*/
 
 char* Int::GetBase2()	{
 	return mpz_get_str(NULL,2,num);

@@ -79,7 +79,7 @@ void stringtokenizer(char *data,Tokenizer *t)	{
 			exit(0);
 		}
 		t->tokens[t->n - 1] = token;
-		token = strtok(NULL," \t");
+		token = strtok(NULL," \t:");
 	}
 }
 

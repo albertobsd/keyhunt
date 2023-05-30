@@ -99,7 +99,7 @@ void Int::ModDouble()	{
 	mpz_add(num,num,num);
 	mpz_init_set(p,num);
 	mpz_sub(p,p,_P.num);
-	if(mpz_cmp(p,0) > 0)	{
+	if(mpz_cmp_ui(p,0) > 0)	{
 		mpz_set(num,p);
 	}
 	mpz_clear(p);
@@ -141,4 +141,8 @@ void Int::ModAddK1order(Int *a, Int *b) {
 	mpz_sub(num,num,_O->num);
 	if (mpz_cmp_ui(num,0) < 0 )
 		mpz_add(num,num,_O->num);
+}
+
+void Int::ModInvorder() {	
+	mpz_invert(num,num,_O->num);
 }

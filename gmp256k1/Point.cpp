@@ -19,31 +19,13 @@
 #include <stdio.h>
 
 Point::Point() {
-	mpz_set_ui(x.num,0);
-	mpz_set_ui(y.num,0);
-	mpz_set_ui(z.num,0);
-	
 }
 
 Point::Point(const Point &p) {
-	
-	//char *ptrs[3];
+
 	mpz_set(x.num,p.x.num);
 	mpz_set(y.num,p.y.num);
 	mpz_set(z.num,p.z.num);
-	/*
-	ptrs[0] = x.GetBase16();
-	ptrs[1] = y.GetBase16();
-	ptrs[2] = z.GetBase16();
-	printf("Point\n");
-	printf("X: %s\n",ptrs[0]);
-	printf("Y: %s\n",ptrs[1]);
-	printf("Z: %s\n",ptrs[2]);
-	printf("End Point\n");
-	for(int i = 0; i<3; i++)	{
-		free(ptrs[i]);
-	}
-	*/
 }
 
 Point::Point(Int *cx,Int *cy,Int *cz) {
@@ -51,13 +33,6 @@ Point::Point(Int *cx,Int *cy,Int *cz) {
 	mpz_set(y.num,cy->num);
 	mpz_set(z.num,cz->num);
 }
-
-/*
-Point::Point(Int *cx, Int *cz) {
-  x.Set(cx);
-  z.Set(cz);
-}
-*/
 
 void Point::Clear() {
 	mpz_set_ui(x.num,0);
@@ -103,7 +78,6 @@ Point& Point::operator=(const Point& other)  {
 	if (this == &other) {
 		return *this;
 	}
-	//char *ptrs[3];
 	// Assign the values from 'other' to the current object
 	mpz_set(x.num,other.x.num);
 	mpz_set(y.num,other.y.num);
@@ -113,6 +87,7 @@ Point& Point::operator=(const Point& other)  {
 	return *this;
 }
 
+/*
 void Point::print(const char *str)	{
 	char *ptrs[3];
 	ptrs[0] = x.GetBase16();
@@ -127,3 +102,4 @@ void Point::print(const char *str)	{
 		free(ptrs[i]);
 	}
 }
+*/

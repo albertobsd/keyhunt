@@ -102,6 +102,10 @@ public:
 	char* GetBase2();
 	char* GetBase10();
 	char* GetBase16();
+	
+	
+	void SetBit(uint32_t n);
+	void ClearBit(uint32_t n);
 	/*
 	char* GetBaseN(int n,const char *charset);
 	char* GetBlockStr();
@@ -141,6 +145,7 @@ public:
 	void ModMulK1(Int *a, Int *b);
 	void ModMulK1(Int *a);
 	void ModMulK1order(Int *a);
+	void ModInvorder();								// this <- this^-1 (mod O)
 	
 	void ModSquareK1(Int *a);
 	void ModAddK1order(Int *a,Int *b);

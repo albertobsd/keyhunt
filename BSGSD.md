@@ -12,6 +12,8 @@ Same as keyhunt we need to do
  - `-t number` Threads Number
  - `-k factor` Same K factor dor keyhunt
  - `-n number` Length of the Range to scan each cycle, same as keyhunt
+ - `-i ip`     IP for listening default is `127.0.0.1`
+ - `-p port`   Port for listening default is `8080`
 
 bsgsd use the same keyhunt files `.blm` and `.tbl` 
 
@@ -100,4 +102,63 @@ I know what are you thinking, but if you are doing 10 ranges of 63 bits, you can
 But if i do the program multi-client, and you send the 10 ranges at the same time in 10 different connections, the whole process will also take 80 seconds... so is only question of how your client send the data and manage the ranges..
 
 ### Client
-**There is public NO client**, i think that this is fair, I already write a lot of code for free, if this server fits your needs write your on client on python or any other langue that you like.
+
+Here is a small python example to implent by your self as client.
+
+```
+import socket
+import time
+
+def send_and_receive_line(host, port, message):
+    # Create a TCP socket
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+    try:
+        # Connect to the server
+        sock.connect((host, port))
+
+        # Send the message
+        start_time = time.time()
+        sock.sendall(message.encode())
+
+        # Receive the reply
+        reply = sock.recv(1024).decode()
+        end_time = time.time()
+
+        # Calculate the elapsed time
+        elapsed_time = end_time - start_time
+        sock.close()
+        return reply, elapsed_time
+
+    except ConnectionResetError:
+        print("Server closed the connection without replying.")
+        return None, None
+
+    except ConnectionRefusedError:
+        print("Connection refused. Make sure the server is running and the host/port are correct.")
+        return None, None
+
+    except AttributeError:
+        pass
+        return None, None
+
+		
+# TCP connection details
+host = 'localhost'  # Change this to the server's hostname or IP address
+port = 8080       # Change this to the server's port number
+
+# Message to send
+message = '0365ec2994b8cc0a20d40dd69edfe55ca32a54bcbbaa6b0ddcff36049301a54579 4000000000000000:8000000000000000'
+
+# Number of iterations in the loop
+num_iterations = 5
+
+# Loop for sending and receiving messages
+for i in range(num_iterations):
+    reply, elapsed_time = send_and_receive_line(host, port, message)
+    if reply is not None:
+        print(f'Received reply: {reply}')
+        print(f'Elapsed time: {elapsed_time} seconds')
+```
+
+The previous client example only repeat 5 times the same target, change it according to your needs.

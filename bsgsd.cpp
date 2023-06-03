@@ -76,6 +76,10 @@ struct bPload	{
 
 	
 const char *version = "0.2.230519 Satoshi Quest";
+const char *ip_default = "127.0.0.1";
+
+char *IP;
+int port;
 
 #define CPU_GRP_SIZE 1024
 
@@ -338,11 +342,13 @@ int main(int argc, char **argv)	{
 		rseed(clock() + time(NULL) + rand()*rand());
 	}
 	
+	port = PORT;
+	IP = (char*)ip_default;
 	
 	
 	printf("[+] Version %s, developed by AlbertoBSD\n",version);
 
-	while ((c = getopt(argc, argv, "6hk:n:t:")) != -1) {
+	while ((c = getopt(argc, argv, "6hk:n:t:p:i:")) != -1) {
 		switch(c) {
 			case '6':
 				FLAGSKIPCHECKSUM = 1;
@@ -372,6 +378,15 @@ int main(int argc, char **argv)	{
 					NTHREADS = 1;
 				}
 				printf((NTHREADS > 1) ? "[+] Threads : %u\n": "[+] Thread : %u\n",NTHREADS);
+			break;
+			case 'p':
+				port = (int) strtol(optarg,NULL,10);
+				if(port <= 0  || port > 65535 )	{
+					port = PORT;
+				}
+			break;
+			case 'i':
+				IP = optarg;
 			break;
 			default:
 				// Handle unknown options
@@ -1287,7 +1302,8 @@ int main(int argc, char **argv)	{
 	
     int server_fd, client_fd;
     struct sockaddr_in address;
-    int addrlen = sizeof(address);
+	char clientIP[INET_ADDRSTRLEN];
+	int clientPort,addrlen = sizeof(address);
 
     // Creating socket file descriptor
     if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
@@ -1304,14 +1320,14 @@ int main(int argc, char **argv)	{
 
     // Setting address parameters
     address.sin_family = AF_INET;
-    address.sin_addr.s_addr = inet_addr("127.0.0.1");
+    address.sin_addr.s_addr = inet_addr(IP);
     address.sin_port = htons(PORT);
     // Binding socket to address
     if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
         perror("bind failed");
         exit(EXIT_FAILURE);
     }
-	printf("[+] Listening in 127.0.0.1:8080\n");
+	printf("[+] Listening in %s:%i\n",IP,port);
     // Listening for incoming connections
     if (listen(server_fd, 3) < 0) {
         perror("listen failed");
@@ -1325,52 +1341,27 @@ int main(int argc, char **argv)	{
 			perror("accept failed");
 			exit(EXIT_FAILURE);
 		}
-
+		inet_ntop(AF_INET, &(address.sin_addr), clientIP, INET_ADDRSTRLEN);
+		clientPort = ntohs(address.sin_port);
+		
+		printf("[+] Accepting incoming conection from %s:%i\n",clientIP,clientPort);
+		fflush(stdout);
 		// Creating new thread to handle client
 		if (pthread_create(&tid, NULL, client_handler, &client_fd) != 0) {
 			perror("pthread_create failed");
 			printf("Failed to attend to one client\n");
 		}
-		else{
-			// Detaching thread to prevent memory leak
-			pthread_detach(tid);
+		else	{
+			if (pthread_join(tid, NULL) != 0) {
+				fprintf(stderr, "Failed to join thread.\n");
+				exit(EXIT_FAILURE);
+			}
 		}
+		printf("[+] Closing conection from %s:%i\n",clientIP,clientPort);
+		fflush(stdout);
 	}
 	
 	close(server_fd);
-
-
-
-/*
-		steps = (uint64_t *) calloc(NTHREADS,sizeof(uint64_t));
-		checkpointer((void *)steps,__FILE__,"calloc","steps" ,__LINE__ -1 );
-		ends = (unsigned int *) calloc(NTHREADS,sizeof(int));
-		checkpointer((void *)ends,__FILE__,"calloc","ends" ,__LINE__ -1 );
-		tid = (pthread_t *) calloc(NTHREADS,sizeof(pthread_t));
-		checkpointer((void *)tid,__FILE__,"calloc","tid" ,__LINE__ -1 );
-		
-		for(i= 0;i < NTHREADS; i++)	{
-			tt = (tothread*) malloc(sizeof(struct tothread));
-			checkpointer((void *)tt,__FILE__,"malloc","tt" ,__LINE__ -1 );
-			tt->nt = i;
-			
-			switch(FLAGBSGSMODE)	{
-				case 0:
-					s = pthread_create(&tid[i],NULL,thread_process_bsgs,(void *)tt);
-				break;
-
-			}
-			
-			if(s != 0)	{
-
-				fprintf(stderr,"[E] thread thread_process\n");
-				exit(EXIT_FAILURE);
-			}
-		}		
-		free(aux);
-
-*/
-
 }
 
 void pubkeytopubaddress_dst(char *pkey,int length,char *dst)	{
@@ -1829,6 +1820,7 @@ pn.y.ModAdd(&GSn[i].y);
 			} //while all the aMP points
 		} // end else
 	}while(base_key.IsLower(&n_range_end) && bsgs_found == 0);
+	delete grp;
 	pthread_exit(NULL);
 }
 
@@ -2292,6 +2284,8 @@ void menu() {
 	printf("-k value    Use this only with bsgs mode, k value is factor for M, more speed but more RAM use wisely\n");
 	printf("-n number   Check for N sequential numbers before the random chosen, this only works with -R option\n");
 	printf("-t tn       Threads number, must be a positive integer\n");
+	printf("-p port     TCP port Number for listening conections");
+	printf("-i ip		IP Address for listening conections");
 	printf("\nExample:\n\n");
 	printf("./bsgs -k 512 \n\n");
 	exit(EXIT_FAILURE);
@@ -2347,174 +2341,6 @@ void init_generator()	{
 	_2Gn = secp->DoubleDirect(Gn[CPU_GRP_SIZE / 2 - 1]);
 }
 
-
-
-	/*
-		We need to define the range in some other part
-	*/
-	
-	/*
-	if(FLAGRANGE) {
-		
-		n_range_start.SetBase16(range_start);
-		if(n_range_start.IsZero())	{
-			n_range_start.AddOne();
-		}
-		n_range_end.SetBase16(range_end);
-		if(n_range_start.IsEqual(&n_range_end) == false ) {
-			if(  n_range_start.IsLower(&secp->order) &&  n_range_end.IsLowerOrEqual(&secp->order) )	{
-				if( n_range_start.IsGreater(&n_range_end)) {
-					fprintf(stderr,"[W] Opps, start range can't be great than end range. Swapping them\n");
-					n_range_aux.Set(&n_range_start);
-					n_range_start.Set(&n_range_end);
-					n_range_end.Set(&n_range_aux);
-				}
-				n_range_diff.Set(&n_range_end);
-				n_range_diff.Sub(&n_range_start);
-			}
-			else	{
-				fprintf(stderr,"[E] Start and End range can't be great than N\nFallback to random mode!\n");
-				FLAGRANGE = 0;
-			}
-		}
-		else	{
-			fprintf(stderr,"[E] Start and End range can't be the same\nFallback to random mode!\n");
-			FLAGRANGE = 0;
-		}
-	}
-	*/
-	
-	
-	
-			/*
-			For thhe BSGS Server version we only work with one publickey at the time
-			
-		*/
-
-		
-		/*
-		printf("[+] Opening file %s\n",fileName);
-		fd = fopen(fileName,"rb");
-		if(fd == NULL)	{
-			fprintf(stderr,"[E] Can't open file %s\n",fileName);
-			exit(EXIT_FAILURE);
-		}
-		aux = (char*) malloc(1024);
-		checkpointer((void *)aux,__FILE__,"malloc","aux" ,__LINE__ - 1);
-		while(!feof(fd))	{
-			if(fgets(aux,1022,fd) == aux)	{
-				trim(aux," \t\n\r");
-				if(strlen(aux) >= 128)	{	//Length of a full address in hexadecimal without 04
-						N++;
-				}else	{
-					if(strlen(aux) >= 66)	{
-						N++;
-					}
-				}
-			}
-		}
-		if(N == 0)	{
-			fprintf(stderr,"[E] There is no valid data in the file\n");
-			exit(EXIT_FAILURE);
-		}
-		bsgs_found = (int*) calloc(N,sizeof(int));
-		checkpointer((void *)bsgs_found,__FILE__,"calloc","bsgs_found" ,__LINE__ -1 );
-		OriginalPointsBSGS.reserve(N);
-		OriginalPointsBSGScompressed = (bool*) malloc(N*sizeof(bool));
-		checkpointer((void *)OriginalPointsBSGScompressed,__FILE__,"malloc","OriginalPointsBSGScompressed" ,__LINE__ -1 );
-		pointx_str = (char*) malloc(65);
-		checkpointer((void *)pointx_str,__FILE__,"malloc","pointx_str" ,__LINE__ -1 );
-		pointy_str = (char*) malloc(65);
-		checkpointer((void *)pointy_str,__FILE__,"malloc","pointy_str" ,__LINE__ -1 );
-		fseek(fd,0,SEEK_SET);
-		i = 0;
-		while(!feof(fd))	{
-			if(fgets(aux,1022,fd) == aux)	{
-				trim(aux," \t\n\r");
-				if(strlen(aux) >= 66)	{
-					stringtokenizer(aux,&tokenizerbsgs);
-					aux2 = nextToken(&tokenizerbsgs);
-					memset(pointx_str,0,65);
-					memset(pointy_str,0,65);
-					switch(strlen(aux2))	{
-						case 66:	//Compress
-
-							if(secp->ParsePublicKeyHex(aux2,OriginalPointsBSGS[i],OriginalPointsBSGScompressed[i]))	{
-								i++;
-							}
-							else	{
-								N--;
-							}
-
-						break;
-						case 130:	//With the 04
-
-							if(secp->ParsePublicKeyHex(aux2,OriginalPointsBSGS[i],OriginalPointsBSGScompressed[i]))	{
-								i++;
-							}
-							else	{
-								N--;
-							}
-
-						break;
-						default:
-							printf("Invalid length: %s\n",aux2);
-							N--;
-						break;
-					}
-					freetokenizer(&tokenizerbsgs);
-				}
-			}
-		}
-		fclose(fd);
-		bsgs_point_number = N;
-		if(bsgs_point_number > 0)	{
-			printf("[+] Added %u points from file\n",bsgs_point_number);
-		}
-		else	{
-			fprintf(stderr,"[E] The file don't have any valid publickeys\n");
-			exit(EXIT_FAILURE);
-		}
-		*/
-		
-		
-		
-/*
-		if(FLAGRANGE || FLAGBITRANGE)	{
-			if(FLAGBITRANGE)	{	// Bit Range
-				n_range_start.SetBase16(bit_range_str_min);
-				n_range_end.SetBase16(bit_range_str_max);
-
-				n_range_diff.Set(&n_range_end);
-				n_range_diff.Sub(&n_range_start);
-				printf("[+] Bit Range %i\n",bitrange);
-				printf("[+] -- from : 0x%s\n",bit_range_str_min);
-				printf("[+] -- to   : 0x%s\n",bit_range_str_max);
-			}
-			else	{
-				printf("[+] Range \n");
-				printf("[+] -- from : 0x%s\n",range_start);
-				printf("[+] -- to   : 0x%s\n",range_end);
-			}
-		}
-		else	{	//Random start
-
-			n_range_start.SetInt32(1);
-			n_range_end.Set(&secp->order);
-			n_range_diff.Rand(&n_range_start,&n_range_end);
-			n_range_start.Set(&n_range_diff);
-		}
-		
-		BSGS_CURRENT.Set(&n_range_start);
-
-
-		if(n_range_diff.IsLower(&BSGS_N) )	{
-			fprintf(stderr,"[E] the given range is small\n");
-			exit(EXIT_FAILURE);
-		}
-*/
-
-
 void* client_handler(void* arg) {
     int client_fd = *(int*)arg;
     char buffer[1024];
@@ -2557,7 +2383,7 @@ void* client_handler(void* arg) {
 		close(client_fd);
 		pthread_exit(NULL);		
 	}
-	if(!(isValidHex(t.tokens[1]) && isValidHex(t.tokens[1])))	{
+	if(!(isValidHex(t.tokens[1]) && isValidHex(t.tokens[2])))	{
 		printf("Invalid hexadecimal format from client %s:%s\n",t.tokens[1],t.tokens[2]);
 		freetokenizer(&t);
 		sendstr(client_fd,"400 Bad Request");

@@ -11,6 +11,7 @@ email: albertobsd@gmail.com
 #include <time.h>
 #include <vector>
 #include <inttypes.h>
+#include <stdexcept>
 #include "base58/libbase58.h"
 #include "rmd160/rmd160.h"
 #include "oldbloom/oldbloom.h"
@@ -2376,13 +2377,22 @@ void* client_handler(void* arg) {
 		pthread_exit(NULL);
 	}
 
-	if(!secp->ParsePublicKeyHex(t.tokens[0],OriginalPointsBSGS,OriginalPointsBSGScompressed))	{
-		printf("Invalid publickey format from client %s\n",t.tokens[0]);
-		freetokenizer(&t);
-		sendstr(client_fd,"400 Bad Request");
-		close(client_fd);
-		pthread_exit(NULL);		
-	}
+	try {
+		if(!secp->ParsePublicKeyHex(t.tokens[0],OriginalPointsBSGS,OriginalPointsBSGScompressed))	{
+			printf("Invalid publickey format from client %s\n",t.tokens[0]);
+			freetokenizer(&t);
+			sendstr(client_fd,"400 Bad Request");
+			close(client_fd);
+			pthread_exit(NULL);
+		}
+	} catch (const std::invalid_argument &e) {
+          printf("%s\n", e.what());
+          freetokenizer(&t);
+          sendstr(client_fd,"400 Bad Request");
+          close(client_fd);
+          pthread_exit(NULL);
+    }
+
 	if(!(isValidHex(t.tokens[1]) && isValidHex(t.tokens[1])))	{
 		printf("Invalid hexadecimal format from client %s:%s\n",t.tokens[1],t.tokens[2]);
 		freetokenizer(&t);

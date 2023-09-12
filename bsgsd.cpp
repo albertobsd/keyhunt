@@ -2385,8 +2385,8 @@ void* client_handler(void* arg) {
 			close(client_fd);
 			pthread_exit(NULL);
 		}
-	} catch (const std::invalid_argument &e) {
-          printf("%s\n", e.what());
+	} catch (const std::invalid_argument *e) {
+          printf("%s\n", e->what());
           freetokenizer(&t);
           sendstr(client_fd,"400 Bad Request");
           close(client_fd);

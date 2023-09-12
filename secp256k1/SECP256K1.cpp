@@ -17,6 +17,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <stdexcept>
 #include "SECP256k1.h"
 #include "Point.h"
 #include "../util.h"
@@ -94,8 +95,7 @@ uint8_t Secp256K1::GetByte(char *str, int idx) {
   tmp[1] = str[2 * idx + 1];
   tmp[2] = 0;
   if (sscanf(tmp, "%X", &val) != 1) {
-    printf("ParsePublicKeyHex: Error invalid public key specified (unexpected hexadecimal digit)\n");
-    exit(-1);
+    throw new std::invalid_argument("ParsePublicKeyHex: Error invalid public key specified (unexpected hexadecimal digit)");
   }
   return (uint8_t)val;
 }

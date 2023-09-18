@@ -6465,7 +6465,7 @@ bool forceReadFileXPoint(char *fileName)	{
 		return false;
 	}
 
-	fprintf(stderr, "[+] Count lines in file");
+	fprintf(stderr, "[+] Count lines in file\n");
 
 	/*Count lines in the file*/
 	numberItems = 0;

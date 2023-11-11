@@ -2383,7 +2383,7 @@ void* client_handler(void* arg) {
 		close(client_fd);
 		pthread_exit(NULL);		
 	}
-	if(!(isValidHex(t.tokens[1]) && isValidHex(t.tokens[1])))	{
+	if(!(isValidHex(t.tokens[1]) && isValidHex(t.tokens[2])))	{
 		printf("Invalid hexadecimal format from client %s:%s\n",t.tokens[1],t.tokens[2]);
 		freetokenizer(&t);
 		sendstr(client_fd,"400 Bad Request");

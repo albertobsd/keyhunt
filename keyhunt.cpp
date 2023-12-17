@@ -6464,6 +6464,9 @@ bool forceReadFileXPoint(char *fileName)	{
 		fprintf(stderr,"[E] Error opening the file %s, line %i\n",fileName,__LINE__ - 2);
 		return false;
 	}
+
+	fprintf(stderr, "[+] Count lines in file\n");
+
 	/*Count lines in the file*/
 	numberItems = 0;
 	while(!feof(fileDescriptor))	{
@@ -6489,11 +6492,21 @@ bool forceReadFileXPoint(char *fileName)	{
 	if(!initBloomFilter(&bloom,N))
 		return false;
 	
+	uint64_t onepercent = numberItems / 100;
+
 	i= 0;
 	while(i < N)	{
 		memset(aux,0,1000);
 		hextemp = fgets(aux,1000,fileDescriptor);
 		memset((void *)&addressTable[i],0,sizeof(struct address_value));
+
+		//Show loading percentage in 1% steps
+		if (i % onepercent == 0) {
+
+			fprintf(stderr, "\r[+] %lu %%\r", (i / onepercent));
+
+		}
+
 		if(hextemp == aux)	{
 			trim(aux," \t\n\r");
 			stringtokenizer(aux,&tokenizer_xpoint);

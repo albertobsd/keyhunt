@@ -2,8 +2,6 @@
 
 Tool for hunt privatekeys for crypto currencies that use secp256k1 elliptic curve
 
-Telegram group: https://t.me/keyhunters
-
 Post: https://bitcointalk.org/index.php?topic=5322040.0
 
 Work for Bitcoin

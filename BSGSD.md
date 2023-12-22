@@ -106,12 +106,18 @@ But if i do the program multi-client, and you send the 10 ranges at the same tim
 Here is a small python example to implent by your self as client.
 
 ```
+import argparse
 import socket
 import time
+import logging
+
+# Logging configuration
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def send_and_receive_line(host, port, message):
     # Create a TCP socket
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(5)  # Set a timeout value (5 seconds)
 
     try:
         # Connect to the server
@@ -127,31 +133,66 @@ def send_and_receive_line(host, port, message):
 
         # Calculate the elapsed time
         elapsed_time = end_time - start_time
-        sock.close()
         return reply, elapsed_time
 
     except ConnectionResetError:
-        print("Server closed the connection without replying.")
+        logging.error("Server closed the connection without replying.")
         return None, None
 
     except ConnectionRefusedError:
-        print("Connection refused. Make sure the server is running and the host/port are correct.")
+        logging.error("Connection refused. Make sure the server is running and the host/port are correct.")
         return None, None
 
-    except AttributeError:
-        pass
+    except socket.timeout:
+        logging.error("Socket connection timed out.")
         return None, None
 
-		
-# TCP connection details
-host = 'localhost'  # Change this to the server's hostname or IP address
-port = 8080       # Change this to the server's port number
+    except Exception as e:
+        logging.exception("An error occurred: %s", e)
+        return None, None
 
-# Message to send
-message = '0365ec2994b8cc0a20d40dd69edfe55ca32a54bcbbaa6b0ddcff36049301a54579 4000000000000000:8000000000000000'
+    finally:
+        sock.close()
 
-# Number of iterations in the loop
-num_iterations = 5
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(description='BSGSD Client')
+    parser.add_argument('-k', dest='k_factor', type=int, required=True, help='K factor for BSGS')
+    parser.add_argument('-t', dest='num_threads', type=int, required=True, help='Number of threads')
+    parser.add_argument('-n', dest='range_length', type=int, required=True, help='Length of the range to scan each cycle')
+    parser.add_argument('-i', dest='ip', type=str, default='127.0.0.1', help='IP address for listening')
+    parser.add_argument('-p', dest='port', type=int, default=8080, help='Port for listening')
+    parser.add_argument('-v', dest='verbose', action='store_true', help='Enable verbose output')
+    return parser.parse_args()
+
+
+def main():
+    args = parse_arguments()
+
+    # Configure logging verbosity
+    if args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+
+    # Construct the message
+    message = f"{args.public_key} {args.range_from}:{args.range_to}"
+
+    # Send request to the server
+    reply, elapsed_time = send_and_receive_line(args.ip, args.port, message)
+
+    if reply is not None:
+        if reply.startswith("404"):
+            logging.info("Key not found in the given range.")
+        elif reply.startswith("400"):
+            logging.error("Bad request. Please check the client request.")
+        else:
+            logging.info(f"Private key found: {reply}")
+
+    if elapsed_time is not None:
+        logging.info(f"Elapsed time: {elapsed_time} seconds")
+
+
+if __name__ == '__main__':
+    main()
 
 # Loop for sending and receiving messages
 for i in range(num_iterations):

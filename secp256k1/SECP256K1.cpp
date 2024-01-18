@@ -1,4 +1,4 @@
-/*
+/*ghost
  * This file is part of the BSGS distribution (https://github.com/JeanLucPons/BSGS).
  * Copyright (c) 2020 Jean Luc PONS.
  *

@@ -10,6 +10,8 @@ email: albertobsd@gmail.com
 #include <math.h>
 #include <time.h>
 #include <vector>
+#include <mutex>
+#include <limits>
 #include <inttypes.h>
 #include "base58/libbase58.h"
 #include "rmd160/rmd160.h"
@@ -55,6 +57,9 @@ email: albertobsd@gmail.com
 #define MODE_PUB2RMD 4
 #define MODE_MINIKEYS 5
 #define MODE_VANITY 6
+
+#define RMD160_BACKEND_DEFAULT 0
+#define RMD160_BACKEND_DANCE 1
 
 #define SEARCH_UNCOMPRESS 0
 #define SEARCH_COMPRESS 1
@@ -229,6 +234,7 @@ const char *modes[7] = {"xpoint","address","bsgs","rmd160","pub2rmd","minikeys",
 const char *cryptos[3] = {"btc","eth","all"};
 const char *publicsearch[3] = {"uncompress","compress","both"};
 const char *default_fileName = "addresses.txt";
+const char *rmd160_backends[2] = {"default","dance"};
 
 #if defined(_WIN64) && !defined(__CYGWIN__)
 HANDLE* tid = NULL;
@@ -281,6 +287,7 @@ int FLAGBLOOMMULTIPLIER = 1;
 int FLAGVANITY = 0;
 int FLAGBASEMINIKEY = 0;
 int FLAGBSGSMODE = 0;
+int FLAGRMD160BACKEND = RMD160_BACKEND_DEFAULT;
 int FLAGDEBUG = 0;
 int FLAGQUIET = 0;
 int FLAGMATRIX = 0;
@@ -412,6 +419,233 @@ Int lambda,lambda2,beta,beta2;
 
 Secp256K1 *secp;
 
+struct Rmd160DanceScheduler {
+	std::mutex mutex;
+	std::vector<uint8_t> assigned;
+	std::vector<uint64_t> group_offsets;
+	uint64_t total_batches = 0;
+	uint64_t groups = 0;
+	uint64_t assigned_groups = 0;
+	uint64_t group_size = 1;
+	uint64_t sequence = 0;
+	void reset();
+	bool init(uint64_t total);
+	bool next(uint64_t &batch_index);
+};
+
+bool init_rmd160_dance_backend();
+void shutdown_rmd160_dance_backend();
+bool rmd160_dance_next_batch(Int *dst);
+bool intFitsInUint64(Int *value, uint64_t &out);
+
+static Rmd160DanceScheduler rmd160_dance_scheduler;
+static bool rmd160_dance_ready = false;
+static Int rmd160_dance_range_start_int;
+static Int rmd160_dance_batch_stride_int;
+
+void Rmd160DanceScheduler::reset() {
+	std::lock_guard<std::mutex> guard(mutex);
+	assigned.clear();
+	assigned.shrink_to_fit();
+	group_offsets.clear();
+	group_offsets.shrink_to_fit();
+	total_batches = 0;
+	groups = 0;
+	assigned_groups = 0;
+	group_size = 1;
+	sequence = 0;
+}
+
+bool Rmd160DanceScheduler::init(uint64_t total) {
+	std::lock_guard<std::mutex> guard(mutex);
+	if (total == 0) {
+		total = 1;
+	}
+	total_batches = total;
+	const uint64_t max_groups = 1048576ULL; // limit memory footprint (~1M groups)
+	uint64_t local_group_size = 1;
+	uint64_t local_groups = total;
+	if (total > max_groups) {
+		local_group_size = (total + max_groups - 1ULL) / max_groups;
+		if (local_group_size == 0) {
+			local_group_size = 1;
+		}
+		local_groups = (total + local_group_size - 1ULL) / local_group_size;
+	}
+	if (local_groups == 0) {
+		local_groups = 1;
+	}
+	group_size = local_group_size;
+	groups = local_groups;
+	assigned_groups = 0;
+	sequence = 0;
+	assigned.assign(groups, 0);
+	group_offsets.assign(groups, 0);
+	return true;
+}
+
+bool Rmd160DanceScheduler::next(uint64_t &batch_index) {
+	std::lock_guard<std::mutex> guard(mutex);
+	if (assigned_groups >= groups || groups == 0) {
+		return false;
+	}
+	const uint64_t max_attempts = groups * 2ULL + 3ULL;
+	uint64_t attempts = 0;
+	while (attempts < max_attempts) {
+		uint64_t seq = sequence++;
+		uint64_t mode = seq % 3ULL;
+		uint64_t block = seq / 3ULL;
+		uint64_t idx;
+		if (mode == 0) {
+			idx = block;
+		}
+		else if (mode == 1) {
+			if (block >= groups) {
+				idx = 0;
+			}
+			else {
+				uint64_t back = groups - 1ULL - block;
+				idx = back;
+			}
+		}
+		else {
+			idx = (block * 0x9E3779B97F4A7C15ULL + 0xD1B54A32D192ED03ULL) % groups;
+		}
+		if (idx < groups && !assigned[idx]) {
+			uint64_t offset = group_offsets[idx];
+			uint64_t base_index = idx * group_size + offset;
+			if (offset >= group_size || base_index >= total_batches) {
+				assigned[idx] = 1;
+				assigned_groups++;
+				attempts++;
+				continue;
+			}
+			group_offsets[idx]++;
+			if (group_offsets[idx] >= group_size || (idx * group_size + group_offsets[idx]) >= total_batches) {
+				assigned[idx] = 1;
+				assigned_groups++;
+			}
+			batch_index = base_index;
+			return true;
+		}
+		attempts++;
+	}
+	for (uint64_t idx = 0; idx < groups; ++idx) {
+		if (!assigned[idx]) {
+			uint64_t offset = group_offsets[idx];
+			uint64_t base_index = idx * group_size + offset;
+			if (offset >= group_size || base_index >= total_batches) {
+				assigned[idx] = 1;
+				assigned_groups++;
+				continue;
+			}
+			group_offsets[idx]++;
+			if (group_offsets[idx] >= group_size || (idx * group_size + group_offsets[idx]) >= total_batches) {
+				assigned[idx] = 1;
+				assigned_groups++;
+			}
+			batch_index = base_index;
+			return true;
+		}
+	}
+	return false;
+}
+
+bool intFitsInUint64(Int *value, uint64_t &out) {
+	if (value->GetBitLength() > 64) {
+		return false;
+	}
+	out = value->GetInt64();
+	return true;
+}
+
+bool init_rmd160_dance_backend() {
+	if (rmd160_dance_ready) {
+		return true;
+	}
+	if (FLAGRANDOM) {
+		return false;
+	}
+	uint64_t batch = N_SEQUENTIAL_MAX;
+	if (batch == 0) {
+		batch = 1ULL;
+	}
+	Int range_size;
+	range_size.Set(&n_range_end);
+	range_size.Sub(&n_range_start);
+	if(range_size.IsNegative()) {
+		if(FLAGDEBUG) {
+			fprintf(stderr,"[D] dance init: range end <= start\n");
+		}
+		return false;
+	}
+	Int batch_int;
+	batch_int.SetInt64(batch);
+	Int quotient;
+	quotient.Set(&range_size);
+	Int remainder;
+	quotient.Div(&batch_int, &remainder);
+	uint64_t total_batches;
+	if (!intFitsInUint64(&quotient, total_batches)) {
+		if(FLAGDEBUG) {
+			fprintf(stderr,"[D] dance init: total batches exceed 64-bit\n");
+		}
+		return false;
+	}
+	if (!remainder.IsZero()) {
+		total_batches++;
+	}
+	if (total_batches == 0) {
+		total_batches = 1;
+	}
+	if (!rmd160_dance_scheduler.init(total_batches)) {
+		if(FLAGDEBUG) {
+			fprintf(stderr,"[D] dance init: scheduler rejected parameters (total=%llu)\n",
+				(unsigned long long)total_batches);
+		}
+		return false;
+	}
+	if(FLAGDEBUG) {
+		fprintf(stderr,"[D] dance init: total=%llu group_size=%llu groups=%llu\n",
+			(unsigned long long)total_batches,
+			(unsigned long long)rmd160_dance_scheduler.group_size,
+			(unsigned long long)rmd160_dance_scheduler.groups);
+	}
+	rmd160_dance_range_start_int.Set(&n_range_start);
+	rmd160_dance_batch_stride_int.Set(&batch_int);
+	rmd160_dance_ready = true;
+	atexit(shutdown_rmd160_dance_backend);
+	printf("[+] rmd160 backend: dance (batch %llu)\n", (unsigned long long)batch);
+	return true;
+}
+
+void shutdown_rmd160_dance_backend() {
+	if (!rmd160_dance_ready) {
+		return;
+	}
+	rmd160_dance_scheduler.reset();
+	rmd160_dance_ready = false;
+}
+
+bool rmd160_dance_next_batch(Int *dst) {
+	if (!rmd160_dance_ready || dst == NULL) {
+		return false;
+	}
+	uint64_t batch_index;
+	if (!rmd160_dance_scheduler.next(batch_index)) {
+		return false;
+	}
+	if(FLAGDEBUG) {
+		fprintf(stderr,"[D] dance next: batch_index=%llu\n", (unsigned long long)batch_index);
+	}
+	Int offset;
+	offset.SetInt64(batch_index);
+	offset.Mult(&rmd160_dance_batch_stride_int);
+	dst->Set(&rmd160_dance_range_start_int);
+	dst->Add(&offset);
+	return true;
+}
+
 int main(int argc, char **argv)	{
 	char buffer[2048];
 	char rawvalue[32];
@@ -421,6 +655,7 @@ int main(int argc, char **argv)	{
 	char *hextemp = NULL;
 	char *aux = NULL;
 	char *aux2 = NULL;
+	const char *backend_cli_value = NULL;
 	char *pointx_str = NULL;
 	char *pointy_str = NULL;
 	char *str_seconds = NULL;
@@ -495,16 +730,22 @@ int main(int argc, char **argv)	{
 				FLAGSKIPCHECKSUM = 1;
 				fprintf(stderr,"[W] Skipping checksums on files\n");
 			break;
-			case 'B':
-				index_value = indexOf(optarg,bsgs_modes,5);
-				if(index_value >= 0 && index_value <= 4)	{
-					FLAGBSGSMODE = index_value;
-					//printf("[+] BSGS mode %s\n",optarg);
-				}
-				else	{
-					fprintf(stderr,"[W] Ignoring unknow bsgs mode %s\n",optarg);
-				}
-			break;
+		case 'B':
+		{
+			backend_cli_value = optarg;
+			int bsgs_idx = indexOf(optarg,bsgs_modes,5);
+			int backend_idx = indexOf(optarg,rmd160_backends,2);
+			if(bsgs_idx >= 0 && bsgs_idx <= 4)	{
+				FLAGBSGSMODE = bsgs_idx;
+			}
+			if(backend_idx >= 0 && backend_idx <= 1)	{
+				FLAGRMD160BACKEND = backend_idx;
+			}
+			if(bsgs_idx < 0 && backend_idx < 0)	{
+				fprintf(stderr,"[W] Ignoring unknown backend %s\n",optarg);
+			}
+		}
+		break;
 			case 'b':
 				bitrange = strtol(optarg,NULL,10);
 				if(bitrange > 0 && bitrange <=256 )	{
@@ -776,7 +1017,27 @@ int main(int argc, char **argv)	{
 			break;
 		}
 	}
-	
+	if(FLAGMODE == MODE_RMD160) {
+		if(backend_cli_value != NULL) {
+			int backend_idx = indexOf(const_cast<char*>(backend_cli_value),rmd160_backends,2);
+			if(backend_idx >= 0 && backend_idx <= 1) {
+				FLAGRMD160BACKEND = backend_idx;
+			}
+			else {
+				FLAGRMD160BACKEND = RMD160_BACKEND_DEFAULT;
+			}
+		}
+		else {
+			FLAGRMD160BACKEND = RMD160_BACKEND_DEFAULT;
+		}
+	}
+	else {
+		if(backend_cli_value != NULL && strcmp(backend_cli_value,"dance") == 0 && FLAGMODE != MODE_BSGS) {
+			fprintf(stderr,"[E] Backend 'dance' is only supported with -m rmd160\n");
+			exit(EXIT_FAILURE);
+		}
+		FLAGRMD160BACKEND = RMD160_BACKEND_DEFAULT;
+	}
 	if(  FLAGBSGSMODE == MODE_BSGS && FLAGENDOMORPHISM)	{
 		fprintf(stderr,"[E] Endomorphism doesn't work with BSGS\n");
 		exit(EXIT_FAILURE);
@@ -956,6 +1217,14 @@ int main(int argc, char **argv)	{
 			_sort(addressTable,N);
 			printf(" done! %" PRIu64 " values were loaded and sorted\n",N);
 			writeFileIfNeeded(fileName);
+		}
+	}
+
+	if(FLAGMODE == MODE_RMD160 && FLAGRMD160BACKEND == RMD160_BACKEND_DANCE && !rmd160_dance_ready) {
+		if(!init_rmd160_dance_backend()) {
+			fprintf(stderr,"[-] dance unavailable, falling back to default rmd160\n");
+			shutdown_rmd160_dance_backend();
+			FLAGRMD160BACKEND = RMD160_BACKEND_DEFAULT;
 		}
 	}
 	
@@ -2542,10 +2811,16 @@ void *thread_process(void *vargp)	{
 	tt = (struct tothread *)vargp;
 	thread_number = tt->nt;
 	free(tt);
+	bool use_dance_backend = (FLAGMODE == MODE_RMD160 && FLAGRMD160BACKEND == RMD160_BACKEND_DANCE && rmd160_dance_ready);
 	grp->Set(dx);
 			
 	do {
-		if(FLAGRANDOM){
+		if(use_dance_backend) {
+			if(!rmd160_dance_next_batch(&key_mpz)) {
+				continue_flag = 0;
+			}
+		}
+		else if(FLAGRANDOM){
 			key_mpz.Rand(&n_range_start,&n_range_end);
 		}
 		else	{
@@ -3073,24 +3348,24 @@ void *thread_process(void *vargp)	{
 				}
 				*/
 
-				steps[thread_number]++;
+			steps[thread_number]++;
 
-				// Next start point (startP + GRP_SIZE*G)
-				pp = startP;
-				dy.ModSub(&_2Gn.y,&pp.y);
+			// Next start point (startP + GRP_SIZE*G)
+			pp = startP;
+			dy.ModSub(&_2Gn.y,&pp.y);
 
-				_s.ModMulK1(&dy,&dx[i + 1]);
-				_p.ModSquareK1(&_s);
+			_s.ModMulK1(&dy,&dx[i + 1]);
+			_p.ModSquareK1(&_s);
 
-				pp.x.ModNeg();
-				pp.x.ModAdd(&_p);
-				pp.x.ModSub(&_2Gn.x);
+			pp.x.ModNeg();
+			pp.x.ModAdd(&_p);
+			pp.x.ModSub(&_2Gn.x);
 
-				//The Y value for the next start point always need to be calculated
-				pp.y.ModSub(&_2Gn.x,&pp.x);
-				pp.y.ModMulK1(&_s);
-				pp.y.ModSub(&_2Gn.y);
-				startP = pp;
+			//The Y value for the next start point always need to be calculated
+			pp.y.ModSub(&_2Gn.x,&pp.x);
+			pp.y.ModMulK1(&_s);
+			pp.y.ModSub(&_2Gn.y);
+			startP = pp;
 			}while(count < N_SEQUENTIAL_MAX && continue_flag);
 		}
 	} while(continue_flag);
@@ -5741,7 +6016,7 @@ void sha256sse_23(uint8_t *src0, uint8_t *src1, uint8_t *src2, uint8_t *src3, ui
 void menu() {
 	printf("\nUsage:\n");
 	printf("-h          show this help\n");
-	printf("-B Mode     BSGS now have some modes <sequential, backward, both, random, dance>\n");
+	printf("-B Mode     BSGS modes <sequential, backward, both, random, dance>; rmd160 backends <default, dance>\n");
 	printf("-b bits     For some puzzles you only need some numbers of bits in the test keys.\n");
 	printf("-c crypto   Search for specific crypto. <btc, eth> valid only w/ -m address\n");
 	printf("-C mini     Set the minikey Base only 22 character minikeys, ex: SRPqx8QiwnW4WNWnTVa2W5\n");

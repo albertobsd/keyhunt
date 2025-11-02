@@ -25,12 +25,14 @@
 #include <inttypes.h>
 
 #if defined(__aarch64__) || defined(__arm__)
-#define NO_SIMD
+#ifndef NO_SIMD
+#define NO_SIMD 1
+#endif
 #define NO_INTEL_INTRINSICS
 #endif
 
 #if defined(NO_INTEL_INTRINSICS) && !defined(NO_SIMD)
-#define NO_SIMD
+#define NO_SIMD 1
 #endif
 
 #if !defined(NO_SIMD) && !defined(NO_INTEL_INTRINSICS)

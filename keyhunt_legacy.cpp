@@ -90,25 +90,6 @@ struct bPload	{
 	uint32_t finished;
 };
 
-const uint64_t RMD160_DANCE_MAX_BATCHES = 134217728ULL;
-
-struct Rmd160DanceScheduler {
-	uint64_t range_start;
-	uint64_t range_end;
-	uint64_t batch_size;
-	uint64_t total_batches;
-	uint64_t assigned_batches;
-	uint64_t sequence;
-	std::vector<uint8_t> assigned;
-	std::mutex mutex;
-
-	Rmd160DanceScheduler() : range_start(0), range_end(0), batch_size(0), total_batches(0), assigned_batches(0), sequence(0) {}
-
-	void reset();
-	bool init(uint64_t start, uint64_t end, uint64_t batch);
-	bool next(uint64_t &batch_index);
-};
-
 #if defined(_WIN64) && !defined(__CYGWIN__)
 #define PACK( __Declaration__ ) __pragma( pack(push, 1) ) __Declaration__ __pragma( pack(pop))
 PACK(struct publickey
@@ -207,7 +188,6 @@ void calcualteindex(int i,Int *key);
 bool init_rmd160_dance_backend();
 void shutdown_rmd160_dance_backend();
 bool rmd160_dance_next_batch(Int *dst);
-bool intFitsInUint64(Int *value, uint64_t &out);
 
 #if defined(_WIN64) && !defined(__CYGWIN__)
 DWORD WINAPI thread_process_vanity(LPVOID vargp);
@@ -265,12 +245,14 @@ HANDLE write_keys;
 HANDLE write_random;
 HANDLE bsgs_thread;
 HANDLE *bPload_mutex;
+HANDLE rmd160_dance_mutex;
 #else
 pthread_t *tid = NULL;
 pthread_mutex_t write_keys;
 pthread_mutex_t write_random;
 pthread_mutex_t bsgs_thread;
 pthread_mutex_t *bPload_mutex;
+pthread_mutex_t rmd160_dance_mutex;
 #endif
 
 uint64_t FINISHED_THREADS_COUNTER = 0;
@@ -443,98 +425,10 @@ Int lambda,lambda2,beta,beta2;
 
 Secp256K1 *secp;
 
-static Rmd160DanceScheduler rmd160_dance_scheduler;
 static bool rmd160_dance_ready = false;
-static Int rmd160_dance_range_start_int;
-
-void Rmd160DanceScheduler::reset() {
-	std::lock_guard<std::mutex> guard(mutex);
-	assigned.clear();
-	assigned.shrink_to_fit();
-	range_start = 0;
-	range_end = 0;
-	batch_size = 0;
-	total_batches = 0;
-	assigned_batches = 0;
-	sequence = 0;
-}
-
-bool Rmd160DanceScheduler::init(uint64_t start, uint64_t end, uint64_t batch) {
-	std::lock_guard<std::mutex> guard(mutex);
-	if (batch == 0) {
-		return false;
-	}
-	if (end <= start) {
-		return false;
-	}
-	uint64_t range = end - start;
-	if (range == 0) {
-		return false;
-	}
-	uint64_t batches = (range + batch - 1ULL) / batch;
-	if (batches == 0 || batches > RMD160_DANCE_MAX_BATCHES) {
-		return false;
-	}
-	range_start = start;
-	range_end = end;
-	batch_size = batch;
-	total_batches = batches;
-	assigned_batches = 0;
-	sequence = 0;
-	assigned.assign(total_batches, 0);
-	return true;
-}
-
-bool Rmd160DanceScheduler::next(uint64_t &batch_index) {
-	std::lock_guard<std::mutex> guard(mutex);
-	if (assigned_batches >= total_batches || total_batches == 0) {
-		return false;
-	}
-	const uint64_t max_attempts = total_batches * 2ULL + 3ULL;
-	uint64_t attempts = 0;
-	while (attempts < max_attempts) {
-		uint64_t seq = sequence++;
-		uint64_t mode = seq % 3ULL;
-		uint64_t block = seq / 3ULL;
-		uint64_t idx;
-		if (mode == 0) {
-			idx = block;
-		} else if (mode == 1) {
-			if (block >= total_batches) {
-				idx = 0;
-			} else {
-				uint64_t back = total_batches - 1ULL - block;
-				idx = back;
-			}
-		} else {
-			idx = (block * 0x9E3779B97F4A7C15ULL + 0xD1B54A32D192ED03ULL) % total_batches;
-		}
-		if (idx < total_batches && !assigned[idx]) {
-			assigned[idx] = 1;
-			assigned_batches++;
-			batch_index = idx;
-			return true;
-		}
-		attempts++;
-	}
-	for (uint64_t idx = 0; idx < total_batches; ++idx) {
-		if (!assigned[idx]) {
-			assigned[idx] = 1;
-			assigned_batches++;
-			batch_index = idx;
-			return true;
-		}
-	}
-	return false;
-}
-
-bool intFitsInUint64(Int *value, uint64_t &out) {
-	if (value->GetBitLength() > 64) {
-		return false;
-	}
-	out = value->GetInt64();
-	return true;
-}
+static Int RMD160_CURRENT;
+static Int RMD160_RANGE_END;
+static Int RMD160_STEP;
 
 bool init_rmd160_dance_backend() {
 	if (rmd160_dance_ready) {
@@ -543,34 +437,25 @@ bool init_rmd160_dance_backend() {
 	if (FLAGRANDOM) {
 		return false;
 	}
-	uint64_t start64;
-	uint64_t end64;
-	if (!intFitsInUint64(&n_range_start, start64)) {
+	Int range_size;
+	range_size.Set(&n_range_end);
+	range_size.Sub(&n_range_start);
+	if(range_size.IsNegative()) {
 		if(FLAGDEBUG) {
-			fprintf(stderr,"[D] dance init: start exceeds 64-bit\n");
+			fprintf(stderr,"[D] dance init: range end <= start\n");
 		}
 		return false;
 	}
-	if (!intFitsInUint64(&n_range_end, end64)) {
-		if(FLAGDEBUG) {
-			fprintf(stderr,"[D] dance init: end exceeds 64-bit\n");
-		}
-		return false;
+	RMD160_CURRENT.Set(&n_range_start);
+	RMD160_RANGE_END.Set(&n_range_end);
+	RMD160_STEP.SetInt64((int64_t)N_SEQUENTIAL_MAX);
+	if(RMD160_STEP.IsZero()) {
+		RMD160_STEP.SetInt32(1);
 	}
-	uint64_t batch = N_SEQUENTIAL_MAX;
-	if (batch == 0) {
-		batch = 1024ULL;
-	}
-	if (!rmd160_dance_scheduler.init(start64, end64, batch)) {
-		if(FLAGDEBUG) {
-			fprintf(stderr,"[D] dance init: scheduler rejected parameters (start=%llu end=%llu batch=%llu)\n",(unsigned long long)start64,(unsigned long long)end64,(unsigned long long)batch);
-		}
-		return false;
-	}
-	rmd160_dance_range_start_int.Set(&n_range_start);
 	rmd160_dance_ready = true;
 	atexit(shutdown_rmd160_dance_backend);
-	printf("[+] rmd160 backend: dance (batch %llu)\n", (unsigned long long)batch);
+	printf("[+] RMD160 dance backend: true BSGS-style scheduler active\n");
+	printf("[+] rmd160 backend: dance (chunk %llu)\n", (unsigned long long)N_SEQUENTIAL_MAX);
 	return true;
 }
 
@@ -578,7 +463,9 @@ void shutdown_rmd160_dance_backend() {
 	if (!rmd160_dance_ready) {
 		return;
 	}
-	rmd160_dance_scheduler.reset();
+	RMD160_CURRENT.CLEAR();
+	RMD160_RANGE_END.CLEAR();
+	RMD160_STEP.CLEAR();
 	rmd160_dance_ready = false;
 }
 
@@ -586,13 +473,51 @@ bool rmd160_dance_next_batch(Int *dst) {
 	if (!rmd160_dance_ready || dst == NULL) {
 		return false;
 	}
-	uint64_t batch_index;
-	if (!rmd160_dance_scheduler.next(batch_index)) {
+	Int base_key;
+	int entrar = 1;
+	int r = rand() % 3;
+#if defined(_WIN64) && !defined(__CYGWIN__)
+	WaitForSingleObject(rmd160_dance_mutex, INFINITE);
+#else
+	pthread_mutex_lock(&rmd160_dance_mutex);
+#endif
+	switch(r) {
+		case 0: // TOP
+			if(RMD160_RANGE_END.IsGreater(&RMD160_CURRENT)) {
+				RMD160_RANGE_END.Sub(&RMD160_STEP);
+				if(RMD160_RANGE_END.IsLower(&RMD160_CURRENT)) {
+					base_key.Set(&RMD160_CURRENT);
+				}
+				else {
+					base_key.Set(&RMD160_RANGE_END);
+				}
+			}
+			else {
+				entrar = 0;
+			}
+		break;
+		case 1: // BOTTOM
+			if(RMD160_CURRENT.IsLower(&RMD160_RANGE_END)) {
+				base_key.Set(&RMD160_CURRENT);
+				RMD160_CURRENT.Add(&RMD160_STEP);
+			}
+			else {
+				entrar = 0;
+			}
+		break;
+		case 2: // RANDOM - middle
+			base_key.Rand(&RMD160_CURRENT,&RMD160_RANGE_END);
+		break;
+	}
+#if defined(_WIN64) && !defined(__CYGWIN__)
+	ReleaseMutex(rmd160_dance_mutex);
+#else
+	pthread_mutex_unlock(&rmd160_dance_mutex);
+#endif
+	if(entrar == 0) {
 		return false;
 	}
-	uint64_t offset = batch_index * rmd160_dance_scheduler.batch_size;
-	dst->Set(&rmd160_dance_range_start_int);
-	dst->Add(offset);
+	dst->Set(&base_key);
 	return true;
 }
 
@@ -628,10 +553,12 @@ int main(int argc, char **argv)	{
 	write_keys = CreateMutex(NULL, FALSE, NULL);
 	write_random = CreateMutex(NULL, FALSE, NULL);
 	bsgs_thread = CreateMutex(NULL, FALSE, NULL);
+	rmd160_dance_mutex = CreateMutex(NULL, FALSE, NULL);
 #else
 	pthread_mutex_init(&write_keys,NULL);
 	pthread_mutex_init(&write_random,NULL);
 	pthread_mutex_init(&bsgs_thread,NULL);
+	pthread_mutex_init(&rmd160_dance_mutex,NULL);
 	int s;
 #endif
 	//if(FLAGDEBUG) { printf("[D] File: %s Line %i\n",__FILE__,__LINE__); fflush(stdout); }
@@ -2493,6 +2420,7 @@ int main(int argc, char **argv)	{
 	CloseHandle(write_keys);
 	CloseHandle(write_random);
 	CloseHandle(bsgs_thread);
+	CloseHandle(rmd160_dance_mutex);
 #endif
 }
 

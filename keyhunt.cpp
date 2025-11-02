@@ -241,12 +241,14 @@ HANDLE* tid = NULL;
 HANDLE write_keys;
 HANDLE write_random;
 HANDLE bsgs_thread;
+HANDLE rmd160_dance_mutex;
 HANDLE *bPload_mutex = NULL;
 #else
 pthread_t *tid = NULL;
 pthread_mutex_t write_keys;
 pthread_mutex_t write_random;
 pthread_mutex_t bsgs_thread;
+pthread_mutex_t rmd160_dance_mutex;
 pthread_mutex_t *bPload_mutex = NULL;
 #endif
 
@@ -419,145 +421,13 @@ Int lambda,lambda2,beta,beta2;
 
 Secp256K1 *secp;
 
-struct Rmd160DanceScheduler {
-	std::mutex mutex;
-	std::vector<uint8_t> assigned;
-	std::vector<uint64_t> group_offsets;
-	uint64_t total_batches = 0;
-	uint64_t groups = 0;
-	uint64_t assigned_groups = 0;
-	uint64_t group_size = 1;
-	uint64_t sequence = 0;
-	void reset();
-	bool init(uint64_t total);
-	bool next(uint64_t &batch_index);
-};
-
 bool init_rmd160_dance_backend();
 void shutdown_rmd160_dance_backend();
 bool rmd160_dance_next_batch(Int *dst);
-bool intFitsInUint64(Int *value, uint64_t &out);
-
-static Rmd160DanceScheduler rmd160_dance_scheduler;
 static bool rmd160_dance_ready = false;
-static Int rmd160_dance_range_start_int;
-static Int rmd160_dance_batch_stride_int;
-
-void Rmd160DanceScheduler::reset() {
-	std::lock_guard<std::mutex> guard(mutex);
-	assigned.clear();
-	assigned.shrink_to_fit();
-	group_offsets.clear();
-	group_offsets.shrink_to_fit();
-	total_batches = 0;
-	groups = 0;
-	assigned_groups = 0;
-	group_size = 1;
-	sequence = 0;
-}
-
-bool Rmd160DanceScheduler::init(uint64_t total) {
-	std::lock_guard<std::mutex> guard(mutex);
-	if (total == 0) {
-		total = 1;
-	}
-	total_batches = total;
-	const uint64_t max_groups = 1048576ULL; // limit memory footprint (~1M groups)
-	uint64_t local_group_size = 1;
-	uint64_t local_groups = total;
-	if (total > max_groups) {
-		local_group_size = (total + max_groups - 1ULL) / max_groups;
-		if (local_group_size == 0) {
-			local_group_size = 1;
-		}
-		local_groups = (total + local_group_size - 1ULL) / local_group_size;
-	}
-	if (local_groups == 0) {
-		local_groups = 1;
-	}
-	group_size = local_group_size;
-	groups = local_groups;
-	assigned_groups = 0;
-	sequence = 0;
-	assigned.assign(groups, 0);
-	group_offsets.assign(groups, 0);
-	return true;
-}
-
-bool Rmd160DanceScheduler::next(uint64_t &batch_index) {
-	std::lock_guard<std::mutex> guard(mutex);
-	if (assigned_groups >= groups || groups == 0) {
-		return false;
-	}
-	const uint64_t max_attempts = groups * 2ULL + 3ULL;
-	uint64_t attempts = 0;
-	while (attempts < max_attempts) {
-		uint64_t seq = sequence++;
-		uint64_t mode = seq % 3ULL;
-		uint64_t block = seq / 3ULL;
-		uint64_t idx;
-		if (mode == 0) {
-			idx = block;
-		}
-		else if (mode == 1) {
-			if (block >= groups) {
-				idx = 0;
-			}
-			else {
-				uint64_t back = groups - 1ULL - block;
-				idx = back;
-			}
-		}
-		else {
-			idx = (block * 0x9E3779B97F4A7C15ULL + 0xD1B54A32D192ED03ULL) % groups;
-		}
-		if (idx < groups && !assigned[idx]) {
-			uint64_t offset = group_offsets[idx];
-			uint64_t base_index = idx * group_size + offset;
-			if (offset >= group_size || base_index >= total_batches) {
-				assigned[idx] = 1;
-				assigned_groups++;
-				attempts++;
-				continue;
-			}
-			group_offsets[idx]++;
-			if (group_offsets[idx] >= group_size || (idx * group_size + group_offsets[idx]) >= total_batches) {
-				assigned[idx] = 1;
-				assigned_groups++;
-			}
-			batch_index = base_index;
-			return true;
-		}
-		attempts++;
-	}
-	for (uint64_t idx = 0; idx < groups; ++idx) {
-		if (!assigned[idx]) {
-			uint64_t offset = group_offsets[idx];
-			uint64_t base_index = idx * group_size + offset;
-			if (offset >= group_size || base_index >= total_batches) {
-				assigned[idx] = 1;
-				assigned_groups++;
-				continue;
-			}
-			group_offsets[idx]++;
-			if (group_offsets[idx] >= group_size || (idx * group_size + group_offsets[idx]) >= total_batches) {
-				assigned[idx] = 1;
-				assigned_groups++;
-			}
-			batch_index = base_index;
-			return true;
-		}
-	}
-	return false;
-}
-
-bool intFitsInUint64(Int *value, uint64_t &out) {
-	if (value->GetBitLength() > 64) {
-		return false;
-	}
-	out = value->GetInt64();
-	return true;
-}
+static Int RMD160_CURRENT;
+static Int RMD160_RANGE_END;
+static Int RMD160_STEP;
 
 bool init_rmd160_dance_backend() {
 	if (rmd160_dance_ready) {
@@ -565,10 +435,6 @@ bool init_rmd160_dance_backend() {
 	}
 	if (FLAGRANDOM) {
 		return false;
-	}
-	uint64_t batch = N_SEQUENTIAL_MAX;
-	if (batch == 0) {
-		batch = 1ULL;
 	}
 	Int range_size;
 	range_size.Set(&n_range_end);
@@ -579,43 +445,16 @@ bool init_rmd160_dance_backend() {
 		}
 		return false;
 	}
-	Int batch_int;
-	batch_int.SetInt64(batch);
-	Int quotient;
-	quotient.Set(&range_size);
-	Int remainder;
-	quotient.Div(&batch_int, &remainder);
-	uint64_t total_batches;
-	if (!intFitsInUint64(&quotient, total_batches)) {
-		if(FLAGDEBUG) {
-			fprintf(stderr,"[D] dance init: total batches exceed 64-bit\n");
-		}
-		return false;
+	RMD160_CURRENT.Set(&n_range_start);
+	RMD160_RANGE_END.Set(&n_range_end);
+	RMD160_STEP.SetInt64((int64_t)N_SEQUENTIAL_MAX);
+	if(RMD160_STEP.IsZero()) {
+		RMD160_STEP.SetInt32(1);
 	}
-	if (!remainder.IsZero()) {
-		total_batches++;
-	}
-	if (total_batches == 0) {
-		total_batches = 1;
-	}
-	if (!rmd160_dance_scheduler.init(total_batches)) {
-		if(FLAGDEBUG) {
-			fprintf(stderr,"[D] dance init: scheduler rejected parameters (total=%llu)\n",
-				(unsigned long long)total_batches);
-		}
-		return false;
-	}
-	if(FLAGDEBUG) {
-		fprintf(stderr,"[D] dance init: total=%llu group_size=%llu groups=%llu\n",
-			(unsigned long long)total_batches,
-			(unsigned long long)rmd160_dance_scheduler.group_size,
-			(unsigned long long)rmd160_dance_scheduler.groups);
-	}
-	rmd160_dance_range_start_int.Set(&n_range_start);
-	rmd160_dance_batch_stride_int.Set(&batch_int);
 	rmd160_dance_ready = true;
 	atexit(shutdown_rmd160_dance_backend);
-	printf("[+] rmd160 backend: dance (batch %llu)\n", (unsigned long long)batch);
+	printf("[+] RMD160 dance backend: true BSGS-style scheduler active\n");
+	printf("[+] rmd160 backend: dance (chunk %llu)\n", (unsigned long long)N_SEQUENTIAL_MAX);
 	return true;
 }
 
@@ -623,7 +462,9 @@ void shutdown_rmd160_dance_backend() {
 	if (!rmd160_dance_ready) {
 		return;
 	}
-	rmd160_dance_scheduler.reset();
+	RMD160_CURRENT.CLEAR();
+	RMD160_RANGE_END.CLEAR();
+	RMD160_STEP.CLEAR();
 	rmd160_dance_ready = false;
 }
 
@@ -631,18 +472,51 @@ bool rmd160_dance_next_batch(Int *dst) {
 	if (!rmd160_dance_ready || dst == NULL) {
 		return false;
 	}
-	uint64_t batch_index;
-	if (!rmd160_dance_scheduler.next(batch_index)) {
+	Int base_key;
+	int entrar = 1;
+	int r = rand() % 3;
+#if defined(_WIN64) && !defined(__CYGWIN__)
+	WaitForSingleObject(rmd160_dance_mutex, INFINITE);
+#else
+	pthread_mutex_lock(&rmd160_dance_mutex);
+#endif
+	switch(r) {
+		case 0: // TOP
+			if(RMD160_RANGE_END.IsGreater(&RMD160_CURRENT)) {
+				RMD160_RANGE_END.Sub(&RMD160_STEP);
+				if(RMD160_RANGE_END.IsLower(&RMD160_CURRENT)) {
+					base_key.Set(&RMD160_CURRENT);
+				}
+				else {
+					base_key.Set(&RMD160_RANGE_END);
+				}
+			}
+			else {
+				entrar = 0;
+			}
+		break;
+		case 1: // BOTTOM
+			if(RMD160_CURRENT.IsLower(&RMD160_RANGE_END)) {
+				base_key.Set(&RMD160_CURRENT);
+				RMD160_CURRENT.Add(&RMD160_STEP);
+			}
+			else {
+				entrar = 0;
+			}
+		break;
+		case 2: // RANDOM - middle
+			base_key.Rand(&RMD160_CURRENT,&RMD160_RANGE_END);
+		break;
+	}
+#if defined(_WIN64) && !defined(__CYGWIN__)
+	ReleaseMutex(rmd160_dance_mutex);
+#else
+	pthread_mutex_unlock(&rmd160_dance_mutex);
+#endif
+	if(entrar == 0) {
 		return false;
 	}
-	if(FLAGDEBUG) {
-		fprintf(stderr,"[D] dance next: batch_index=%llu\n", (unsigned long long)batch_index);
-	}
-	Int offset;
-	offset.SetInt64(batch_index);
-	offset.Mult(&rmd160_dance_batch_stride_int);
-	dst->Set(&rmd160_dance_range_start_int);
-	dst->Add(&offset);
+	dst->Set(&base_key);
 	return true;
 }
 
@@ -677,10 +551,12 @@ int main(int argc, char **argv)	{
 	write_keys = CreateMutex(NULL, FALSE, NULL);
 	write_random = CreateMutex(NULL, FALSE, NULL);
 	bsgs_thread = CreateMutex(NULL, FALSE, NULL);
+	rmd160_dance_mutex = CreateMutex(NULL, FALSE, NULL);
 #else
 	pthread_mutex_init(&write_keys,NULL);
 	pthread_mutex_init(&write_random,NULL);
 	pthread_mutex_init(&bsgs_thread,NULL);
+	pthread_mutex_init(&rmd160_dance_mutex,NULL);
 	int s;
 #endif
 
@@ -2524,6 +2400,7 @@ int main(int argc, char **argv)	{
 	CloseHandle(write_keys);
 	CloseHandle(write_random);
 	CloseHandle(bsgs_thread);
+	CloseHandle(rmd160_dance_mutex);
 #endif
 }
 

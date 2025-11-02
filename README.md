@@ -1,4 +1,8 @@
-# keyhunt
+# KEYHUNTV2 
+
+# Update
+
+ADDED DANCE MODE TO rmd160 SEARCH.
 
 Tool for hunt privatekeys for crypto currencies that use secp256k1 elliptic curve
 
@@ -1370,3 +1374,7 @@ I also need to make some test in testnet network if you have some Testnet balanc
 Address: msKcxhizYWVvxCACFEG4GCSK1xYrEkib5A
 
 Thank you.
+
+V2 UPDATE BY @zevluos (ig)
+
+keep hunting

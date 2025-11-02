@@ -17,6 +17,41 @@
 
 #include "ripemd160.h"
 #include <string.h>
+
+#ifdef NO_SIMD
+
+namespace {
+
+inline void ScalarRipemd160(const unsigned char *input, unsigned char *digest) {
+  unsigned char block[64];
+  memcpy(block, input, 32);
+  ripemd160_32(block, digest);
+}
+
+} // namespace
+
+void ripemd160sse_32(
+  unsigned char *i0,
+  unsigned char *i1,
+  unsigned char *i2,
+  unsigned char *i3,
+  unsigned char *d0,
+  unsigned char *d1,
+  unsigned char *d2,
+  unsigned char *d3) {
+
+  ScalarRipemd160(i0, d0);
+  ScalarRipemd160(i1, d1);
+  ScalarRipemd160(i2, d2);
+  ScalarRipemd160(i3, d3);
+}
+
+void ripemd160sse_test() {
+  // SSE-specific self-test is not available in scalar fallback.
+}
+
+#else
+
 #include <immintrin.h>
 
 // Internal SSE RIPEMD-160 implementation.
@@ -407,3 +442,4 @@ void ripemd160sse_test() {
   printf("RIPE() Results OK !\n");
 
 }
+#endif  // NO_SIMD

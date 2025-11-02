@@ -34,13 +34,17 @@ namespace _sha256
 #ifndef WIN64
 #define _byteswap_ulong __builtin_bswap32
 #define _byteswap_uint64 __builtin_bswap64
-inline uint32_t _rotr(uint32_t x, uint8_t r) {
-  asm("rorl %1,%0" : "+r" (x) : "c" (r));
-  return x;
-}
 #endif
 
-#define ROR(x,n) _rotr(x, n)
+static inline uint32_t rotr32(uint32_t x, uint8_t r) {
+#if defined(_MSC_VER)
+  return _rotr(x, r);
+#else
+  return (x >> r) | (x << (32u - r));
+#endif
+}
+
+#define ROR(x,n) rotr32(x, n)
 #define S0(x) (ROR(x,2) ^ ROR(x,13) ^ ROR(x,22))
 #define S1(x) (ROR(x,6) ^ ROR(x,11) ^ ROR(x,25))
 #define s0(x) (ROR(x,7) ^ ROR(x,18) ^ (x >> 3))

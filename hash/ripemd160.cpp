@@ -36,14 +36,15 @@ void inline Initialize(uint32_t* s)
     s[4] = 0xC3D2E1F0ul;
 }
 
-#ifndef WIN64
-inline uint32_t _rotl(uint32_t x, uint8_t r) {
-  asm("roll %1,%0" : "+r" (x) : "c" (r));
-  return x;
-}
+static inline uint32_t rotl32(uint32_t x, uint8_t r) {
+#if defined(_MSC_VER)
+  return _rotl(x, r);
+#else
+  return (x << r) | (x >> (32u - r));
 #endif
+}
 
-#define ROL(x,n) _rotl(x,n)
+#define ROL(x,n) rotl32(x,n)
 
 #define f1(x, y, z) (x ^ y ^ z)
 #define f2(x, y, z) ((x & y) | (~x & z))

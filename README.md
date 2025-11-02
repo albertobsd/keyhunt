@@ -110,6 +110,15 @@ and then execute with `-h` to see the help
 ./keyhunt -h
 ```
 
+## Termux/Android Build Instructions
+
+```
+pkg install git clang make cmake libgmp openssl -y
+git clone https://github.com/zevlouss/KEYHUNTV2.git
+cd KEYHUNTV2
+make -j$(nproc)
+```
+
 ## ¡Beta!
 
 This version is still a **beta** version, there are a lot of things that can be fail or improve.

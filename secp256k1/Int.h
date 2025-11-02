@@ -24,6 +24,16 @@
 #include <stdlib.h>
 #include <inttypes.h>
 
+#if defined(__aarch64__) || defined(__arm__)
+#define NO_INTEL_INTRINSICS
+#endif
+
+#ifndef NO_INTEL_INTRINSICS
+#include <emmintrin.h>
+#include <xmmintrin.h>
+#include <immintrin.h>
+#endif
+
 // We need 1 extra block for Knuth div algorithm , Montgomery multiplication and ModInv
 #define BISIZE 256
 
@@ -195,35 +205,96 @@ private:
 
 // Inline routines
 
+#ifdef NO_INTEL_INTRINSICS
+
+static inline uint64_t _umul128(uint64_t a, uint64_t b, uint64_t *h) {
+  __uint128_t product = static_cast<__uint128_t>(a) * static_cast<__uint128_t>(b);
+  *h = static_cast<uint64_t>(product >> 64);
+  return static_cast<uint64_t>(product);
+}
+
+static inline unsigned char _addcarry_u64(unsigned char carry, uint64_t a, uint64_t b, uint64_t *out) {
+  __uint128_t sum = static_cast<__uint128_t>(a) + static_cast<__uint128_t>(b) + static_cast<__uint128_t>(carry);
+  *out = static_cast<uint64_t>(sum);
+  return static_cast<unsigned char>(sum >> 64);
+}
+
+static inline unsigned char _subborrow_u64(unsigned char borrow, uint64_t a, uint64_t b, uint64_t *out) {
+  __uint128_t subtrahend = static_cast<__uint128_t>(b) + static_cast<__uint128_t>(borrow);
+  unsigned char hasBorrow = static_cast<unsigned char>(static_cast<__uint128_t>(a) < subtrahend);
+  *out = static_cast<uint64_t>(static_cast<__uint128_t>(a) - subtrahend);
+  return hasBorrow;
+}
+
+static inline uint64_t __shiftright128(uint64_t a, uint64_t b, unsigned char n) {
+  if (n == 0) {
+    return a;
+  } else if (n < 64) {
+    return (a >> n) | (b << (64 - n));
+  } else if (n == 64) {
+    return b;
+  } else if (n < 128) {
+    return b >> (n - 64);
+  }
+  return 0ULL;
+}
+
+static inline uint64_t __shiftleft128(uint64_t a, uint64_t b, unsigned char n) {
+  if (n == 0) {
+    return b;
+  } else if (n < 64) {
+    return (b << n) | (a >> (64 - n));
+  } else if (n == 64) {
+    return a;
+  } else if (n < 128) {
+    return a << (n - 64);
+  }
+  return 0ULL;
+}
+
+static inline uint64_t _byteswap_uint64(uint64_t v) {
+  return ((v & 0x00000000000000FFULL) << 56) |
+         ((v & 0x000000000000FF00ULL) << 40) |
+         ((v & 0x0000000000FF0000ULL) << 24) |
+         ((v & 0x00000000FF000000ULL) << 8)  |
+         ((v & 0x000000FF00000000ULL) >> 8)  |
+         ((v & 0x0000FF0000000000ULL) >> 24) |
+         ((v & 0x00FF000000000000ULL) >> 40) |
+         ((v & 0xFF00000000000000ULL) >> 56);
+}
+
+#else
+
 #ifndef _WIN64
 
 // Missing intrinsics
-static uint64_t inline _umul128(uint64_t a, uint64_t b, uint64_t *h) {
+static inline uint64_t _umul128(uint64_t a, uint64_t b, uint64_t *h) {
   uint64_t rhi;
   uint64_t rlo;
-  __asm__( "mulq  %[b];" :"=d"(rhi),"=a"(rlo) :"1"(a),[b]"rm"(b));
-    *h = rhi;
-    return rlo;
+  __asm__("mulq  %[b];" : "=d"(rhi), "=a"(rlo) : "1"(a), [b]"rm"(b));
+  *h = rhi;
+  return rlo;
 }
 
-static uint64_t inline __shiftright128(uint64_t a, uint64_t b,unsigned char n) {
+static inline uint64_t __shiftright128(uint64_t a, uint64_t b, unsigned char n) {
   uint64_t c;
-  __asm__ ("movq %1,%0;shrdq %3,%2,%0;" : "=D"(c) : "r"(a),"r"(b),"c"(n));
-  return  c;
+  __asm__("movq %1,%0;shrdq %3,%2,%0;" : "=D"(c) : "r"(a), "r"(b), "c"(n));
+  return c;
 }
 
-
-static uint64_t inline __shiftleft128(uint64_t a, uint64_t b,unsigned char n) {
+static inline uint64_t __shiftleft128(uint64_t a, uint64_t b, unsigned char n) {
   uint64_t c;
-  __asm__ ("movq %1,%0;shldq %3,%2,%0;" : "=D"(c) : "r"(b),"r"(a),"c"(n));
-  return  c;
+  __asm__("movq %1,%0;shldq %3,%2,%0;" : "=D"(c) : "r"(b), "r"(a), "c"(n));
+  return c;
 }
 
-#define _subborrow_u64(a,b,c,d) __builtin_ia32_sbb_u64(a,b,c,(long long unsigned int*)d);
-#define _addcarry_u64(a,b,c,d) __builtin_ia32_addcarryx_u64(a,b,c,(long long unsigned int*)d);
+#define _subborrow_u64(a,b,c,d) __builtin_ia32_sbb_u64(a,b,c,(long long unsigned int*)d)
+#define _addcarry_u64(a,b,c,d) __builtin_ia32_addcarryx_u64(a,b,c,(long long unsigned int*)d)
 #define _byteswap_uint64 __builtin_bswap64
 #else
 #include <intrin.h>
+#endif
+
 #endif
 
 static void inline imm_mul(uint64_t *x, uint64_t y, uint64_t *dst) {

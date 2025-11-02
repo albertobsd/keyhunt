@@ -60,13 +60,17 @@ namespace _sha512 {
 #ifndef WIN64
 #define _byteswap_ulong __builtin_bswap32
 #define _byteswap_uint64 __builtin_bswap64
-inline uint64_t _rotr64(uint64_t x, uint8_t r) {
-  asm("rorq %1,%0" : "+r" (x) : "c" (r));
-  return x;
-}
 #endif
 
-#define ROR(x,n) _rotr64(x, n)
+static inline uint64_t rotr64(uint64_t x, uint8_t r) {
+#if defined(_MSC_VER)
+  return _rotr64(x, r);
+#else
+  return (x >> r) | (x << (64u - r));
+#endif
+}
+
+#define ROR(x,n) rotr64(x, n)
 #define S0(x)		(ROR(x, 28) ^ ROR(x, 34) ^ ROR(x, 39))
 #define S1(x)		(ROR(x, 14) ^ ROR(x, 18) ^ ROR(x, 41))
 #define G0(x)		(ROR(x, 1) ^ ROR(x, 8) ^ (x >> 7))

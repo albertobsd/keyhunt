@@ -13,8 +13,8 @@ ifeq ($(shell uname -m),x86_64)
     CXXFLAGS += -march=native -mtune=native -msse2 -msse3
     CFLAGS += -march=native -mtune=native -msse2 -msse3
 else
-    CXXFLAGS += -fomit-frame-pointer -DNO_SIMD
-    CFLAGS += -fomit-frame-pointer -DNO_SIMD
+    CXXFLAGS += -O3 -fomit-frame-pointer -DNO_SIMD -std=c++17
+    CFLAGS += -O3 -fomit-frame-pointer -DNO_SIMD
 endif
 
 LIBS = -lm -lpthread

@@ -16,7 +16,16 @@
 */
 
 #include "Int.h"
+
+#ifdef NO_SIMD
+// Skip Intel SIMD headers for ARM
+#else
 #include <emmintrin.h>
+#include <xmmintrin.h>
+#include <mm_malloc.h>
+#include <mmintrin.h>
+#endif
+
 #include <string.h>
 
 #define MAX(x,y) (((x)>(y))?(x):(y))

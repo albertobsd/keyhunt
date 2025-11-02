@@ -25,10 +25,15 @@
 #include <inttypes.h>
 
 #if defined(__aarch64__) || defined(__arm__)
+#define NO_SIMD
 #define NO_INTEL_INTRINSICS
 #endif
 
-#ifndef NO_INTEL_INTRINSICS
+#if defined(NO_INTEL_INTRINSICS) && !defined(NO_SIMD)
+#define NO_SIMD
+#endif
+
+#if !defined(NO_SIMD) && !defined(NO_INTEL_INTRINSICS)
 #include <emmintrin.h>
 #include <xmmintrin.h>
 #include <immintrin.h>
@@ -205,7 +210,7 @@ private:
 
 // Inline routines
 
-#ifdef NO_INTEL_INTRINSICS
+#ifdef NO_SIMD
 
 static inline uint64_t _umul128(uint64_t a, uint64_t b, uint64_t *h) {
   __uint128_t product = static_cast<__uint128_t>(a) * static_cast<__uint128_t>(b);

@@ -21,7 +21,16 @@
 #include <cstdlib>
 #include <cstring>
 #include <cctype>
+
+#ifdef NO_SIMD
+// Skip Intel SIMD headers for ARM
+#pragma message("[+] Building for ARM/NO_SIMD (portable mode)")
+#else
 #include <emmintrin.h>
+#include <xmmintrin.h>
+#include <mm_malloc.h>
+#include <mmintrin.h>
+#endif
 
 #define MAX(x,y) (((x)>(y))?(x):(y))
 #define MIN(x,y) (((x)<(y))?(x):(y))

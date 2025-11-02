@@ -129,6 +129,7 @@ The current availables modes are:
 
 - minikeys
 - pub2rmd
+- experimental backend: rmd160 dance — same mixed batch stepping algorithm as bsgs dance mode, optimized for legacy rmd160.
 
 ## address mode
 

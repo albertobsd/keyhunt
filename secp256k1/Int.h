@@ -154,6 +154,7 @@ public:
   int GetBitLength();
 
   // Setter
+  void CLEAR();
   void SetInt64(uint64_t value);
   void SetInt32(uint32_t value);
   void Set(Int *a);
@@ -204,7 +205,6 @@ private:
   void AddAndShift(Int *a, Int *b,uint64_t cH);
   void Mult(Int *a, uint32_t b);
   int  GetLowestBit();
-  void CLEAR();
   void CLEARFF();
 
 

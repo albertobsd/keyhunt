@@ -28,7 +28,7 @@ typedef struct RMD160Context {
 
 #define RIPEMD160Context RMD160Context
 
-#ifdef _WIN64
+#if defined(_WIN64) && !defined(__MINGW32__) && !defined(__MINGW64__)
 #else
 #include <sys/cdefs.h>
 
@@ -41,7 +41,7 @@ void   RMD160Final(unsigned char [RMD160_HASHBYTES], RMD160_CTX *);
 char * RMD160End(RMD160_CTX *, char *);
 char * RMD160File(const char *, char *);
 void RMD160Data(const unsigned char *, unsigned int, char *);
-#ifdef _WIN64
+#if defined(_WIN64) && !defined(__MINGW32__) && !defined(__MINGW64__)
 #else
 __END_DECLS
 

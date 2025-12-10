@@ -5,10 +5,11 @@
  * under the terms of the standard MIT license.  See COPYING for more details.
  */
 
-#ifndef _WIN64
-#include <arpa/inet.h>
-#else
+/* Use Winsock on Windows (including MinGW); otherwise use POSIX arpa/inet.h */
+#if defined(_WIN32)
 #include <winsock2.h>
+#else
+#include <arpa/inet.h>
 #endif
 
 #include <stdbool.h>

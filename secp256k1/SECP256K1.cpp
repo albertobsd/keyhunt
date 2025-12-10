@@ -585,7 +585,7 @@ void Secp256K1::GetHash160(int type,bool compressed,
   Point &k0,Point &k1,Point &k2,Point &k3,
   uint8_t *h0,uint8_t *h1,uint8_t *h2,uint8_t *h3) {
 
-#ifdef WIN64
+#if defined(_WIN64) && !defined(__MINGW32__) && !defined(__MINGW64__)
   __declspec(align(16)) unsigned char sh0[64];
   __declspec(align(16)) unsigned char sh1[64];
   __declspec(align(16)) unsigned char sh2[64];
@@ -747,7 +747,7 @@ void Secp256K1::GetHash160_fromX(int type,unsigned char prefix,
   Int *k0,Int *k1,Int *k2,Int *k3,
   uint8_t *h0,uint8_t *h1,uint8_t *h2,uint8_t *h3) {
 
-#ifdef WIN64
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
   __declspec(align(16)) unsigned char sh0[64];
   __declspec(align(16)) unsigned char sh1[64];
   __declspec(align(16)) unsigned char sh2[64];

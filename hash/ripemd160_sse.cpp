@@ -22,7 +22,7 @@
 // Internal SSE RIPEMD-160 implementation.
 namespace ripemd160sse {
 
-#ifdef WIN64
+#if defined(_WIN64) && !defined(__MINGW32__) && !defined(__MINGW64__)
   static const __declspec(align(16)) uint32_t _init[] = {
 #else
   static const uint32_t _init[] __attribute__ ((aligned (16))) = {
@@ -42,7 +42,7 @@ namespace ripemd160sse {
 
 #define ROL(x,n) _mm_or_si128( _mm_slli_epi32(x, n) , _mm_srli_epi32(x, 32 - n) )
 
-#ifdef WIN64
+#if defined(_WIN64) && !defined(__MINGW32__) && !defined(__MINGW64__)
 
 #define not(x) _mm_andnot_si128(x, _mm_cmpeq_epi32(_mm_setzero_si128(), _mm_setzero_si128()))
 #define f1(x,y,z) _mm_xor_si128(x, _mm_xor_si128(y, z))
@@ -297,7 +297,8 @@ namespace ripemd160sse {
 
 } // namespace ripemd160sse
 
-#ifdef WIN64
+
+#if defined(_WIN64) && !defined(__MINGW32__) && !defined(__MINGW64__)
 
 #define DEPACK(d,i) \
 ((uint32_t *)d)[0] = s[0].m128i_u32[i]; \
@@ -345,7 +346,8 @@ void ripemd160sse_32(
 
   ripemd160sse::Transform(s, bs);
 
-#ifndef WIN64
+/* Declare pointer accessors for GCC/MinGW path (non-MSVC) */
+#if !defined(_WIN64) || defined(__MINGW32__) || defined(__MINGW64__)
   uint32_t *s0 = (uint32_t *)&s[0];
   uint32_t *s1 = (uint32_t *)&s[1];
   uint32_t *s2 = (uint32_t *)&s[2];

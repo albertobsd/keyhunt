@@ -27,13 +27,15 @@ email: albertobsd@gmail.com
 #include "hash/sha256.h"
 #include "hash/ripemd160.h"
 
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#include "win_compat.h"
+
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 #include "getopt.h"
 #include <windows.h>
 #else
 #include <unistd.h>
 #include <pthread.h>
-#include <sys/random.h>
+#include "os_random.h"
 #endif
 
 #ifdef __unix__
@@ -92,7 +94,7 @@ struct bPload	{
 	uint32_t finished;
 };
 
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 #define PACK( __Declaration__ ) __pragma( pack(push, 1) ) __Declaration__ __pragma( pack(pop))
 PACK(struct publickey
 {
@@ -186,7 +188,7 @@ bool initBloomFilter(struct bloom *bloom_arg,uint64_t items_bloom);
 void writeFileIfNeeded(const char *fileName);
 
 void calcualteindex(int i,Int *key);
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 DWORD WINAPI thread_process_vanity(LPVOID vargp);
 DWORD WINAPI thread_process_minikeys(LPVOID vargp);
 DWORD WINAPI thread_process(LPVOID vargp);
@@ -230,7 +232,7 @@ const char *cryptos[3] = {"btc","eth","all"};
 const char *publicsearch[3] = {"uncompress","compress","both"};
 const char *default_fileName = "addresses.txt";
 
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 HANDLE* tid = NULL;
 HANDLE write_keys;
 HANDLE write_random;
@@ -342,7 +344,7 @@ struct checksumsha256 *bloom_bP_checksums;
 struct checksumsha256 *bloom_bPx2nd_checksums;
 struct checksumsha256 *bloom_bPx3rd_checksums;
 
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 std::vector<HANDLE> bloom_bP_mutex;
 std::vector<HANDLE> bloom_bPx2nd_mutex;
 std::vector<HANDLE> bloom_bPx3rd_mutex;
@@ -437,7 +439,7 @@ int main(int argc, char **argv)	{
 	struct bPload *bPload_temp_ptr;
 	size_t rsize;
 	
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 	DWORD s;
 	write_keys = CreateMutex(NULL, FALSE, NULL);
 	write_random = CreateMutex(NULL, FALSE, NULL);
@@ -458,29 +460,15 @@ int main(int argc, char **argv)	{
 	ONE.SetInt32(1);
 	BSGS_GROUP_SIZE.SetInt32(CPU_GRP_SIZE);
 	
-#if defined(_WIN64) && !defined(__CYGWIN__)
-	//Any windows secure random source goes here
-	rseed(clock() + time(NULL) + rand());
-#else
 	unsigned long rseedvalue;
-	int bytes_read = getrandom(&rseedvalue, sizeof(unsigned long), GRND_NONBLOCK);
-	if(bytes_read > 0)	{
+	int bytes_read = os_getrandom(&rseedvalue, sizeof(rseedvalue));
+	if (bytes_read == 0) {
 		rseed(rseedvalue);
-		/*
-		In any case that seed is for a failsafe RNG, the default source on linux is getrandom function
-		See https://www.2uo.de/myths-about-urandom/
-		*/
-	}
-	else	{
-		/*
-			what year is??
-			WTF linux without RNG ? 
-		*/
-		fprintf(stderr,"[E] Error getrandom() ?\n");
+	} else {
+		fprintf(stderr,"[E] Error os_getrandom() ?\n");
 		exit(EXIT_FAILURE);
-		rseed(clock() + time(NULL) + rand()*rand());
+		rseed(clock() + time(NULL));
 	}
-#endif
 	
 	
 	
@@ -567,7 +555,7 @@ int main(int argc, char **argv)	{
 					}
 				}
 				else	{
-					fprintf(stderr,"[E] Invalid Minikey length %li : %s\n",strlen(optarg),optarg);
+					fprintf(stderr,"[E] Invalid Minikey length %zu : %s\n",strlen(optarg),optarg);
 					exit(EXIT_FAILURE);
 				}
 				
@@ -1218,7 +1206,7 @@ int main(int argc, char **argv)	{
 		bloom_bP_checksums = (struct checksumsha256*)calloc(256,sizeof(struct checksumsha256));
 		checkpointer((void *)bloom_bP_checksums,__FILE__,"calloc","bloom_bP_checksums" ,__LINE__ -1 );
 		
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 		bloom_bP_mutex = (HANDLE*) calloc(256,sizeof(HANDLE));
 		
 #else
@@ -1230,7 +1218,7 @@ int main(int argc, char **argv)	{
 		fflush(stdout);
 		bloom_bP_totalbytes = 0;
 		for(i=0; i< 256; i++)	{
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 			bloom_bP_mutex[i] = CreateMutex(NULL, FALSE, NULL);
 #else
 			pthread_mutex_init(&bloom_bP_mutex[i],NULL);
@@ -1247,10 +1235,10 @@ int main(int argc, char **argv)	{
 
 		printf("[+] Bloom filter for %" PRIu64 " elements ",bsgs_m2);
 		
-#if defined(_WIN64) && !defined(__CYGWIN__)
-		bloom_bPx2nd_mutex = (HANDLE*) calloc(256,sizeof(HANDLE));
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
+	bloom_bPx2nd_mutex = (HANDLE*) calloc(256,sizeof(HANDLE));
 #else
-		bloom_bPx2nd_mutex = (pthread_mutex_t*) calloc(256,sizeof(pthread_mutex_t));
+	bloom_bPx2nd_mutex = (pthread_mutex_t*) calloc(256,sizeof(pthread_mutex_t));
 #endif
 		checkpointer((void *)bloom_bPx2nd_mutex,__FILE__,"calloc","bloom_bPx2nd_mutex" ,__LINE__ -1 );
 		bloom_bPx2nd = (struct bloom*)calloc(256,sizeof(struct bloom));
@@ -1258,12 +1246,12 @@ int main(int argc, char **argv)	{
 		bloom_bPx2nd_checksums = (struct checksumsha256*) calloc(256,sizeof(struct checksumsha256));
 		checkpointer((void *)bloom_bPx2nd_checksums,__FILE__,"calloc","bloom_bPx2nd_checksums" ,__LINE__ -1 );
 		bloom_bP2_totalbytes = 0;
-		for(i=0; i< 256; i++)	{
-#if defined(_WIN64) && !defined(__CYGWIN__)
-			bloom_bPx2nd_mutex[i] = CreateMutex(NULL, FALSE, NULL);
-#else
-			pthread_mutex_init(&bloom_bPx2nd_mutex[i],NULL);
-#endif
+		for(i=0; i< 256; i++) {
+	#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
+		    bloom_bPx2nd_mutex[i] = CreateMutex(NULL, FALSE, NULL);
+	#else
+		    pthread_mutex_init(&bloom_bPx2nd_mutex[i],NULL);
+	#endif
 			if(bloom_init2(&bloom_bPx2nd[i],itemsbloom2,0.000001)	== 1){
 				fprintf(stderr,"[E] error bloom_init _ [%" PRIu64 "]\n",i);
 				exit(EXIT_FAILURE);
@@ -1274,10 +1262,10 @@ int main(int argc, char **argv)	{
 		printf(": %.2f MB\n",(float)((float)(uint64_t)bloom_bP2_totalbytes/(float)(uint64_t)1048576));
 		
 
-#if defined(_WIN64) && !defined(__CYGWIN__)
-		bloom_bPx3rd_mutex = (HANDLE*) calloc(256,sizeof(HANDLE));
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
+	bloom_bPx3rd_mutex = (HANDLE*) calloc(256,sizeof(HANDLE));
 #else
-		bloom_bPx3rd_mutex = (pthread_mutex_t*) calloc(256,sizeof(pthread_mutex_t));
+	bloom_bPx3rd_mutex = (pthread_mutex_t*) calloc(256,sizeof(pthread_mutex_t));
 #endif
 		checkpointer((void *)bloom_bPx3rd_mutex,__FILE__,"calloc","bloom_bPx3rd_mutex" ,__LINE__ -1 );
 		bloom_bPx3rd = (struct bloom*)calloc(256,sizeof(struct bloom));
@@ -1287,12 +1275,12 @@ int main(int argc, char **argv)	{
 		
 		printf("[+] Bloom filter for %" PRIu64 " elements ",bsgs_m3);
 		bloom_bP3_totalbytes = 0;
-		for(i=0; i< 256; i++)	{
-#if defined(_WIN64) && !defined(__CYGWIN__)
-			bloom_bPx3rd_mutex[i] = CreateMutex(NULL, FALSE, NULL);
-#else
-			pthread_mutex_init(&bloom_bPx3rd_mutex[i],NULL);
-#endif
+		for(i=0; i< 256; i++) {
+	#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
+		    bloom_bPx3rd_mutex[i] = CreateMutex(NULL, FALSE, NULL);
+	#else
+		    pthread_mutex_init(&bloom_bPx3rd_mutex[i],NULL);
+	#endif
 			if(bloom_init2(&bloom_bPx3rd[i],itemsbloom3,0.000001)	== 1){
 				fprintf(stderr,"[E] error bloom_init [%" PRIu64 "]\n",i);
 				exit(EXIT_FAILURE);
@@ -1639,7 +1627,7 @@ int main(int argc, char **argv)	{
 				printf("\r[+] processing %lu/%lu bP points : %i%%\r",FINISHED_ITEMS,bsgs_m,(int) (((double)FINISHED_ITEMS/(double)bsgs_m)*100));
 				fflush(stdout);
 				
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 				tid = (HANDLE*)calloc(NTHREADS, sizeof(HANDLE));
 				checkpointer((void *)tid,__FILE__,"calloc","tid" ,__LINE__ -1 );
 				bPload_mutex = (HANDLE*) calloc(NTHREADS,sizeof(HANDLE));
@@ -1656,7 +1644,7 @@ int main(int argc, char **argv)	{
 				memset(bPload_threads_available,1,NTHREADS);
 				
 				for(j = 0; j < NTHREADS; j++)	{
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 					bPload_mutex[j] = CreateMutex(NULL, FALSE, NULL);
 #else
 					pthread_mutex_init(&bPload_mutex[j],NULL);
@@ -1680,7 +1668,7 @@ int main(int argc, char **argv)	{
 								bPload_temp_ptr[j].workload = THREADBPWORKLOAD + PERTHREAD_R;
 								salir = 1;
 							}
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 							tid[j] = CreateThread(NULL, 0, thread_bPload_2blooms, (void*) &bPload_temp_ptr[j], 0, &s);
 #else
 							s = pthread_create(&tid[j],NULL,thread_bPload_2blooms,(void*) &bPload_temp_ptr[j]);
@@ -1699,7 +1687,7 @@ int main(int argc, char **argv)	{
 					
 					for(j = 0 ; j < NTHREADS ; j++)	{
 
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 						WaitForSingleObject(bPload_mutex[j], INFINITE);
 						finished = bPload_temp_ptr[j].finished;
 						ReleaseMutex(bPload_mutex[j]);
@@ -1750,10 +1738,10 @@ int main(int argc, char **argv)	{
 				printf("\r[+] processing %lu/%lu bP points : %i%%\r",FINISHED_ITEMS,bsgs_m,(int) (((double)FINISHED_ITEMS/(double)bsgs_m)*100));
 				fflush(stdout);
 				
-#if defined(_WIN64) && !defined(__CYGWIN__)
-				tid = (HANDLE*)calloc(NTHREADS, sizeof(HANDLE));
-				bPload_mutex = (HANDLE*) calloc(NTHREADS,sizeof(HANDLE));
-#else
+		#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
+			tid = (HANDLE*)calloc(NTHREADS, sizeof(HANDLE));
+			bPload_mutex = (HANDLE*) calloc(NTHREADS,sizeof(HANDLE));
+		#else
 				tid = (pthread_t *) calloc(NTHREADS,sizeof(pthread_t));
 				bPload_mutex = (pthread_mutex_t*) calloc(NTHREADS,sizeof(pthread_mutex_t));
 #endif
@@ -1768,12 +1756,12 @@ int main(int argc, char **argv)	{
 
 				memset(bPload_threads_available,1,NTHREADS);
 				
-				for(j = 0; j < NTHREADS; j++)	{
-#if defined(_WIN64) && !defined(__CYGWIN__)
+				for(j = 0; j < NTHREADS; j++) {
+			#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 					bPload_mutex = CreateMutex(NULL, FALSE, NULL);
-#else
+			#else
 					pthread_mutex_init(&bPload_mutex[j],NULL);
-#endif
+			#endif
 				}
 				
 				do	{
@@ -1795,9 +1783,9 @@ int main(int argc, char **argv)	{
 								//if(FLAGDEBUG) printf("[D] Salir OK\n");
 							}
 							//if(FLAGDEBUG) printf("[I] %lu to %lu\n",bPload_temp_ptr[i].from,bPload_temp_ptr[i].to);
-#if defined(_WIN64) && !defined(__CYGWIN__)
-							tid[j] = CreateThread(NULL, 0, thread_bPload, (void*) &bPload_temp_ptr[j], 0, &s);
-#else
+				#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
+					tid[j] = CreateThread(NULL, 0, thread_bPload, (void*) &bPload_temp_ptr[j], 0, &s);
+				#else
 							s = pthread_create(&tid[j],NULL,thread_bPload,(void*) &bPload_temp_ptr[j]);
 							pthread_detach(tid[j]);
 #endif
@@ -1813,7 +1801,7 @@ int main(int argc, char **argv)	{
 					
 					for(j = 0 ; j < NTHREADS ; j++)	{
 
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 						WaitForSingleObject(bPload_mutex[j], INFINITE);
 						finished = bPload_temp_ptr[j].finished;
 						ReleaseMutex(bPload_mutex[j]);
@@ -2031,7 +2019,7 @@ int main(int argc, char **argv)	{
 		checkpointer((void *)steps,__FILE__,"calloc","steps" ,__LINE__ -1 );
 		ends = (unsigned int *) calloc(NTHREADS,sizeof(int));
 		checkpointer((void *)ends,__FILE__,"calloc","ends" ,__LINE__ -1 );
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 		tid = (HANDLE*)calloc(NTHREADS, sizeof(HANDLE));
 #else
 		tid = (pthread_t *) calloc(NTHREADS,sizeof(pthread_t));
@@ -2044,8 +2032,8 @@ int main(int argc, char **argv)	{
 			tt->nt = j;
 			steps[j] = 0;
 			s = 0;
-			switch(FLAGBSGSMODE)	{
-#if defined(_WIN64) && !defined(__CYGWIN__)
+			switch(FLAGBSGSMODE)    {
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 				case 0:
 					tid[j] = CreateThread(NULL, 0, thread_process_bsgs, (void*)tt, 0, &s);
 					break;
@@ -2061,7 +2049,6 @@ int main(int argc, char **argv)	{
 				case 4:
 					tid[j] = CreateThread(NULL, 0, thread_process_bsgs_dance, (void*)tt, 0, &s);
 					break;
-				}
 #else
 				case 0:
 					s = pthread_create(&tid[j],NULL,thread_process_bsgs,(void *)tt);
@@ -2080,7 +2067,7 @@ int main(int argc, char **argv)	{
 				break;
 #endif
 			}
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 			if (tid[j] == NULL) {
 #else
 			if(s != 0)	{
@@ -2096,7 +2083,7 @@ int main(int argc, char **argv)	{
 		checkpointer((void *)steps,__FILE__,"calloc","steps" ,__LINE__ -1 );
 		ends = (unsigned int *) calloc(NTHREADS,sizeof(int));
 		checkpointer((void *)ends,__FILE__,"calloc","ends" ,__LINE__ -1 );
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 		tid = (HANDLE*)calloc(NTHREADS, sizeof(HANDLE));
 #else
 		tid = (pthread_t *) calloc(NTHREADS,sizeof(pthread_t));
@@ -2108,19 +2095,19 @@ int main(int argc, char **argv)	{
 			tt->nt = j;
 			steps[j] = 0;
 			s = 0;
-			switch(FLAGMODE)	{
-#if defined(_WIN64) && !defined(__CYGWIN__)
+			switch(FLAGMODE)    {
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 				case MODE_ADDRESS:
 				case MODE_XPOINT:
 				case MODE_RMD160:
 					tid[j] = CreateThread(NULL, 0, thread_process, (void*)tt, 0, &s);
-				break;
+					break;
 				case MODE_MINIKEYS:
 					tid[j] = CreateThread(NULL, 0, thread_process_minikeys, (void*)tt, 0, &s);
-				break;
+					break;
 				case MODE_VANITY:
 					tid[j] = CreateThread(NULL, 0, thread_process_vanity, (void*)tt, 0, &s);
-				break;
+					break;
 #else
 				case MODE_ADDRESS:
 				case MODE_XPOINT:
@@ -2186,7 +2173,7 @@ int main(int argc, char **argv)	{
 					}
 				}
 				
-#ifdef _WIN64
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 				WaitForSingleObject(bsgs_thread, INFINITE);
 #else
 				pthread_mutex_lock(&bsgs_thread);
@@ -2238,7 +2225,7 @@ int main(int argc, char **argv)	{
 				printf("%s",buffer);
 				fflush(stdout);
 				THREADOUTPUT = 0;			
-#ifdef _WIN64
+#if defined(_WIN64) && !defined(__MINGW32__) && !defined(__MINGW64__)
 				ReleaseMutex(bsgs_thread);
 #else
 				pthread_mutex_unlock(&bsgs_thread);
@@ -2251,7 +2238,7 @@ int main(int argc, char **argv)	{
 		}
 	}while(continue_flag);
 	printf("\nEnd\n");
-#ifdef _WIN64
+#if defined(_WIN64) && !defined(__MINGW32__) && !defined(__MINGW64__)
 	CloseHandle(write_keys);
 	CloseHandle(write_random);
 	CloseHandle(bsgs_thread);
@@ -2334,7 +2321,7 @@ int searchbinary(struct address_value *buffer,char *data,int64_t array_length) {
 	return r;
 }
 
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 DWORD WINAPI thread_process_minikeys(LPVOID vargp) {
 #else
 void *thread_process_minikeys(void *vargp)	{
@@ -2373,7 +2360,7 @@ void *thread_process_minikeys(void *vargp)	{
 		}
 		else	{
 			if(FLAGBASEMINIKEY)	{
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 				WaitForSingleObject(write_random, INFINITE);
 				memcpy(buffer_b58,raw_baseminikey,21);
 				increment_minikey_N(raw_baseminikey);
@@ -2386,7 +2373,7 @@ void *thread_process_minikeys(void *vargp)	{
 #endif
 			}
 			else	{
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 				WaitForSingleObject(write_random, INFINITE);
 #else
 				pthread_mutex_lock(&write_random);
@@ -2406,7 +2393,7 @@ void *thread_process_minikeys(void *vargp)	{
 					memcpy(buffer_b58,raw_baseminikey,21);
 					increment_minikey_N(raw_baseminikey);
 				}
-#if defined(_WIN64) && !defined(__CYGWIN__)				
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 				ReleaseMutex(write_random);
 #else
 				pthread_mutex_unlock(&write_random);
@@ -2471,7 +2458,7 @@ void *thread_process_minikeys(void *vargp)	{
 								/* hit */
 								hextemp = key_mpz[k].GetBase16();
 								secp->GetPublicKeyHex(false,publickey[k],public_key_uncompressed_hex);
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 								WaitForSingleObject(write_keys, INFINITE);
 #else
 								pthread_mutex_lock(&write_keys);
@@ -2485,7 +2472,7 @@ void *thread_process_minikeys(void *vargp)	{
 									fclose(keys);
 								}
 								printf("\nHIT!! Private Key: %s\npubkey: %s\nminikey: %s\naddress: %s\n",hextemp,public_key_uncompressed_hex,minikeys[k],address[k]);
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 								ReleaseMutex(write_keys);
 #else
 								pthread_mutex_unlock(&write_keys);
@@ -2505,7 +2492,7 @@ void *thread_process_minikeys(void *vargp)	{
 }
 
 
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 DWORD WINAPI thread_process(LPVOID vargp) {
 #else
 void *thread_process(void *vargp)	{
@@ -2550,7 +2537,7 @@ void *thread_process(void *vargp)	{
 		}
 		else	{
 			if(n_range_start.IsLower(&n_range_end))	{
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 				WaitForSingleObject(write_random, INFINITE);
 				key_mpz.Set(&n_range_start);
 				n_range_start.Add(N_SEQUENTIAL_MAX);
@@ -3099,7 +3086,7 @@ void *thread_process(void *vargp)	{
 }
 
 
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 DWORD WINAPI thread_process_vanity(LPVOID vargp) {
 #else
 void *thread_process_vanity(void *vargp)	{
@@ -3146,7 +3133,7 @@ void *thread_process_vanity(void *vargp)	{
 		printf("[D] vanity_rmd_targets = %i          fillllll\n",vanity_rmd_targets);
 		printf("[D] vanity_rmd_total = %i\n",vanity_rmd_total);
 		for(i =0; i < vanity_rmd_targets;i++)	{
-			printf("[D] vanity_rmd_limits[%li] = %i\n",i,vanity_rmd_limits[i]);
+			printf("[D] vanity_rmd_limits[%d] = %i\n",i,vanity_rmd_limits[i]);
 			
 		}
 		printf("[D] vanity_rmd_minimun_bytes_check_length = %i\n",vanity_rmd_minimun_bytes_check_length);
@@ -3160,7 +3147,7 @@ void *thread_process_vanity(void *vargp)	{
 		}
 		else	{
 			if(n_range_start.IsLower(&n_range_end))	{
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 				WaitForSingleObject(write_random, INFINITE);
 				key_mpz.Set(&n_range_start);
 				n_range_start.Add(N_SEQUENTIAL_MAX);
@@ -3772,7 +3759,7 @@ int bsgs_searchbinary(struct bsgs_xvalue *buffer,char *data,int64_t array_length
 	return r;
 }
 
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 DWORD WINAPI thread_process_bsgs(LPVOID vargp) {
 #else
 void *thread_process_bsgs(void *vargp)	{
@@ -3821,7 +3808,7 @@ void *thread_process_bsgs(void *vargp)	{
 		We do this in an atomic pthread_mutex operation to not affect others threads
 		so BSGS_CURRENT is never the same between threads
 	*/
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 		WaitForSingleObject(bsgs_thread, INFINITE);
 #else
 		pthread_mutex_lock(&bsgs_thread);
@@ -3834,7 +3821,7 @@ void *thread_process_bsgs(void *vargp)	{
 		BSGS_CURRENT.Add(&BSGS_N);		//Then add BSGS_N to BSGS_CURRENT
 		*/
 		
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 		ReleaseMutex(bsgs_thread);
 #else
 		pthread_mutex_unlock(&bsgs_thread);
@@ -3952,7 +3939,7 @@ pn.y.ModAdd(&GSn[i].y);
 								point_found = secp->ComputePublicKey(&keyfound);
 								aux_c = secp->GetPublicKeyHex(OriginalPointsBSGScompressed[k],point_found);
 								printf("[+] Publickey %s\n",aux_c);
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 								WaitForSingleObject(write_keys, INFINITE);
 #else
 								pthread_mutex_lock(&write_keys);
@@ -3965,7 +3952,7 @@ pn.y.ModAdd(&GSn[i].y);
 								}
 								free(hextemp);
 								free(aux_c);
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 				ReleaseMutex(write_keys);
 #else
 				pthread_mutex_unlock(&write_keys);
@@ -4008,7 +3995,7 @@ pn.y.ModAdd(&GSn[i].y);
 	return NULL;
 }
 
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 DWORD WINAPI thread_process_bsgs_random(LPVOID vargp) {
 #else
 void *thread_process_bsgs_random(void *vargp)	{
@@ -4060,14 +4047,14 @@ void *thread_process_bsgs_random(void *vargp)	{
 		-b	bit | Min bit value | Max bit value |
 		-r	A:B | A             | B             |
 	*/
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 		WaitForSingleObject(bsgs_thread, INFINITE);
 #else
 		pthread_mutex_lock(&bsgs_thread);
 #endif
 
 		base_key.Rand(&n_range_start,&n_range_end);
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 		ReleaseMutex(bsgs_thread);
 #else
 		pthread_mutex_unlock(&bsgs_thread);
@@ -4201,7 +4188,7 @@ pn.y.ModAdd(&GSn[i].y);
 								point_found = secp->ComputePublicKey(&keyfound);
 								aux_c = secp->GetPublicKeyHex(OriginalPointsBSGScompressed[k],point_found);
 								printf("[+] Publickey %s\n",aux_c);
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 								WaitForSingleObject(write_keys, INFINITE);
 #else
 								pthread_mutex_lock(&write_keys);
@@ -4214,7 +4201,7 @@ pn.y.ModAdd(&GSn[i].y);
 								}
 								free(hextemp);
 								free(aux_c);
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 								ReleaseMutex(write_keys);
 #else
 								pthread_mutex_unlock(&write_keys);
@@ -4368,7 +4355,7 @@ int bsgs_thirdcheck(Int *start_range,uint32_t a,uint32_t k_index,Int *privatekey
 }
 
 void sleep_ms(int milliseconds)	{ // cross-platform sleep function
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
     Sleep(milliseconds);
 #elif _POSIX_C_SOURCE >= 199309L
     struct timespec ts;
@@ -4398,7 +4385,7 @@ void init_generator()	{
 	_2Gn = secp->DoubleDirect(Gn[CPU_GRP_SIZE / 2 - 1]);
 }
 
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 DWORD WINAPI thread_bPload(LPVOID vargp) {
 #else
 void *thread_bPload(void *vargp)	{
@@ -4526,7 +4513,7 @@ void *thread_bPload(void *vargp)	{
 					bPtable[i_counter].index = i_counter;
 				}
 				if(!FLAGREADEDFILE4)	{
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 					WaitForSingleObject(bloom_bPx3rd_mutex[bloom_bP_index], INFINITE);
 					bloom_add(&bloom_bPx3rd[bloom_bP_index], rawvalue, BSGS_BUFFERXPOINTLENGTH);
 					ReleaseMutex(bloom_bPx3rd_mutex[bloom_bP_index]);
@@ -4538,7 +4525,7 @@ void *thread_bPload(void *vargp)	{
 				}
 			}
 			if(i_counter < bsgs_m2 && !FLAGREADEDFILE2)	{
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 				WaitForSingleObject(bloom_bPx2nd_mutex[bloom_bP_index], INFINITE);
 				bloom_add(&bloom_bPx2nd[bloom_bP_index], rawvalue, BSGS_BUFFERXPOINTLENGTH);
 				ReleaseMutex(bloom_bPx2nd_mutex[bloom_bP_index]);
@@ -4549,10 +4536,10 @@ void *thread_bPload(void *vargp)	{
 #endif	
 			}
 			if(i_counter < to && !FLAGREADEDFILE1 )	{
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 				WaitForSingleObject(bloom_bP_mutex[bloom_bP_index], INFINITE);
 				bloom_add(&bloom_bP[bloom_bP_index], rawvalue ,BSGS_BUFFERXPOINTLENGTH);
-				ReleaseMutex(bloom_bP_mutex[bloom_bP_index);
+				ReleaseMutex(bloom_bP_mutex[bloom_bP_index]);
 #else
 				pthread_mutex_lock(&bloom_bP_mutex[bloom_bP_index]);
 				bloom_add(&bloom_bP[bloom_bP_index], rawvalue ,BSGS_BUFFERXPOINTLENGTH);
@@ -4578,7 +4565,7 @@ void *thread_bPload(void *vargp)	{
 		startP = pp;
 	}
 	delete grp;
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 	WaitForSingleObject(bPload_mutex[threadid], INFINITE);
 	tt->finished = 1;
 	ReleaseMutex(bPload_mutex[threadid]);
@@ -4591,7 +4578,7 @@ void *thread_bPload(void *vargp)	{
 	return NULL;
 }
 
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 DWORD WINAPI thread_bPload_2blooms(LPVOID vargp) {
 #else
 void *thread_bPload_2blooms(void *vargp)	{
@@ -4709,7 +4696,7 @@ void *thread_bPload_2blooms(void *vargp)	{
 					bPtable[i_counter].index = i_counter;
 				}
 				if(!FLAGREADEDFILE4)	{
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 					WaitForSingleObject(bloom_bPx3rd_mutex[bloom_bP_index], INFINITE);
 					bloom_add(&bloom_bPx3rd[bloom_bP_index], rawvalue, BSGS_BUFFERXPOINTLENGTH);
 					ReleaseMutex(bloom_bPx3rd_mutex[bloom_bP_index]);
@@ -4721,7 +4708,7 @@ void *thread_bPload_2blooms(void *vargp)	{
 				}
 			}
 			if(i_counter < bsgs_m2 && !FLAGREADEDFILE2)	{
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 					WaitForSingleObject(bloom_bPx2nd_mutex[bloom_bP_index], INFINITE);
 					bloom_add(&bloom_bPx2nd[bloom_bP_index], rawvalue, BSGS_BUFFERXPOINTLENGTH);
 					ReleaseMutex(bloom_bPx2nd_mutex[bloom_bP_index]);
@@ -4750,7 +4737,7 @@ void *thread_bPload_2blooms(void *vargp)	{
 		startP = pp;
 	}
 	delete grp;
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 	WaitForSingleObject(bPload_mutex[threadid], INFINITE);
 	tt->finished = 1;
 	ReleaseMutex(bPload_mutex[threadid]);
@@ -4788,7 +4775,7 @@ void generate_binaddress_eth(Point &publickey,unsigned char *dst_address)	{
 	memcpy(dst_address,bin_publickey+12,20);
 }
 
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 DWORD WINAPI thread_process_bsgs_dance(LPVOID vargp) {
 #else
 void *thread_process_bsgs_dance(void *vargp)	{
@@ -4828,7 +4815,7 @@ void *thread_process_bsgs_dance(void *vargp)	{
 	*/
 	do	{
 		r = rand() % 3;
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 	WaitForSingleObject(bsgs_thread, INFINITE);
 #else
 	pthread_mutex_lock(&bsgs_thread);
@@ -4870,7 +4857,7 @@ void *thread_process_bsgs_dance(void *vargp)	{
 			base_key.Rand(&BSGS_CURRENT,&n_range_end);
 		break;
 	}
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 	ReleaseMutex(bsgs_thread);
 #else
 	pthread_mutex_unlock(&bsgs_thread);
@@ -5006,7 +4993,7 @@ pn.y.ModAdd(&GSn[i].y);
 								point_found = secp->ComputePublicKey(&keyfound);
 								aux_c = secp->GetPublicKeyHex(OriginalPointsBSGScompressed[k],point_found);
 								printf("[+] Publickey %s\n",aux_c);
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 								WaitForSingleObject(write_keys, INFINITE);
 #else
 								pthread_mutex_lock(&write_keys);
@@ -5019,7 +5006,7 @@ pn.y.ModAdd(&GSn[i].y);
 								}
 								free(hextemp);
 								free(aux_c);
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 								ReleaseMutex(write_keys);
 #else
 								pthread_mutex_unlock(&write_keys);
@@ -5066,7 +5053,7 @@ pn.y.ModAdd(&GSn[i].y);
 	return NULL;
 }
 
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 DWORD WINAPI thread_process_bsgs_backward(LPVOID vargp) {
 #else
 void *thread_process_bsgs_backward(void *vargp)	{
@@ -5114,7 +5101,7 @@ void *thread_process_bsgs_backward(void *vargp)	{
 	*/
 	do	{
 		
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 		WaitForSingleObject(bsgs_thread, INFINITE);
 #else
 		pthread_mutex_lock(&bsgs_thread);
@@ -5131,7 +5118,7 @@ void *thread_process_bsgs_backward(void *vargp)	{
 		else	{
 			entrar = 0;
 		}
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 		ReleaseMutex(bsgs_thread);
 #else
 		pthread_mutex_unlock(&bsgs_thread);
@@ -5264,7 +5251,7 @@ pn.y.ModAdd(&GSn[i].y);
 								point_found = secp->ComputePublicKey(&keyfound);
 								aux_c = secp->GetPublicKeyHex(OriginalPointsBSGScompressed[k],point_found);
 								printf("[+] Publickey %s\n",aux_c);
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 								WaitForSingleObject(write_keys, INFINITE);
 #else
 								pthread_mutex_lock(&write_keys);
@@ -5277,7 +5264,7 @@ pn.y.ModAdd(&GSn[i].y);
 								}
 								free(hextemp);
 								free(aux_c);
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 								ReleaseMutex(write_keys);
 #else
 								pthread_mutex_unlock(&write_keys);
@@ -5323,7 +5310,7 @@ pn.y.ModAdd(&GSn[i].y);
 	return NULL;
 }
 
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 DWORD WINAPI thread_process_bsgs_both(LPVOID vargp) {
 #else
 void *thread_process_bsgs_both(void *vargp)	{
@@ -5374,7 +5361,7 @@ void *thread_process_bsgs_both(void *vargp)	{
 	do	{
 
 		r = rand() % 2;
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 		WaitForSingleObject(bsgs_thread, INFINITE);
 #else
 		pthread_mutex_lock(&bsgs_thread);
@@ -5413,7 +5400,7 @@ void *thread_process_bsgs_both(void *vargp)	{
 				}
 			break;
 		}
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 		ReleaseMutex(bsgs_thread);
 #else
 		pthread_mutex_unlock(&bsgs_thread);
@@ -5548,7 +5535,7 @@ void *thread_process_bsgs_both(void *vargp)	{
 									point_found = secp->ComputePublicKey(&keyfound);
 									aux_c = secp->GetPublicKeyHex(OriginalPointsBSGScompressed[k],point_found);
 									printf("[+] Publickey %s\n",aux_c);
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 									WaitForSingleObject(write_keys, INFINITE);
 #else
 									pthread_mutex_lock(&write_keys);
@@ -5561,7 +5548,7 @@ void *thread_process_bsgs_both(void *vargp)	{
 									}
 									free(hextemp);
 									free(aux_c);
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 									ReleaseMutex(write_keys);
 #else
 									pthread_mutex_unlock(&write_keys);
@@ -5812,7 +5799,7 @@ void writevanitykey(bool compressed,Int *key)	{
 	hexrmd = tohex(rmdhash,20);
 	rmd160toaddress_dst(rmdhash,address);
 	
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 	WaitForSingleObject(write_keys, INFINITE);
 #else
 	pthread_mutex_lock(&write_keys);
@@ -5824,7 +5811,7 @@ void writevanitykey(bool compressed,Int *key)	{
 	}
 	printf("\nVanity Private Key: %s\npubkey: %s\nAddress %s\nrmd160 %s\n",hextemp,public_key_hex,address,hexrmd);
 	
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 	ReleaseMutex(write_keys);
 #else
 	pthread_mutex_unlock(&write_keys);
@@ -5999,7 +5986,7 @@ void writekey(bool compressed,Int *key)	{
 	hexrmd = tohex(rmdhash,20);
 	rmd160toaddress_dst(rmdhash,address);
 
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 	WaitForSingleObject(write_keys, INFINITE);
 #else
 	pthread_mutex_lock(&write_keys);
@@ -6011,7 +5998,7 @@ void writekey(bool compressed,Int *key)	{
 	}
 	printf("\nHit! Private Key: %s\npubkey: %s\nAddress %s\nrmd160 %s\n",hextemp,public_key_hex,address,hexrmd);
 	
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 	ReleaseMutex(write_keys);
 #else
 	pthread_mutex_unlock(&write_keys);
@@ -6031,7 +6018,7 @@ void writekeyeth(Int *key)	{
 	address[1] = 'x';
 	tohex_dst(hash,20,address+2);
 
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 	WaitForSingleObject(write_keys, INFINITE);
 #else
 	pthread_mutex_lock(&write_keys);
@@ -6042,7 +6029,7 @@ void writekeyeth(Int *key)	{
 		fclose(keys);
 	}
 	printf("\n Hit!!!! Private Key: %s\naddress: %s\n",hextemp,address);
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 	ReleaseMutex(write_keys);
 #else
 	pthread_mutex_unlock(&write_keys);
@@ -6532,7 +6519,7 @@ bool forceReadFileXPoint(char *fileName)	{
 						}
 					break;
 					default:
-						fprintf(stderr,"[E] Omiting line unknow length size %li: %s\n",lenaux,aux);
+						fprintf(stderr,"[E] Omiting line unknow length size %zu: %s\n",lenaux,aux);
 					break;
 				}
 			}
@@ -6592,7 +6579,7 @@ void writeFileIfNeeded(const char *fileName)	{
 		snprintf(fileBloomName,30,"data_%s.dat",hexPrefix);
 		fileDescriptor = fopen(fileBloomName,"wb");
 		dataSize = N * (sizeof(struct address_value));
-		printf("[D] size data %li\n",dataSize);
+				printf("[D] size data %" PRIu64 "\n",dataSize);
 		if(fileDescriptor != NULL)	{
 			printf("[+] Writing file %s ",fileBloomName);
 			

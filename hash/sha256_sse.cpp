@@ -24,7 +24,7 @@ namespace _sha256sse
 {
 
 
-#ifdef WIN64
+#if defined(WIN64) && !defined(__MINGW32__) && !defined(__MINGW64__)
   static const __declspec(align(16)) uint32_t _init[] = {
 #else
   static const uint32_t _init[] __attribute__ ((aligned (16))) = {
@@ -561,17 +561,21 @@ void sha256sse_checksum(uint32_t *i0, uint32_t *i1, uint32_t *i2, uint32_t *i3,
   _sha256sse::Initialize(s);
   _sha256sse::Transform2(s, i0, i1, i2, i3);
 
-#ifndef WIN64
+// Use MSVC-specific layout member access on native Windows builds
+// but ensure MinGW (which defines __MINGW32__/__MINGW64__) uses the
+// GCC-compatible path. This avoids referencing .m128i_u32 on __m128i
+// which is not a class type under GCC.
+#if defined(WIN64) && !defined(__MINGW32__) && !defined(__MINGW64__)
+  *((uint32_t *)d0) = _byteswap_ulong(s[0].m128i_u32[3]);
+  *((uint32_t *)d1) = _byteswap_ulong(s[0].m128i_u32[2]);
+  *((uint32_t *)d2) = _byteswap_ulong(s[0].m128i_u32[1]);
+  *((uint32_t *)d3) = _byteswap_ulong(s[0].m128i_u32[0]);
+#else
   uint32_t *s32 = (uint32_t *)(&s[0]);
   *((uint32_t *)d0) = __builtin_bswap32(s32[3]);
   *((uint32_t *)d1) = __builtin_bswap32(s32[2]);
   *((uint32_t *)d2) = __builtin_bswap32(s32[1]);
   *((uint32_t *)d3) = __builtin_bswap32(s32[0]);
-#else
-  *((uint32_t *)d0) = _byteswap_ulong(s[0].m128i_u32[3]);
-  *((uint32_t *)d1) = _byteswap_ulong(s[0].m128i_u32[2]);
-  *((uint32_t *)d2) = _byteswap_ulong(s[0].m128i_u32[1]);
-  *((uint32_t *)d3) = _byteswap_ulong(s[0].m128i_u32[0]);
 #endif
 
 }

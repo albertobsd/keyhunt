@@ -110,6 +110,46 @@ and then execute with `-h` to see the help
 ./keyhunt -h
 ```
 
+## Windows build (MinGW)
+
+If you want to build natively on Windows, the recommended approach is to use MSYS2 / MinGW-w64 (use the `MINGW64` shell). Below are the minimal tested steps to produce the `keyhunt.exe` binary.
+
+- Prerequisites (MSYS2 MINGW64):
+
+  - Install MSYS2: https://www.msys2.org/
+  - Open the `MSYS2 MinGW 64-bit` shell (MINGW64).
+
+- Update the system and install required packages:
+
+```bash
+pacman -Syu            # may ask to close/reopen the shell per instructions
+pacman -S --needed base-devel mingw-w64-x86_64-toolchain mingw-w64-x86_64-pkg-config \
+    mingw-w64-x86_64-gmp mingw-w64-x86_64-openssl mingw-w64-x86_64-make
+```
+
+- Clone and build (from the MINGW64 shell):
+
+```bash
+git clone https://github.com/albertobsd/keyhunt.git
+cd keyhunt
+make mingw
+```
+
+The `make mingw` target uses a MinGW-specific `Makefile` and links the necessary Windows libraries (`-lws2_32 -lbcrypt`) while compiling the objects required for Windows.
+
+- Run the test binary (e.g. `test.bat`):
+
+In Explorer double-click `test.bat` or run from the shell:
+
+```bash
+./keyhunt.exe -d -m address -f tests/66.txt -b 66 -l compress -R -s 10
+```
+
+Notes and troubleshooting:
+
+- If the linker complains about missing `-lbcrypt`, ensure you are using the `MINGW64` shell (the MinGW toolchain provides the proper import libraries). If needed, you can try linking `-ladvapi32` and adjust `os_random.c` to use `CryptGenRandom` as a fallback.
+- If the program starts and then immediately exits, run it with `-d` (debug) and without `-q` (quiet), capture output to a log (the provided `test.bat` already does this) and check `run.log` for messages such as `"[E] Error os_getrandom() ?"` which indicate RNG API issues on Windows.
+
 ## ¡Beta!
 
 This version is still a **beta** version, there are a lot of things that can be fail or improve.

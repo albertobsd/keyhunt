@@ -8,7 +8,7 @@
 #ifndef _BLOOM_H
 #define _BLOOM_H
 
-#ifdef _WIN64
+#if defined(_WIN64) && !defined(__MINGW32__) && !defined(__MINGW64__)
 #include <windows.h>
 #endif
 

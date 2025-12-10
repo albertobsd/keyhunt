@@ -4,19 +4,7 @@
 #include <gmp.h>
 
 
-#if  defined(_WIN32) || defined(_WIN64)
-    #include <Windows.h>
-    #include <bcrypt.h>
-    #pragma comment(lib, "bcrypt.lib")
-#elif __unix__ || __unix || __APPLE__ || __MACH__ || __CYGWIN__
-    #include <unistd.h>
-    #include <fcntl.h>
-    #include <sys/syscall.h>
-    #include <linux/random.h>
-    #if defined(GRND_NONBLOCK)
-        #define USE_GETRANDOM
-    #endif
-#endif
+#include "../os_random.h"
 
 #include "Int.h"
 
@@ -67,28 +55,7 @@ void Int::Rand(Int *min,Int *max)	{
 	this->Add(min);
 }
 
-int random_bytes(unsigned char *buffer,int bytes)	{
-    #if defined(_WIN32) || defined(_WIN64)
-        if (!BCryptGenRandom(NULL, buffer, length, BCRYPT_USE_SYSTEM_PREFERRED_RNG)) {
-            fprintf(stderr,"Not BCryptGenRandom available\n");
-			exit(EXIT_FAILURE);
-        }
-		else
-			return bytes;
-	#elif __unix__ || __unix || __APPLE__ || __MACH__ || __CYGWIN__
-		#ifdef USE_GETRANDOM
-			return syscall(SYS_getrandom, buffer, bytes, GRND_NONBLOCK);
-		#else
-            int fd = open("/dev/urandom", O_RDONLY);
-            if (fd == -1) {
-				fprintf(stderr,"Not /dev/urandom available\n");
-				exit(EXIT_FAILURE);
-            }
-            ssize_t result = read(fd, buffer, bytes);
-            close(fd);
-			return result;
-        #endif
-    #else
-        #error "Unsupported platform"
-    #endif
+int random_bytes(unsigned char *buffer,int bytes) {
+	if (os_getrandom(buffer, bytes) == 0) return bytes;
+	return -1;
 }

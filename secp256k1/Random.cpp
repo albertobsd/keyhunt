@@ -18,17 +18,7 @@
 
 #include "Random.h"
 
-#if defined(_WIN64) && !defined(__CYGWIN__)
-#else
-#include <sys/random.h>
-#endif
-
-#ifdef __unix__
-#ifdef __CYGWIN__
-#else
-#include <linux/random.h>
-#endif
-#endif
+#include "../os_random.h"
 
 #define  RK_STATE_LEN 624
 
@@ -66,7 +56,7 @@ void rk_seed(unsigned long seed, rk_state *state)
 #define UPPER_MASK 0x80000000UL
 #define LOWER_MASK 0x7fffffffUL
 
-#ifdef _WIN64
+#if defined(_WIN64) && !defined(__MINGW32__) && !defined(__MINGW64__)
 // Disable "unary minus operator applied to unsigned type, result still unsigned" warning.
 #pragma warning(disable : 4146)
 #endif
@@ -120,23 +110,20 @@ void rseed(unsigned long seed) {
 	//srand(seed);
 }
 
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__MINGW32__) && !defined(__MINGW64__)
 unsigned long rndl() {
-	return rk_random(&localState);
+  return rk_random(&localState);
 }
 #else
 unsigned long rndl() {
-	unsigned long r;
-	int bytes_read = getrandom(&r, sizeof(unsigned long), GRND_NONBLOCK );
-	if (bytes_read > 0) {
-		return r;
-	}
-	else	{
-		/*Fail safe */
-		return rk_random(&localState);
-	}
+  unsigned long r;
+  if (os_getrandom(&r, sizeof(unsigned long)) == 0) {
+    return r;
+  } else {
+    /* Fail safe */
+    return rk_random(&localState);
+  }
 }
-	
 #endif
 
 // Returns a uniform distributed double value in the interval ]0,1[

@@ -22,21 +22,26 @@ email: albertobsd@gmail.com
 #include "gmp256k1/Int.h"
 #include "gmp256k1/IntGroup.h"
 #include "gmp256k1/Random.h"
+#include "win_compat.h"
 
 
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 #include "getopt.h"
 #include <windows.h>
 #else
 #include <unistd.h>
 #include <pthread.h>
+#if !defined(__MINGW32__) && !defined(__MINGW64__)
 #include <sys/random.h>
+#endif
 #endif
 
 #ifdef __unix__
 #ifdef __CYGWIN__
 #else
+#if !defined(__MINGW32__) && !defined(__MINGW64__)
 #include <linux/random.h>
+#endif
 #endif
 #endif
 
@@ -89,7 +94,7 @@ struct bPload	{
 	uint32_t finished;
 };
 
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 #define PACK( __Declaration__ ) __pragma( pack(push, 1) ) __Declaration__ __pragma( pack(pop))
 PACK(struct publickey
 {
@@ -184,7 +189,7 @@ void writeFileIfNeeded(const char *fileName);
 
 void calcualteindex(int i,Int *key);
 
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 DWORD WINAPI thread_process_vanity(LPVOID vargp);
 DWORD WINAPI thread_process_minikeys(LPVOID vargp);
 DWORD WINAPI thread_process(LPVOID vargp);
@@ -230,7 +235,7 @@ const char *cryptos[3] = {"btc","eth","all"};
 const char *publicsearch[3] = {"uncompress","compress","both"};
 const char *default_fileName = "addresses.txt";
 
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 HANDLE* tid = NULL;
 HANDLE write_keys;
 HANDLE write_random;
@@ -342,7 +347,7 @@ struct checksumsha256 *bloom_bP_checksums;
 struct checksumsha256 *bloom_bPx2nd_checksums;
 struct checksumsha256 *bloom_bPx3rd_checksums;
 
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 std::vector<HANDLE> bloom_bP_mutex;
 std::vector<HANDLE> bloom_bPx2nd_mutex;
 std::vector<HANDLE> bloom_bPx3rd_mutex;
@@ -439,7 +444,7 @@ int main(int argc, char **argv)	{
 	size_t rsize;
 	//if(FLAGDEBUG) { printf("[D] File: %s Line %i\n",__FILE__,__LINE__); fflush(stdout); }
 	
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 	DWORD s;
 	write_keys = CreateMutex(NULL, FALSE, NULL);
 	write_random = CreateMutex(NULL, FALSE, NULL);
@@ -1222,7 +1227,7 @@ int main(int argc, char **argv)	{
 		bloom_bP_checksums = (struct checksumsha256*)calloc(256,sizeof(struct checksumsha256));
 		checkpointer((void *)bloom_bP_checksums,__FILE__,"calloc","bloom_bP_checksums" ,__LINE__ -1 );
 		
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 		bloom_bP_mutex = (HANDLE*) calloc(256,sizeof(HANDLE));
 		
 #else
@@ -1234,7 +1239,7 @@ int main(int argc, char **argv)	{
 		fflush(stdout);
 		bloom_bP_totalbytes = 0;
 		for(i=0; i< 256; i++)	{
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 			bloom_bP_mutex[i] = CreateMutex(NULL, FALSE, NULL);
 #else
 			pthread_mutex_init(&bloom_bP_mutex[i],NULL);
@@ -1251,7 +1256,7 @@ int main(int argc, char **argv)	{
 
 		printf("[+] Bloom filter for %" PRIu64 " elements ",bsgs_m2);
 		
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 		bloom_bPx2nd_mutex = (HANDLE*) calloc(256,sizeof(HANDLE));
 #else
 		bloom_bPx2nd_mutex = (pthread_mutex_t*) calloc(256,sizeof(pthread_mutex_t));
@@ -1263,7 +1268,7 @@ int main(int argc, char **argv)	{
 		checkpointer((void *)bloom_bPx2nd_checksums,__FILE__,"calloc","bloom_bPx2nd_checksums" ,__LINE__ -1 );
 		bloom_bP2_totalbytes = 0;
 		for(i=0; i< 256; i++)	{
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 			bloom_bPx2nd_mutex[i] = CreateMutex(NULL, FALSE, NULL);
 #else
 			pthread_mutex_init(&bloom_bPx2nd_mutex[i],NULL);
@@ -1278,7 +1283,7 @@ int main(int argc, char **argv)	{
 		printf(": %.2f MB\n",(float)((float)(uint64_t)bloom_bP2_totalbytes/(float)(uint64_t)1048576));
 		
 
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 		bloom_bPx3rd_mutex = (HANDLE*) calloc(256,sizeof(HANDLE));
 #else
 		bloom_bPx3rd_mutex = (pthread_mutex_t*) calloc(256,sizeof(pthread_mutex_t));
@@ -1292,7 +1297,7 @@ int main(int argc, char **argv)	{
 		printf("[+] Bloom filter for %" PRIu64 " elements ",bsgs_m3);
 		bloom_bP3_totalbytes = 0;
 		for(i=0; i< 256; i++)	{
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 			bloom_bPx3rd_mutex[i] = CreateMutex(NULL, FALSE, NULL);
 #else
 			pthread_mutex_init(&bloom_bPx3rd_mutex[i],NULL);
@@ -1639,7 +1644,7 @@ int main(int argc, char **argv)	{
 				printf("\r[+] processing %lu/%lu bP points : %i%%\r",FINISHED_ITEMS,bsgs_m,(int) (((double)FINISHED_ITEMS/(double)bsgs_m)*100));
 				fflush(stdout);
 				
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 				tid = (HANDLE*)calloc(NTHREADS, sizeof(HANDLE));
 				checkpointer((void *)tid,__FILE__,"calloc","tid" ,__LINE__ -1 );
 				bPload_mutex = (HANDLE*) calloc(NTHREADS,sizeof(HANDLE));
@@ -1656,7 +1661,7 @@ int main(int argc, char **argv)	{
 				memset(bPload_threads_available,1,NTHREADS);
 				
 				for(i = 0; i < NTHREADS; i++)	{
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 					bPload_mutex[i] = CreateMutex(NULL, FALSE, NULL);
 #else
 					pthread_mutex_init(&bPload_mutex[i],NULL);
@@ -1682,7 +1687,7 @@ int main(int argc, char **argv)	{
 								//if(FLAGDEBUG) printf("[D] Salir OK\n");
 							}
 							//if(FLAGDEBUG) printf("[I] %lu to %lu\n",bPload_temp_ptr[i].from,bPload_temp_ptr[i].to);
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 							tid[i] = CreateThread(NULL, 0, thread_bPload_2blooms, (void*) &bPload_temp_ptr[i], 0, &s);
 #else
 							s = pthread_create(&tid[i],NULL,thread_bPload_2blooms,(void*) &bPload_temp_ptr[i]);
@@ -2205,7 +2210,7 @@ int main(int argc, char **argv)	{
 					}
 				}
 				
-#ifdef _WIN64
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 				WaitForSingleObject(bsgs_thread, INFINITE);
 #else
 				pthread_mutex_lock(&bsgs_thread);
@@ -2256,7 +2261,7 @@ int main(int argc, char **argv)	{
 				printf("%s",buffer);
 				fflush(stdout);
 				THREADOUTPUT = 0;			
-#ifdef _WIN64
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 				ReleaseMutex(bsgs_thread);
 #else
 				pthread_mutex_unlock(&bsgs_thread);
@@ -2269,7 +2274,7 @@ int main(int argc, char **argv)	{
 		}
 	}while(continue_flag);
 	printf("\nEnd\n");
-#ifdef _WIN64
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 	CloseHandle(write_keys);
 	CloseHandle(write_random);
 	CloseHandle(bsgs_thread);
@@ -2352,7 +2357,7 @@ int searchbinary(struct address_value *buffer,char *data,int64_t array_length) {
 	return r;
 }
 
-#if defined(_WIN64) && !defined(__CYGWIN__)
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
 DWORD WINAPI thread_process_minikeys(LPVOID vargp) {
 #else
 void *thread_process_minikeys(void *vargp)	{

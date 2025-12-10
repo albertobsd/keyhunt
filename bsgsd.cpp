@@ -29,12 +29,18 @@ email: albertobsd@gmail.com
 
 #include <unistd.h>
 #include <pthread.h>
+#if !defined(__MINGW32__) && !defined(__MINGW64__)
 #include <sys/random.h>
 #include <linux/random.h>
-
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h> // for inet_addr()
+#else
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#endif
+#include "win_compat.h"
+#include "os_random.h"
 #include <pthread.h>   // for pthread functions
 
 #define PORT 8080
@@ -66,7 +72,7 @@ struct tothread {
 struct bPload	{
 	uint32_t threadid;
 	uint64_t from;
-	uint64_t to;
+	int osr = os_getrandom(&rseedvalue, sizeof(unsigned long));
 	uint64_t counter;
 	uint64_t workload;
 	uint32_t aux;
@@ -315,7 +321,8 @@ int main(int argc, char **argv)	{
 	pthread_mutex_init(&write_random,NULL);
 	pthread_mutex_init(&mutex_bsgs_thread,NULL);
 
-	srand(time(NULL));
+	// Initialize sockets for Windows compatibility (no-op on POSIX)
+	socket_init();
 
 	secp = new Secp256K1();
 	secp->Init();
@@ -324,9 +331,9 @@ int main(int argc, char **argv)	{
 	BSGS_GROUP_SIZE.SetInt32(CPU_GRP_SIZE);
 	
 	unsigned long rseedvalue;
-	int bytes_read = getrandom(&rseedvalue, sizeof(unsigned long), GRND_NONBLOCK);
-	if(bytes_read > 0)	{
-		rseed(rseedvalue);
+	int osr = os_getrandom(&rseedvalue, sizeof(unsigned long));
+	    if(osr == 0)	{
+		    rseed(rseedvalue);
 		/*
 		In any case that seed is for a failsafe RNG, the default source on linux is getrandom function
 		See https://www.2uo.de/myths-about-urandom/
@@ -337,9 +344,9 @@ int main(int argc, char **argv)	{
 			what year is??
 			WTF linux without RNG ? 
 		*/
-		fprintf(stderr,"[E] Error getrandom() ?\n");
+		fprintf(stderr,"[E] Error os_getrandom() ?\n");
 		exit(0);
-		rseed(clock() + time(NULL) + rand()*rand());
+		rseed(clock() + time(NULL));
 	}
 	
 	port = PORT;
@@ -1361,7 +1368,7 @@ int main(int argc, char **argv)	{
 		fflush(stdout);
 	}
 	
-	close(server_fd);
+	socket_close(server_fd);
 }
 
 void pubkeytopubaddress_dst(char *pkey,int length,char *dst)	{
@@ -1944,9 +1951,9 @@ void calcualteindex(int i,Int *key)	{
 }
 
 
-void sleep_ms(int milliseconds)	{ // cross-platform sleep function
-#if defined(_WIN64) && !defined(__CYGWIN__)
-    Sleep(milliseconds);
+#if defined(_WIN64) && !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(__MINGW64__)
+void sleep_ms(int milliseconds) 	{ // cross-platform sleep function
+	Sleep(milliseconds);
 #elif _POSIX_C_SOURCE >= 199309L
     struct timespec ts;
     ts.tv_sec = milliseconds / 1000;
@@ -2352,7 +2359,7 @@ void* client_handler(void* arg) {
 	// Peek at the incoming data to determine its length
 	bytes_received = recv(client_fd, buffer, sizeof(buffer) - 1, MSG_PEEK);
 	if (bytes_received <= 0) {
-		close(client_fd);
+		socket_close(client_fd);
 		pthread_exit(NULL);
 	}
 	
@@ -2361,7 +2368,7 @@ void* client_handler(void* arg) {
 	size_t line_length = newline ? (newline - buffer) + 1 : bytes_received;
 	bytes_received = recv(client_fd, buffer, line_length, 0);
 	if (bytes_received <= 0)	{
-		close(client_fd);
+		socket_close(client_fd);
 		pthread_exit(NULL);
 	}
 
@@ -2372,7 +2379,7 @@ void* client_handler(void* arg) {
 		printf("Invalid input format from client, tokens %i : %s\n",t.n, buffer);
 		freetokenizer(&t);
 		sendstr(client_fd,"400 Bad Request");
-		close(client_fd);
+		socket_close(client_fd);
 		pthread_exit(NULL);
 	}
 
@@ -2380,7 +2387,7 @@ void* client_handler(void* arg) {
 		printf("Invalid publickey format from client %s\n",t.tokens[0]);
 		freetokenizer(&t);
 		sendstr(client_fd,"400 Bad Request");
-		close(client_fd);
+		socket_close(client_fd);
 		pthread_exit(NULL);		
 	}
 	if(!(isValidHex(t.tokens[1]) && isValidHex(t.tokens[2])))	{
@@ -2454,7 +2461,7 @@ void* client_handler(void* arg) {
 	}
 
 	
-    close(client_fd);
+	socket_close(client_fd);
     pthread_exit(NULL);
 }
 

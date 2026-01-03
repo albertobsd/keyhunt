@@ -1,3 +1,115 @@
+# Updates
+
+With RAM prices going crazy and computer parts getting expensive this provides an quick and easy way to increase your search speed by 20%.
+
+This was done by incorporating binary fuse filter instead of bloom filter. Provides 20% reduction in probability table lookup at the same speed. 
+This allows you to save RAM and Hard drive space by 20%. OR you can increase you table lookup by 20% using the same hardware selecting a larger k_factor.
+
+Binary Fuse Filter source - https://github.com/FastFilter/xor_singleheader
+
+I developed a 20 bit, 24 bit, 32 bit version from the example. 20 but was ultimately selected to match the false alarm rate of the bloom filter.
+The code for the other version is included, if you want smaller a false alarm rate at the expense of more space - go for it.
+
+I decided to release this update in order to speed up the search for BTC puzzle #135 and save energy being spent on this endeavor. The way I see it, we have 2-3 years until quantum computers can solve the private key from public key problem.
+
+I'm just standing of the shoulders of everyone that contributed before me.
+
+# Caveats
+
+Binary fuse table is immutable. Once created you cannot add or remove elements.
+
+You will need to generate new tables. Bloom filter tables are not compatible. No -> you cannot convert bloom tables to binary fuse tables. They are DIFFERENT!
+
+You will need additional hard drive space during the creation of the binary fuse tables. The hex values from the range of values will be stored onto the hard drive temporarily and then converted to binary fuse tables one-by-one until they are all generated. Then they are merged into the final table which will be ~20% smaller than the bloom table.
+
+Generating the binary fuse table will be slower than bloom filter, but once generated you can load them the same way you did with the bloom filter tables.
+
+# RAM Setting - Original Bloom - (Binary Fuse Filter Size)
+
+0x100000000000 -- (0.0123 * KFACTOR) (GB)
+2 G -k 128 (1.58 GB)
+
+X G -k 156 (1.9 GB)
+
+4 G -k 256 (3.2 GB)
+
+X G -k 312 (3.9 GB)
+
+8 GB -k 512  (5.85 GB)
+
+X GB -k 624  (7.8 GB)
+
+16 GB -k 1024 (12.6 GB)
+
+XX GB -k 1280 (15.7 GB)
+
+32 GB -k 2048 (25.2 GB)
+
+XX GB -k 2560 (31.5 GB)
+
+64 GB -n 0x100000000000 -k 4096 (50.3 GB)
+
+XX GB -n 0x100000000000 -k 5120 (63.5 GB)
+
+0x400000000000 -- (0.024609375 * KFACTOR) (GB)
+96 GB -n 0x400000000000 -k 3072 (89 GB)
+
+128 GB -n 0x400000000000 -k 4096 (100 GB) (1885500126792764888 keys/s)
+
+XXX GB -n 0x400000000000 -k 4352 (107 GB)
+
+XXX GB -n 0x400000000000 -k 4608 (114 GB) (1947338335215157248 keys/s) (105 GB) 
+
+XXX GB -n 0x400000000000 -k 5120 (126 GB) TOO BIG - swap memory activated (116 GB)
+
+XXX GB -n 0x400000000000 -k 6144 (151 GB)
+
+XXX GB -n 0x400000000000 -k 7168 (176 GB)
+
+256 GB -n 0x400000000000 -k 8192 (201 GB)
+
+XXX GB -n 0x400000000000 -k 9216 (227 GB)
+
+0x1000000000000 -- (0.04921875 * KFACTOR) (GB)
+
+XXX GB -n 0x1000000000000 -k 5120 (252 GB)
+
+512 GB -n 0x1000000000000 -k 8192 (403.2 GB)
+
+XXX GB -n 0x1000000000000 -k 9216 (453.6 GB)
+
+XXX GB -n 0x1000000000000 -k 10240 (504 GB)
+
+1 TB -n 0x1000000000000 -k 16384 (806.4 GB)
+
+0x4000000000000 -- (0.0984375 * KFACTOR) (GB)
+XXX TB -n 0x4000000000000 -k 9216 (907 GB)
+
+XXX TB -n 0x4000000000000 -k 10240 (1.08 TB)
+
+2 TB -n 0x4000000000000 -k 16384 (1.612 TB)
+
+4 TB -n 0x4000000000000 -k 32768 (3.2 TB)
+
+8 TB -n 0x10000000000000 -k 32768
+
+# False Alarm Rate - made sure to be same as Bloom Filter
+
+// Bloom false alarm rate (FAR)
+0.000001
+
+// Binary Fuse 8 (FAR)
+0.0039
+// Binary Fuse 16 (FAR)
+0.000015
+// Binary Fuse 20 (FAR)
+0.00000095 ~ 0.000001 <- Implemented (Same false alarm rate as original version)
+// Binary Fuse 24 (FAR)
+0.000000059
+// Binary Fuse 32 (FAR)
+0.00000000023
+
+
 # keyhunt
 
 Tool for hunt privatekeys for crypto currencies that use secp256k1 elliptic curve

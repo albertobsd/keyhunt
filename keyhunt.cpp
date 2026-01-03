@@ -17,12 +17,14 @@ email: albertobsd@gmail.com
 #include "bloom/bloom.h"
 #include "sha3/sha3.h"
 #include "util.h"
-
+#include "xxhash/xxhash.h"
 #include "secp256k1/SECP256k1.h"
 #include "secp256k1/Point.h"
 #include "secp256k1/Int.h"
 #include "secp256k1/IntGroup.h"
 #include "secp256k1/Random.h"
+#include "fusefilter/binaryfusefilter.h"
+#include "fusefilter/xorfilter.h"
 
 #include "hash/sha256.h"
 #include "hash/ripemd160.h"
@@ -43,6 +45,7 @@ email: albertobsd@gmail.com
 #endif
 #endif
 
+//#define _BLOOM_FILE
 #define CRYPTO_NONE 0
 #define CRYPTO_BTC 1
 #define CRYPTO_ETH 2
@@ -196,6 +199,7 @@ DWORD WINAPI thread_process_bsgs_both(LPVOID vargp);
 DWORD WINAPI thread_process_bsgs_random(LPVOID vargp);
 DWORD WINAPI thread_process_bsgs_dance(LPVOID vargp);
 DWORD WINAPI thread_bPload(LPVOID vargp);
+DWORD WINAPI thread_Fuseload(LPVOID vargp);
 DWORD WINAPI thread_bPload_2blooms(LPVOID vargp);
 #else
 void *thread_process_vanity(void *vargp);
@@ -207,6 +211,7 @@ void *thread_process_bsgs_both(void *vargp);
 void *thread_process_bsgs_random(void *vargp);
 void *thread_process_bsgs_dance(void *vargp);
 void *thread_bPload(void *vargp);
+void *thread_Fuseload(void *vargp);
 void *thread_bPload_2blooms(void *vargp);
 #endif
 
@@ -216,7 +221,7 @@ void rmd160toaddress_dst(char *rmd,char *dst);
 void set_minikey(char *buffer,char *rawbuffer,int length);
 bool increment_minikey_index(char *buffer,char *rawbuffer,int index);
 void increment_minikey_N(char *rawbuffer);
-	
+void clearFuseFilters();
 void KECCAK_256(uint8_t *source, size_t size,uint8_t *dst);
 void generate_binaddress_eth(Point &publickey,unsigned char *dst_address);
 
@@ -239,6 +244,7 @@ HANDLE *bPload_mutex = NULL;
 #else
 pthread_t *tid = NULL;
 pthread_mutex_t write_keys;
+pthread_mutex_t write_DP;
 pthread_mutex_t write_random;
 pthread_mutex_t bsgs_thread;
 pthread_mutex_t *bPload_mutex = NULL;
@@ -332,8 +338,29 @@ char buffer_bloom_file[1024];
 struct bsgs_xvalue *bPtable;
 struct address_value *addressTable;
 
-struct oldbloom oldbloom_bP;
+#if not defined(_BLOOM_FILE)
 
+struct Fuse_Pair {
+    uint64_t a;
+    uint64_t b;
+};
+
+struct Fuseload	{
+	uint32_t threadid;
+	int fuse_i;
+	uint64_t counter;	
+	uint32_t finished;
+};
+FILE *fuse_file[256] = { NULL };
+uint64_t fuse_file_cnt[256] = { 0 };
+binary_fuse20_t *fuse_filter;
+binary_fuse20_t *fuse_filterx2nd;
+binary_fuse20_t *fuse_filterx3rd;
+uint64_t items_fuse = 0;	
+uint64_t items_fuse2 = 0;	
+uint64_t items_fuse3 = 0;	
+const float Fuse_Elem_Bytes = 2.5l;// 20/8; // Fuse20
+#endif
 struct bloom *bloom_bP;
 struct bloom *bloom_bPx2nd; //2nd Bloom filter check
 struct bloom *bloom_bPx3rd; //3rd Bloom filter check
@@ -435,6 +462,9 @@ int main(int argc, char **argv)	{
 	int readed,continue_flag,check_flag,c,salir,index_value,j;
 	Int total,pretotal,debugcount_mpz,seconds,div_pretotal,int_aux,int_r,int_q,int58;
 	struct bPload *bPload_temp_ptr;
+#if not defined(_BLOOM_FILE)
+	struct Fuseload *fuseload_temp_ptr;
+#endif	
 	size_t rsize;
 	
 #if defined(_WIN64) && !defined(__CYGWIN__)
@@ -477,6 +507,7 @@ int main(int argc, char **argv)	{
 			WTF linux without RNG ? 
 		*/
 		fprintf(stderr,"[E] Error getrandom() ?\n");
+		clearFuseFilters();
 		exit(EXIT_FAILURE);
 		rseed(clock() + time(NULL) + rand()*rand());
 	}
@@ -543,6 +574,7 @@ int main(int argc, char **argv)	{
 					default:
 						FLAGCRYPTO = CRYPTO_NONE;
 						fprintf(stderr,"[E] Unknow crypto value %s\n",optarg);
+						clearFuseFilters();
 						exit(EXIT_FAILURE);
 					break;
 				}
@@ -1212,9 +1244,11 @@ int main(int argc, char **argv)	{
 			itemsbloom3 = 1000;
 		}
 		
+#if defined(_BLOOM_FILE)
 		printf("[+] Bloom filter for %" PRIu64 " elements ",bsgs_m);
 		bloom_bP = (struct bloom*)calloc(256,sizeof(struct bloom));
 		checkpointer((void *)bloom_bP,__FILE__,"calloc","bloom_bP" ,__LINE__ -1 );
+#endif
 		bloom_bP_checksums = (struct checksumsha256*)calloc(256,sizeof(struct checksumsha256));
 		checkpointer((void *)bloom_bP_checksums,__FILE__,"calloc","bloom_bP_checksums" ,__LINE__ -1 );
 		
@@ -1227,6 +1261,7 @@ int main(int argc, char **argv)	{
 		checkpointer((void *)bloom_bP_mutex,__FILE__,"calloc","bloom_bP_mutex" ,__LINE__ -1 );
 		
 
+#if defined(_BLOOM_FILE)
 		fflush(stdout);
 		bloom_bP_totalbytes = 0;
 		for(i=0; i< 256; i++)	{
@@ -1246,6 +1281,18 @@ int main(int argc, char **argv)	{
 
 
 		printf("[+] Bloom filter for %" PRIu64 " elements ",bsgs_m2);
+#else
+		fuse_filter = (binary_fuse20_t*)calloc(256,sizeof(binary_fuse20_t));
+		checkpointer((void *)fuse_filter,__FILE__,"calloc","fuse_filter" ,__LINE__ -1 );
+		for (i = 0; i < 256; i++)
+		{
+#if defined(_WIN64) && !defined(__CYGWIN__)
+			bloom_bP_mutex[i] = CreateMutex(NULL, FALSE, NULL);
+#else
+			pthread_mutex_init(&bloom_bP_mutex[i], NULL);
+#endif
+		}
+#endif
 		
 #if defined(_WIN64) && !defined(__CYGWIN__)
 		bloom_bPx2nd_mutex = (HANDLE*) calloc(256,sizeof(HANDLE));
@@ -1253,10 +1300,12 @@ int main(int argc, char **argv)	{
 		bloom_bPx2nd_mutex = (pthread_mutex_t*) calloc(256,sizeof(pthread_mutex_t));
 #endif
 		checkpointer((void *)bloom_bPx2nd_mutex,__FILE__,"calloc","bloom_bPx2nd_mutex" ,__LINE__ -1 );
-		bloom_bPx2nd = (struct bloom*)calloc(256,sizeof(struct bloom));
-		checkpointer((void *)bloom_bPx2nd,__FILE__,"calloc","bloom_bPx2nd" ,__LINE__ -1 );
+
 		bloom_bPx2nd_checksums = (struct checksumsha256*) calloc(256,sizeof(struct checksumsha256));
 		checkpointer((void *)bloom_bPx2nd_checksums,__FILE__,"calloc","bloom_bPx2nd_checksums" ,__LINE__ -1 );
+#if defined(_BLOOM_FILE)
+		bloom_bPx2nd = (struct bloom*)calloc(256,sizeof(struct bloom));
+		checkpointer((void *)bloom_bPx2nd,__FILE__,"calloc","bloom_bPx2nd" ,__LINE__ -1 );
 		bloom_bP2_totalbytes = 0;
 		for(i=0; i< 256; i++)	{
 #if defined(_WIN64) && !defined(__CYGWIN__)
@@ -1272,7 +1321,18 @@ int main(int argc, char **argv)	{
 			//if(FLAGDEBUG) bloom_print(&bloom_bPx2nd[i]);
 		}
 		printf(": %.2f MB\n",(float)((float)(uint64_t)bloom_bP2_totalbytes/(float)(uint64_t)1048576));
-		
+#else
+		fuse_filterx2nd = (binary_fuse20_t*)calloc(256,sizeof(binary_fuse20_t));
+		checkpointer((void *)fuse_filterx2nd,__FILE__,"calloc","fuse_filterx2nd" ,__LINE__ -1 );
+		for (i = 0; i < 256; i++)
+		{
+#if defined(_WIN64) && !defined(__CYGWIN__)
+			bloom_bPx2nd_mutex[i] = CreateMutex(NULL, FALSE, NULL);
+#else
+			pthread_mutex_init(&bloom_bPx2nd_mutex[i], NULL);
+#endif
+		}
+#endif
 
 #if defined(_WIN64) && !defined(__CYGWIN__)
 		bloom_bPx3rd_mutex = (HANDLE*) calloc(256,sizeof(HANDLE));
@@ -1280,11 +1340,13 @@ int main(int argc, char **argv)	{
 		bloom_bPx3rd_mutex = (pthread_mutex_t*) calloc(256,sizeof(pthread_mutex_t));
 #endif
 		checkpointer((void *)bloom_bPx3rd_mutex,__FILE__,"calloc","bloom_bPx3rd_mutex" ,__LINE__ -1 );
-		bloom_bPx3rd = (struct bloom*)calloc(256,sizeof(struct bloom));
-		checkpointer((void *)bloom_bPx3rd,__FILE__,"calloc","bloom_bPx3rd" ,__LINE__ -1 );
+
 		bloom_bPx3rd_checksums = (struct checksumsha256*) calloc(256,sizeof(struct checksumsha256));
 		checkpointer((void *)bloom_bPx3rd_checksums,__FILE__,"calloc","bloom_bPx3rd_checksums" ,__LINE__ -1 );
 		
+#if defined(_BLOOM_FILE)
+		bloom_bPx3rd = (struct bloom*)calloc(256,sizeof(struct bloom));
+		checkpointer((void *)bloom_bPx3rd,__FILE__,"calloc","bloom_bPx3rd" ,__LINE__ -1 );
 		printf("[+] Bloom filter for %" PRIu64 " elements ",bsgs_m3);
 		bloom_bP3_totalbytes = 0;
 		for(i=0; i< 256; i++)	{
@@ -1302,8 +1364,18 @@ int main(int argc, char **argv)	{
 		}
 		printf(": %.2f MB\n",(float)((float)(uint64_t)bloom_bP3_totalbytes/(float)(uint64_t)1048576));
 		//if(FLAGDEBUG) printf("[D] bloom_bP3_totalbytes : %" PRIu64 "\n",bloom_bP3_totalbytes);
+#else
 
-
+		fuse_filterx3rd = (binary_fuse20_t*)calloc(256,sizeof(binary_fuse20_t));
+		checkpointer((void *)fuse_filterx3rd,__FILE__,"calloc","fuse_filterx3rd" ,__LINE__ -1 );
+		for(i=0; i< 256; i++)	{
+#if defined(_WIN64) && !defined(__CYGWIN__)
+			bloom_bPx3rd_mutex[i] = CreateMutex(NULL, FALSE, NULL);
+#else
+			pthread_mutex_init(&bloom_bPx3rd_mutex[i],NULL);
+#endif
+		}
+#endif
 
 
 		BSGS_MP = secp->ComputePublicKey(&BSGS_M);
@@ -1372,21 +1444,37 @@ int main(int argc, char **argv)	{
 		
 		if(FLAGSAVEREADFILE)	{
 			/*Reading file for 1st bloom filter */
-
+#if not defined(_BLOOM_FILE)
+			snprintf(buffer_bloom_file,1024,"keyhunt_bsgs_4_%" PRIu64 ".bff",bsgs_m);
+#else
 			snprintf(buffer_bloom_file,1024,"keyhunt_bsgs_4_%" PRIu64 ".blm",bsgs_m);
+#endif
 			fd_aux1 = fopen(buffer_bloom_file,"rb");
 			if(fd_aux1 != NULL)	{
+#if not defined(_BLOOM_FILE)
+				printf("[+] Reading binary fuse filter from file %s ",buffer_bloom_file);
+#else
 				printf("[+] Reading bloom filter from file %s ",buffer_bloom_file);
+#endif
 				fflush(stdout);
 				for(i = 0; i < 256;i++)	{
+#if not defined(_BLOOM_FILE)
+					readed = fread(&fuse_filter[i],sizeof(binary_fuse20_t),1,fd_aux1);
+#else
 					bf_ptr = (char*) bloom_bP[i].bf;	/*We need to save the current bf pointer*/
 					readed = fread(&bloom_bP[i],sizeof(struct bloom),1,fd_aux1);
+#endif
 					if(readed != 1)	{
 						fprintf(stderr,"[E] Error reading the file %s\n",buffer_bloom_file);
 						exit(EXIT_FAILURE);
 					}
+#if not defined(_BLOOM_FILE)
+					fuse_filter[i].Fingerprints = (uint8_t *)calloc(ceil(fuse_filter[i].ArrayLength * Fuse_Elem_Bytes), 1);
+					readed = fread(fuse_filter[i].Fingerprints,ceil(fuse_filter[i].ArrayLength * Fuse_Elem_Bytes),1,fd_aux1);
+#else
 					bloom_bP[i].bf = (uint8_t*)bf_ptr;	/* Restoring the bf pointer*/
 					readed = fread(bloom_bP[i].bf,bloom_bP[i].bytes,1,fd_aux1);
+#endif
 					if(readed != 1)	{
 						fprintf(stderr,"[E] Error reading the file %s\n",buffer_bloom_file);
 						exit(EXIT_FAILURE);
@@ -1397,7 +1485,11 @@ int main(int argc, char **argv)	{
 						exit(EXIT_FAILURE);
 					}
 					if(FLAGSKIPCHECKSUM == 0)	{
+#if not defined(_BLOOM_FILE)
+						sha256((uint8_t*)fuse_filter[i].Fingerprints, ceil(fuse_filter[i].ArrayLength*Fuse_Elem_Bytes),(uint8_t*)rawvalue);
+#else
 						sha256((uint8_t*)bloom_bP[i].bf,bloom_bP[i].bytes,(uint8_t*)rawvalue);
+#endif
 						if(memcmp(bloom_bP_checksums[i].data,rawvalue,32) != 0 || memcmp(bloom_bP_checksums[i].backup,rawvalue,32) != 0 )	{	/* Verification */
 							fprintf(stderr,"[E] Error checksum file mismatch! %s\n",buffer_bloom_file);
 							exit(EXIT_FAILURE);
@@ -1418,16 +1510,7 @@ int main(int argc, char **argv)	{
 					fclose(fd_aux1);
 				}
 				FLAGREADEDFILE1 = 1;
-			}
-			else	{	/*Checking for old file    keyhunt_bsgs_3_   */
-				snprintf(buffer_bloom_file,1024,"keyhunt_bsgs_3_%" PRIu64 ".blm",bsgs_m);
-				fd_aux1 = fopen(buffer_bloom_file,"rb");
-				if(fd_aux1 != NULL)	{
-					printf("[+] Reading bloom filter from file %s ",buffer_bloom_file);
-					fflush(stdout);
-					for(i = 0; i < 256;i++)	{
-						bf_ptr = (char*) bloom_bP[i].bf;	/*We need to save the current bf pointer*/
-						readed = fread(&oldbloom_bP,sizeof(struct oldbloom),1,fd_aux1);
+			}else{
 						
 						/*
 						if(FLAGDEBUG)	{
@@ -1436,60 +1519,44 @@ int main(int argc, char **argv)	{
 						}
 						*/
 						
-						if(readed != 1)	{
-							fprintf(stderr,"[E] Error reading the file %s\n",buffer_bloom_file);
-							exit(EXIT_FAILURE);
-						}
-						memcpy(&bloom_bP[i],&oldbloom_bP,sizeof(struct bloom));//We only need to copy the part data to the new bloom size, not from the old size
-						bloom_bP[i].bf = (uint8_t*)bf_ptr;	/* Restoring the bf pointer*/
 						
-						readed = fread(bloom_bP[i].bf,bloom_bP[i].bytes,1,fd_aux1);
-						if(readed != 1)	{
-							fprintf(stderr,"[E] Error reading the file %s\n",buffer_bloom_file);
-							exit(EXIT_FAILURE);
-						}
-						memcpy(bloom_bP_checksums[i].data,oldbloom_bP.checksum,32);
-						memcpy(bloom_bP_checksums[i].backup,oldbloom_bP.checksum_backup,32);
-						memset(rawvalue,0,32);
-						if(FLAGSKIPCHECKSUM == 0)	{
-							sha256((uint8_t*)bloom_bP[i].bf,bloom_bP[i].bytes,(uint8_t*)rawvalue);
-							if(memcmp(bloom_bP_checksums[i].data,rawvalue,32) != 0 || memcmp(bloom_bP_checksums[i].backup,rawvalue,32) != 0 )	{	/* Verification */
-								fprintf(stderr,"[E] Error checksum file mismatch! %s\n",buffer_bloom_file);
-								exit(EXIT_FAILURE);
-							}
-						}
-						if(i % 32 == 0 )	{
-							printf(".");
-							fflush(stdout);
-						}
-					}
-					printf(" Done!\n");
-					fclose(fd_aux1);
-					FLAGUPDATEFILE1 = 1;	/* Flag to migrate the data to the new File keyhunt_bsgs_4_ */
-					FLAGREADEDFILE1 = 1;
 					
-				}
-				else	{
 					FLAGREADEDFILE1 = 0;
 					//Flag to make the new file
-				}
 			}
 			
 			/*Reading file for 2nd bloom filter */
+#if not defined(_BLOOM_FILE)
+			snprintf(buffer_bloom_file,1024,"keyhunt_bsgs_6_%" PRIu64 ".bff",bsgs_m2);
+#else
 			snprintf(buffer_bloom_file,1024,"keyhunt_bsgs_6_%" PRIu64 ".blm",bsgs_m2);
+#endif
 			fd_aux2 = fopen(buffer_bloom_file,"rb");
 			if(fd_aux2 != NULL)	{
+#if not defined(_BLOOM_FILE)
+				printf("[+] Reading binary fuse filter from file %s ",buffer_bloom_file);
+#else
 				printf("[+] Reading bloom filter from file %s ",buffer_bloom_file);
+#endif
 				fflush(stdout);
 				for(i = 0; i < 256;i++)	{
+#if not defined(_BLOOM_FILE)
+					readed = fread(&fuse_filterx2nd[i],sizeof(binary_fuse20_t),1,fd_aux2);
+#else
 					bf_ptr = (char*) bloom_bPx2nd[i].bf;	/*We need to save the current bf pointer*/
 					readed = fread(&bloom_bPx2nd[i],sizeof(struct bloom),1,fd_aux2);
+#endif
 					if(readed != 1)	{
 						fprintf(stderr,"[E] Error reading the file %s\n",buffer_bloom_file);
 						exit(EXIT_FAILURE);
 					}
+#if not defined(_BLOOM_FILE)
+					fuse_filterx2nd[i].Fingerprints = (uint8_t *)calloc(ceil(fuse_filterx2nd[i].ArrayLength * Fuse_Elem_Bytes), 1);
+					readed = fread(fuse_filterx2nd[i].Fingerprints,ceil(fuse_filterx2nd[i].ArrayLength * Fuse_Elem_Bytes),1,fd_aux2);
+#else
 					bloom_bPx2nd[i].bf = (uint8_t*)bf_ptr;	/* Restoring the bf pointer*/
 					readed = fread(bloom_bPx2nd[i].bf,bloom_bPx2nd[i].bytes,1,fd_aux2);
+#endif
 					if(readed != 1)	{
 						fprintf(stderr,"[E] Error reading the file %s\n",buffer_bloom_file);
 						exit(EXIT_FAILURE);
@@ -1501,7 +1568,11 @@ int main(int argc, char **argv)	{
 					}
 					memset(rawvalue,0,32);
 					if(FLAGSKIPCHECKSUM == 0)	{								
+#if not defined(_BLOOM_FILE)
+						sha256((uint8_t*)fuse_filterx2nd[i].Fingerprints, ceil(fuse_filterx2nd[i].ArrayLength*Fuse_Elem_Bytes),(uint8_t*)rawvalue);
+#else
 						sha256((uint8_t*)bloom_bPx2nd[i].bf,bloom_bPx2nd[i].bytes,(uint8_t*)rawvalue);
+#endif							
 						if(memcmp(bloom_bPx2nd_checksums[i].data,rawvalue,32) != 0 || memcmp(bloom_bPx2nd_checksums[i].backup,rawvalue,32) != 0 )	{		/* Verification */
 							fprintf(stderr,"[E] Error checksum file mismatch! %s\n",buffer_bloom_file);
 							exit(EXIT_FAILURE);
@@ -1566,20 +1637,37 @@ int main(int argc, char **argv)	{
 			}
 			
 			/*Reading file for 3rd bloom filter */
+#if not defined(_BLOOM_FILE)
+			snprintf(buffer_bloom_file,1024,"keyhunt_bsgs_7_%" PRIu64 ".bff",bsgs_m3);
+#else
 			snprintf(buffer_bloom_file,1024,"keyhunt_bsgs_7_%" PRIu64 ".blm",bsgs_m3);
+#endif
 			fd_aux2 = fopen(buffer_bloom_file,"rb");
 			if(fd_aux2 != NULL)	{
+#if not defined(_BLOOM_FILE)
+				printf("[+] Reading binary fuse filter from file %s ",buffer_bloom_file);
+#else
 				printf("[+] Reading bloom filter from file %s ",buffer_bloom_file);
+#endif	
 				fflush(stdout);
 				for(i = 0; i < 256;i++)	{
+#if not defined(_BLOOM_FILE)
+					readed = fread(&fuse_filterx3rd[i],sizeof(binary_fuse20_t),1,fd_aux2);
+#else
 					bf_ptr = (char*) bloom_bPx3rd[i].bf;	/*We need to save the current bf pointer*/
 					readed = fread(&bloom_bPx3rd[i],sizeof(struct bloom),1,fd_aux2);
+#endif
 					if(readed != 1)	{
 						fprintf(stderr,"[E] Error reading the file %s\n",buffer_bloom_file);
 						exit(EXIT_FAILURE);
 					}
+#if not defined(_BLOOM_FILE)
+					fuse_filterx3rd[i].Fingerprints = (uint8_t *)calloc(ceil(fuse_filterx3rd[i].ArrayLength * Fuse_Elem_Bytes), 1);
+					readed = fread(fuse_filterx3rd[i].Fingerprints,ceil(fuse_filterx3rd[i].ArrayLength * Fuse_Elem_Bytes),1,fd_aux2);
+#else
 					bloom_bPx3rd[i].bf = (uint8_t*)bf_ptr;	/* Restoring the bf pointer*/
 					readed = fread(bloom_bPx3rd[i].bf,bloom_bPx3rd[i].bytes,1,fd_aux2);
+#endif
 					if(readed != 1)	{
 						fprintf(stderr,"[E] Error reading the file %s\n",buffer_bloom_file);
 						exit(EXIT_FAILURE);
@@ -1591,7 +1679,11 @@ int main(int argc, char **argv)	{
 					}
 					memset(rawvalue,0,32);
 					if(FLAGSKIPCHECKSUM == 0)	{							
+#if not defined(_BLOOM_FILE)
+						sha256((uint8_t*)fuse_filterx3rd[i].Fingerprints, ceil(fuse_filterx3rd[i].ArrayLength*Fuse_Elem_Bytes),(uint8_t*)rawvalue);
+#else
 						sha256((uint8_t*)bloom_bPx3rd[i].bf,bloom_bPx3rd[i].bytes,(uint8_t*)rawvalue);
+#endif								
 						if(memcmp(bloom_bPx3rd_checksums[i].data,rawvalue,32) != 0 || memcmp(bloom_bPx3rd_checksums[i].backup,rawvalue,32) != 0 )	{		/* Verification */
 							fprintf(stderr,"[E] Error checksum file mismatch! %s\n",buffer_bloom_file);
 							exit(EXIT_FAILURE);
@@ -1768,6 +1860,15 @@ int main(int argc, char **argv)	{
 
 				memset(bPload_threads_available,1,NTHREADS);
 				
+#if not defined(_BLOOM_FILE)
+				printf("Initializing temp files for binary fuse filter generation ...\n");
+				char buffer_fuse_file[1024];
+				for(int i = 0; i < 256; i++){
+					snprintf(buffer_fuse_file, 1024, "fuse_file_%02d.bin", i);
+					fuse_file[i] = fopen(buffer_fuse_file, "wb");
+					fuse_file_cnt[i] = 0;
+				}
+#endif
 				for(j = 0; j < NTHREADS; j++)	{
 #if defined(_WIN64) && !defined(__CYGWIN__)
 					bPload_mutex = CreateMutex(NULL, FALSE, NULL);
@@ -1837,6 +1938,150 @@ int main(int argc, char **argv)	{
 				free(bPload_mutex);
 				free(bPload_temp_ptr);
 				free(bPload_threads_available);
+#if not defined(_BLOOM_FILE)
+				printf("Closing temp files for binary fuse filter generation ...\n");
+				for (int i = 0; i < 256; i++)
+				{
+					fclose(fuse_file[i]);
+				}
+				clock_t start, end;		
+				start = clock();
+				items_fuse = 0;	
+				items_fuse2 = 0;	
+				items_fuse3 = 0;	
+				bloom_bP_totalbytes = 0;
+				bloom_bP2_totalbytes = 0;
+				bloom_bP3_totalbytes = 0;
+				int i_fuse = 0;
+				FINISHED_THREADS_COUNTER = 0;
+				FINISHED_ITEMS = 0;
+				salir = 0;
+				THREADCYCLES = 256;
+				printf("\r[+] processing binary fuse filter files %lu/256 : %i%%\r",FINISHED_ITEMS,(int) (((double)FINISHED_ITEMS/(double)256)*100));
+				fflush(stdout);
+#if defined(_WIN64) && !defined(__CYGWIN__)
+				tid = (HANDLE*)calloc(NTHREADS, sizeof(HANDLE));
+				bPload_mutex = (HANDLE*) calloc(NTHREADS,sizeof(HANDLE));
+#else
+				tid = (pthread_t *) calloc(NTHREADS,sizeof(pthread_t));
+				bPload_mutex = (pthread_mutex_t*) calloc(NTHREADS,sizeof(pthread_mutex_t));
+#endif
+				checkpointer((void *)tid,__FILE__,"calloc","tid" ,__LINE__ -1 );
+				checkpointer((void *)bPload_mutex,__FILE__,"calloc","bPload_mutex" ,__LINE__ -1 );
+				fuseload_temp_ptr = (struct Fuseload*) calloc(NTHREADS,sizeof(struct bPload));
+				checkpointer((void *)fuseload_temp_ptr,__FILE__,"calloc","fuseload_temp_ptrr" ,__LINE__ -1 );
+				bPload_threads_available = (char*) calloc(NTHREADS,sizeof(char));
+				checkpointer((void *)bPload_threads_available,__FILE__,"calloc","bPload_threads_available" ,__LINE__ -1 );
+				memset(bPload_threads_available,1,NTHREADS);
+				for(j = 0; j < NTHREADS; j++)	{
+#if defined(_WIN64) && !defined(__CYGWIN__)
+					bPload_mutex = CreateMutex(NULL, FALSE, NULL);
+#else
+					pthread_mutex_init(&bPload_mutex[j],NULL);
+#endif
+				}
+				do	{
+					for(j = 0; j < NTHREADS && !salir; j++)	{
+						if(bPload_threads_available[j] && !salir && i_fuse < 256)	{
+							bPload_threads_available[j] = 0;
+							fuseload_temp_ptr[j].threadid = j;
+							fuseload_temp_ptr[j].finished = 0;
+							fuseload_temp_ptr[j].fuse_i = i_fuse;
+#if defined(_WIN64) && !defined(__CYGWIN__)
+							tid[j] = CreateThread(NULL, 0, thread_Fuseload, (void*) &fuseload_temp_ptr[j], 0, &s);
+#else
+							s = pthread_create(&tid[j],NULL,thread_Fuseload,(void*) &fuseload_temp_ptr[j]);
+							pthread_detach(tid[j]);
+#endif
+							i_fuse++;
+						}
+					}
+					if(OLDFINISHED_ITEMS != FINISHED_ITEMS)	{
+						printf("\r[+] processing binary fuse filter files %lu/256 : %i%%\r",FINISHED_ITEMS,(int) (((double)FINISHED_ITEMS/(double)256)*100));
+						fflush(stdout);
+						OLDFINISHED_ITEMS = FINISHED_ITEMS;
+					}
+					for(j = 0 ; j < NTHREADS ; j++)	{
+#if defined(_WIN64) && !defined(__CYGWIN__)
+						WaitForSingleObject(bPload_mutex[j], INFINITE);
+						finished = fuseload_temp_ptr[j].finished;
+						ReleaseMutex(bPload_mutex[j]);
+#else
+						pthread_mutex_lock(&bPload_mutex[j]);
+						finished = fuseload_temp_ptr[j].finished;
+						pthread_mutex_unlock(&bPload_mutex[j]);
+#endif
+						if(finished)	{
+							fuseload_temp_ptr[j].finished = 0;
+							bPload_threads_available[j] = 1;
+							FINISHED_ITEMS++;
+							FINISHED_THREADS_COUNTER++;
+						}
+					}
+				}while(FINISHED_THREADS_COUNTER < THREADCYCLES);
+				printf("[+] processing binary fuse filter - temp file generation complete.\n");
+				free(tid);
+				free(bPload_mutex);
+				free(fuseload_temp_ptr);
+				free(bPload_threads_available);
+				printf("[+] processing binary fuse filter - loading into memory.\n");
+				for(int i_read = 0; i_read < 256; i_read++)	{
+					snprintf(buffer_fuse_file, 1024, "fuse_filter_%03d.local", i_read);
+					fd_aux2 = fopen(buffer_fuse_file,"rb");
+					if(fd_aux2 != NULL)	{
+						readed = fread(&fuse_filter[i_read],sizeof(binary_fuse20_t),1,fd_aux2);
+						if(readed != 1)	{
+							fprintf(stderr,"[E] Error reading the file %s\n",buffer_bloom_file);
+							exit(EXIT_FAILURE);
+						}
+						uint8_t *temp_p = (uint8_t *)calloc(ceil(fuse_filter[i_read].ArrayLength * Fuse_Elem_Bytes), 1);
+						fuse_filter[i_read].Fingerprints = temp_p;
+						readed = fread(fuse_filter[i_read].Fingerprints,ceil(fuse_filter[i_read].ArrayLength * Fuse_Elem_Bytes),1,fd_aux2);
+					}
+					fclose(fd_aux2);	
+					remove(buffer_fuse_file);
+					snprintf(buffer_fuse_file, 1024, "fuse_filterx2nd_%03d.local", i_read);
+					fd_aux2 = fopen(buffer_fuse_file,"rb");
+					if(fd_aux2 != NULL)	{
+						readed = fread(&fuse_filterx2nd[i_read],sizeof(binary_fuse20_t),1,fd_aux2);
+						if(readed != 1)	{
+							fprintf(stderr,"[E] Error reading the file %s\n",buffer_bloom_file);
+							exit(EXIT_FAILURE);
+						}						
+						uint8_t *temp_p = (uint8_t *)calloc(ceil(fuse_filterx2nd[i_read].ArrayLength * Fuse_Elem_Bytes), 1);
+						fuse_filterx2nd[i_read].Fingerprints = temp_p;
+						readed = fread(fuse_filterx2nd[i_read].Fingerprints,ceil(fuse_filterx2nd[i_read].ArrayLength * Fuse_Elem_Bytes),1,fd_aux2);
+						if(readed != 1)	{
+							fprintf(stderr,"[E] Error reading the file %s\n",buffer_bloom_file);
+							exit(EXIT_FAILURE);
+						}						
+					}
+					fclose(fd_aux2);	
+					remove(buffer_fuse_file);
+					snprintf(buffer_fuse_file, 1024, "fuse_filterx3rd_%03d.local", i_read);
+					fd_aux2 = fopen(buffer_fuse_file,"rb");
+					if(fd_aux2 != NULL)	{
+						readed = fread(&fuse_filterx3rd[i_read],sizeof(binary_fuse20_t),1,fd_aux2);
+						if(readed != 1)	{
+							fprintf(stderr,"[E] Error reading the file %s\n",buffer_bloom_file);
+							exit(EXIT_FAILURE);
+						}
+						uint8_t *temp_p = (uint8_t *)calloc(ceil(fuse_filterx3rd[i_read].ArrayLength * Fuse_Elem_Bytes), 1);
+						fuse_filterx3rd[i_read].Fingerprints = temp_p;						
+						readed = fread(fuse_filterx3rd[i_read].Fingerprints,ceil(fuse_filterx3rd[i_read].ArrayLength * Fuse_Elem_Bytes),1,fd_aux2);
+					}
+					fclose(fd_aux2);	
+					remove(buffer_fuse_file);
+				}
+				end = clock();
+    			printf("Done in %.3f seconds.\n", (float)(end - start) / CLOCKS_PER_SEC);
+				printf("[+] Fuse filter for %" PRIu64 " elements ",items_fuse);
+				printf(": %.2f MB\n",(float)((float)(uint64_t)bloom_bP_totalbytes/(float)(uint64_t)1048576));
+				printf("[+] Fuse filter for %" PRIu64 " elements ",items_fuse2);
+				printf(": %.2f MB\n",(float)((float)(uint64_t)bloom_bP2_totalbytes/(float)(uint64_t)1048576));
+				printf("[+] Fuse filter for %" PRIu64 " elements ",items_fuse3);
+				printf(": %.2f MB\n",(float)((float)(uint64_t)bloom_bP3_totalbytes/(float)(uint64_t)1048576));
+#endif
 			}
 		}
 		
@@ -1846,21 +2091,33 @@ int main(int argc, char **argv)	{
 		}	
 		if(!FLAGREADEDFILE1)	{
 			for(i = 0; i < 256 ; i++)	{
+#if not defined(_BLOOM_FILE)
+				sha256((uint8_t*)fuse_filter[i].Fingerprints, ceil(fuse_filter[i].ArrayLength*Fuse_Elem_Bytes),(uint8_t*) bloom_bP_checksums[i].data);
+#else
 				sha256((uint8_t*)bloom_bP[i].bf, bloom_bP[i].bytes,(uint8_t*) bloom_bP_checksums[i].data);
+#endif
 				memcpy(bloom_bP_checksums[i].backup,bloom_bP_checksums[i].data,32);
 			}
 			printf(".");
 		}
 		if(!FLAGREADEDFILE2)	{
 			for(i = 0; i < 256 ; i++)	{
+#if not defined(_BLOOM_FILE)
+				sha256((uint8_t*)fuse_filterx2nd[i].Fingerprints, ceil(fuse_filterx2nd[i].ArrayLength*Fuse_Elem_Bytes),(uint8_t*) bloom_bPx2nd_checksums[i].data);
+#else
 				sha256((uint8_t*)bloom_bPx2nd[i].bf, bloom_bPx2nd[i].bytes,(uint8_t*) bloom_bPx2nd_checksums[i].data);
+#endif
 				memcpy(bloom_bPx2nd_checksums[i].backup,bloom_bPx2nd_checksums[i].data,32);
 			}
 			printf(".");
 		}
 		if(!FLAGREADEDFILE4)	{
 			for(i = 0; i < 256 ; i++)	{
+#if not defined(_BLOOM_FILE)
+				sha256((uint8_t*)fuse_filterx3rd[i].Fingerprints, ceil(fuse_filterx3rd[i].ArrayLength*Fuse_Elem_Bytes),(uint8_t*) bloom_bPx3rd_checksums[i].data);
+#else
 				sha256((uint8_t*)bloom_bPx3rd[i].bf, bloom_bPx3rd[i].bytes,(uint8_t*) bloom_bPx3rd_checksums[i].data);
+#endif
 				memcpy(bloom_bPx3rd_checksums[i].backup,bloom_bPx3rd_checksums[i].data,32);
 			}
 			printf(".");
@@ -1880,8 +2137,11 @@ int main(int argc, char **argv)	{
 		}
 		if(FLAGSAVEREADFILE || FLAGUPDATEFILE1 )	{
 			if(!FLAGREADEDFILE1 || FLAGUPDATEFILE1)	{
+#if not defined(_BLOOM_FILE)
+				snprintf(buffer_bloom_file,1024,"keyhunt_bsgs_4_%" PRIu64 ".bff",bsgs_m);
+#else
 				snprintf(buffer_bloom_file,1024,"keyhunt_bsgs_4_%" PRIu64 ".blm",bsgs_m);
-				
+#endif				
 				if(FLAGUPDATEFILE1)	{
 					printf("[W] Updating old file into a new one\n");
 				}
@@ -1890,15 +2150,27 @@ int main(int argc, char **argv)	{
 				
 				fd_aux1 = fopen(buffer_bloom_file,"wb");
 				if(fd_aux1 != NULL)	{
+#if not defined(_BLOOM_FILE)
+					printf("[+] Writing binary fuse filter to file %s ",buffer_bloom_file);
+#else
 					printf("[+] Writing bloom filter to file %s ",buffer_bloom_file);
+#endif
 					fflush(stdout);
 					for(i = 0; i < 256;i++)	{
+#if not defined(_BLOOM_FILE)
+						readed = fwrite(&fuse_filter[i],sizeof(binary_fuse20_t),1,fd_aux1);
+#else
 						readed = fwrite(&bloom_bP[i],sizeof(struct bloom),1,fd_aux1);
+#endif
 						if(readed != 1)	{
 							fprintf(stderr,"[E] Error writing the file %s please delete it\n",buffer_bloom_file);
 							exit(EXIT_FAILURE);
 						}
+#if not defined(_BLOOM_FILE)
+						readed = fwrite(fuse_filter[i].Fingerprints,ceil(fuse_filter[i].ArrayLength*Fuse_Elem_Bytes),1,fd_aux1);
+#else
 						readed = fwrite(bloom_bP[i].bf,bloom_bP[i].bytes,1,fd_aux1);
+#endif
 						if(readed != 1)	{
 							fprintf(stderr,"[E] Error writing the file %s please delete it\n",buffer_bloom_file);
 							exit(EXIT_FAILURE);
@@ -1922,21 +2194,36 @@ int main(int argc, char **argv)	{
 				}
 			}
 			if(!FLAGREADEDFILE2  )	{
-				
+#if not defined(_BLOOM_FILE)
+				snprintf(buffer_bloom_file,1024,"keyhunt_bsgs_6_%" PRIu64 ".bff",bsgs_m2);
+#else
 				snprintf(buffer_bloom_file,1024,"keyhunt_bsgs_6_%" PRIu64 ".blm",bsgs_m2);
+#endif				
 								
 				/* Writing file for 2nd bloom filter */
 				fd_aux2 = fopen(buffer_bloom_file,"wb");
 				if(fd_aux2 != NULL)	{
+#if not defined(_BLOOM_FILE)
+					printf("[+] Writing binary fuse filter to file %s ",buffer_bloom_file);
+#else
 					printf("[+] Writing bloom filter to file %s ",buffer_bloom_file);
+#endif
 					fflush(stdout);
 					for(i = 0; i < 256;i++)	{
+#if not defined(_BLOOM_FILE)
+						readed = fwrite(&fuse_filterx2nd[i],sizeof(binary_fuse20_t),1,fd_aux2);
+#else
 						readed = fwrite(&bloom_bPx2nd[i],sizeof(struct bloom),1,fd_aux2);
+#endif
 						if(readed != 1)	{
 							fprintf(stderr,"[E] Error writing the file %s\n",buffer_bloom_file);
 							exit(EXIT_FAILURE);
 						}
+#if not defined(_BLOOM_FILE)
+						readed = fwrite(fuse_filterx2nd[i].Fingerprints,ceil(fuse_filterx2nd[i].ArrayLength*Fuse_Elem_Bytes),1,fd_aux2);
+#else
 						readed = fwrite(bloom_bPx2nd[i].bf,bloom_bPx2nd[i].bytes,1,fd_aux2);
+#endif
 						if(readed != 1)	{
 							fprintf(stderr,"[E] Error writing the file %s\n",buffer_bloom_file);
 							exit(EXIT_FAILURE);
@@ -1986,20 +2273,36 @@ int main(int argc, char **argv)	{
 				}
 			}
 			if(!FLAGREADEDFILE4)	{
+#if not defined(_BLOOM_FILE)
+				snprintf(buffer_bloom_file,1024,"keyhunt_bsgs_7_%" PRIu64 ".bff",bsgs_m3);
+#else
 				snprintf(buffer_bloom_file,1024,"keyhunt_bsgs_7_%" PRIu64 ".blm",bsgs_m3);
+#endif		
 								
 				/* Writing file for 3rd bloom filter */
 				fd_aux2 = fopen(buffer_bloom_file,"wb");
 				if(fd_aux2 != NULL)	{
+#if not defined(_BLOOM_FILE)
+					printf("[+] Writing binary fuse filter to file %s ",buffer_bloom_file);
+#else
 					printf("[+] Writing bloom filter to file %s ",buffer_bloom_file);
+#endif
 					fflush(stdout);
 					for(i = 0; i < 256;i++)	{
+#if not defined(_BLOOM_FILE)
+						readed = fwrite(&fuse_filterx3rd[i],sizeof(binary_fuse20_t),1,fd_aux2);
+#else
 						readed = fwrite(&bloom_bPx3rd[i],sizeof(struct bloom),1,fd_aux2);
+#endif						
 						if(readed != 1)	{
 							fprintf(stderr,"[E] Error writing the file %s\n",buffer_bloom_file);
 							exit(EXIT_FAILURE);
 						}
+#if not defined(_BLOOM_FILE)
+						readed = fwrite(fuse_filterx3rd[i].Fingerprints,ceil(fuse_filterx3rd[i].ArrayLength*Fuse_Elem_Bytes),1,fd_aux2);
+#else
 						readed = fwrite(bloom_bPx3rd[i].bf,bloom_bPx3rd[i].bytes,1,fd_aux2);
+#endif
 						if(readed != 1)	{
 							fprintf(stderr,"[E] Error writing the file %s\n",buffer_bloom_file);
 							exit(EXIT_FAILURE);
@@ -2255,6 +2558,37 @@ int main(int argc, char **argv)	{
 	CloseHandle(write_keys);
 	CloseHandle(write_random);
 	CloseHandle(bsgs_thread);
+#endif
+}
+void clearFuseFilters()	{
+#if not defined(_BLOOM_FILE)
+	for (int i = 0; i < 256; i++)
+	{
+		if(&fuse_filter[i] != NULL)	{
+			if(fuse_filter[i].Fingerprints != NULL)	{
+				free(fuse_filter[i].Fingerprints);
+				fuse_filter[i].Fingerprints = nullptr;
+			}
+		}
+		if(&fuse_filterx2nd[i] != NULL)	{
+			if(fuse_filterx2nd[i].Fingerprints != NULL)	{
+				free(fuse_filterx2nd[i].Fingerprints);
+				fuse_filterx2nd[i].Fingerprints = nullptr;
+			}
+		}
+		if(&fuse_filterx3rd[i] != NULL)	{
+			if(fuse_filterx3rd[i].Fingerprints != NULL)	{
+				free(fuse_filterx3rd[i].Fingerprints);
+				fuse_filterx3rd[i].Fingerprints = nullptr;
+			}
+		}	
+	}
+	free(fuse_filter);
+	fuse_filter = nullptr;
+	free(fuse_filterx2nd);
+	fuse_filterx2nd = nullptr;
+	free(fuse_filterx3rd);
+	fuse_filterx3rd = nullptr;
 #endif
 }
 
@@ -3943,7 +4277,12 @@ pn.y.ModAdd(&GSn[i].y);
 					pts[0] = pn;
 					for(int i = 0; i<CPU_GRP_SIZE && bsgs_found[k]== 0; i++) {
 						pts[i].x.Get32Bytes((unsigned char*)xpoint_raw);
+#if not defined(_BLOOM_FILE)
+						uint64_t hexval = XXH64(xpoint_raw, BSGS_BUFFERXPOINTLENGTH, 0x59f2815b16f81798);				
+						r = binary_fuse20_contain(hexval,&fuse_filter[((unsigned char)xpoint_raw[0])]);
+#else
 						r = bloom_check(&bloom_bP[((unsigned char)xpoint_raw[0])],xpoint_raw,32);
+#endif
 						if(r) {
 							r = bsgs_secondcheck(&base_key,((j*1024) + i),k,&keyfound);
 							if(r)	{
@@ -3977,6 +4316,7 @@ pn.y.ModAdd(&GSn[i].y);
 								}
 								if(salir)	{
 									printf("All points were found\n");
+									clearFuseFilters();
 									exit(EXIT_FAILURE);
 								}
 							} //End if second check
@@ -4192,7 +4532,12 @@ pn.y.ModAdd(&GSn[i].y);
 					
 					for(int i = 0; i<CPU_GRP_SIZE && bsgs_found[k]== 0; i++) {
 						pts[i].x.Get32Bytes((unsigned char*)xpoint_raw);
+#if not defined(_BLOOM_FILE)
+						uint64_t hexval = XXH64(xpoint_raw, BSGS_BUFFERXPOINTLENGTH, 0x59f2815b16f81798);				
+						r = binary_fuse20_contain(hexval,&fuse_filter[((unsigned char)xpoint_raw[0])]);
+#else
 						r = bloom_check(&bloom_bP[((unsigned char)xpoint_raw[0])],xpoint_raw,32);
+#endif
 						if(r) {
 							r = bsgs_secondcheck(&base_key,((j*1024) + i),k,&keyfound);
 							if(r)	{
@@ -4227,6 +4572,7 @@ pn.y.ModAdd(&GSn[i].y);
 								}
 								if(salir)	{
 									printf("All points were found\n");
+									clearFuseFilters();
 									exit(EXIT_FAILURE);
 								}
 							} //End if second check
@@ -4294,7 +4640,12 @@ int bsgs_secondcheck(Int *start_range,uint32_t a,uint32_t k_index,Int *privateke
 		BSGS_Q_AMP = secp->AddDirect(BSGS_Q,BSGS_AMP2[i]);
 		BSGS_S.Set(BSGS_Q_AMP);
 		BSGS_S.x.Get32Bytes((unsigned char *) xpoint_raw);
+#if not defined(_BLOOM_FILE)
+		uint64_t hexval = XXH64(xpoint_raw, BSGS_BUFFERXPOINTLENGTH, 0x59f2815b16f81798);				
+		r = binary_fuse20_contain(hexval,&fuse_filterx2nd[((unsigned char)xpoint_raw[0])]);
+#else
 		r = bloom_check(&bloom_bPx2nd[(uint8_t) xpoint_raw[0]],xpoint_raw,32);
+#endif
 		if(r)	{
 			found = bsgs_thirdcheck(&base_key,i,k_index,privatekey);
 		}
@@ -4325,7 +4676,12 @@ int bsgs_thirdcheck(Int *start_range,uint32_t a,uint32_t k_index,Int *privatekey
 		BSGS_Q_AMP = secp->AddDirect(BSGS_Q,BSGS_AMP3[i]);
 		BSGS_S.Set(BSGS_Q_AMP);
 		BSGS_S.x.Get32Bytes((unsigned char *)xpoint_raw);
+#if not defined(_BLOOM_FILE)
+		uint64_t hexval = XXH64(xpoint_raw, BSGS_BUFFERXPOINTLENGTH, 0x59f2815b16f81798);				
+		r = binary_fuse20_contain(hexval,&fuse_filterx3rd[((unsigned char)xpoint_raw[0])]);
+#else
 		r = bloom_check(&bloom_bPx3rd[(uint8_t)xpoint_raw[0]],xpoint_raw,32);
+#endif
 		if(r)	{
 			r = bsgs_searchbinary(bPtable,xpoint_raw,bsgs_m3,&j);
 			if(r)	{
@@ -4406,7 +4762,7 @@ void *thread_bPload(void *vargp)	{
 
 	char rawvalue[32];
 	struct bPload *tt;
-	uint64_t i_counter,j,nbStep,to;
+	uint64_t i_counter,j,nbStep;
 	
 	IntGroup *grp = new IntGroup(CPU_GRP_SIZE / 2 + 1);
 	Point startP;
@@ -4429,7 +4785,6 @@ void *thread_bPload(void *vargp)	{
 		nbStep++;
 	}
 	//if(FLAGDEBUG) printf("[D] thread %i nbStep %" PRIu64 "\n",threadid,nbStep);
-	to = tt->to;
 	
 	km.Add((uint64_t)(CPU_GRP_SIZE / 2));
 	startP = secp->ComputePublicKey(&km);
@@ -4520,11 +4875,37 @@ void *thread_bPload(void *vargp)	{
 				printf("%i : %s : %i\n",i_counter,hexraw,bloom_bP_index);
 			}
 			*/
+#if not defined(_BLOOM_FILE)
+#if defined(_WIN64) && !defined(__CYGWIN__)
+			WaitForSingleObject(bloom_bPx3rd_mutex[bloom_bP_index], INFINITE);
+			if (fuse_file[bloom_bP_index] != NULL)
+			{
+				uint64_t uint64Values[4];
+				memcpy(uint64Values, rawvalue, 32);
+				uint64_t hexval = (uint64Values[0] << 48) | (uint64Values[1] << 32) | (uint64Values[2] << 16) | uint64Values[3];
+				Fuse_Pair out = { hexval, i_counter };
+				fwrite(&out, sizeof(out), 1, fuse_file[bloom_bP_index]);
+				fuse_file_cnt[bloom_bP_index]++;		
+			}
+			ReleaseMutex(bloom_bPx3rd_mutex[bloom_bP_index]);
+#else
+			pthread_mutex_lock(&bloom_bPx3rd_mutex[bloom_bP_index]);			
+			if (fuse_file[bloom_bP_index] != NULL)
+			{
+				uint64_t hexval = XXH64(rawvalue, BSGS_BUFFERXPOINTLENGTH, 0x59f2815b16f81798);				
+				Fuse_Pair out = { hexval, i_counter };
+				fwrite(&out, sizeof(out), 1, fuse_file[bloom_bP_index]);
+				fuse_file_cnt[bloom_bP_index]++;
+			}
+			pthread_mutex_unlock(&bloom_bPx3rd_mutex[bloom_bP_index]);
+#endif
+#endif // not Bloom file write
 			if(i_counter < bsgs_m3)	{
 				if(!FLAGREADEDFILE3)	{
 					memcpy(bPtable[i_counter].value,rawvalue+16,BSGS_XVALUE_RAM);
 					bPtable[i_counter].index = i_counter;
 				}
+#if defined(_BLOOM_FILE)			
 				if(!FLAGREADEDFILE4)	{
 #if defined(_WIN64) && !defined(__CYGWIN__)
 					WaitForSingleObject(bloom_bPx3rd_mutex[bloom_bP_index], INFINITE);
@@ -4536,7 +4917,9 @@ void *thread_bPload(void *vargp)	{
 					pthread_mutex_unlock(&bloom_bPx3rd_mutex[bloom_bP_index]);
 #endif
 				}
+#endif
 			}
+#if defined(_BLOOM_FILE)			
 			if(i_counter < bsgs_m2 && !FLAGREADEDFILE2)	{
 #if defined(_WIN64) && !defined(__CYGWIN__)
 				WaitForSingleObject(bloom_bPx2nd_mutex[bloom_bP_index], INFINITE);
@@ -4559,6 +4942,7 @@ void *thread_bPload(void *vargp)	{
 				pthread_mutex_unlock(&bloom_bP_mutex[bloom_bP_index]);
 #endif
 			}
+#endif
 			i_counter++;
 		}
 		// Next start point (startP + GRP_SIZE*G)
@@ -4703,11 +5087,35 @@ void *thread_bPload_2blooms(void *vargp)	{
 		for(j=0;j<CPU_GRP_SIZE;j++)	{
 			pts[j].x.Get32Bytes((unsigned char*)rawvalue);
 			bloom_bP_index = (uint8_t)rawvalue[0];
+#if not defined(_BLOOM_FILE)
+#if defined(_WIN64) && !defined(__CYGWIN__)
+			WaitForSingleObject(bloom_bPx3rd_mutex[bloom_bP_index], INFINITE);
+			if (fuse_file[bloom_bP_index] != NULL)
+			{
+				uint64_t hexval = XXH64(rawvalue, BSGS_BUFFERXPOINTLENGTH, 0x59f2815b16f81798);				
+				Fuse_Pair out = { hexval, i_counter };
+				fwrite(&out, sizeof(out), 1, fuse_file[bloom_bP_index]);						
+				fuse_file_cnt[bloom_bP_index]++;
+			}
+			ReleaseMutex(bloom_bPx3rd_mutex[bloom_bP_index]);
+#else
+			pthread_mutex_lock(&bloom_bPx3rd_mutex[bloom_bP_index]);			
+			if (fuse_file[bloom_bP_index] != NULL)
+			{
+				uint64_t hexval = XXH64(rawvalue, BSGS_BUFFERXPOINTLENGTH, 0x59f2815b16f81798);				
+				Fuse_Pair out = { hexval, i_counter };
+				fwrite(&out, sizeof(out), 1, fuse_file[bloom_bP_index]);						
+				fuse_file_cnt[bloom_bP_index]++;
+			}
+			pthread_mutex_unlock(&bloom_bPx3rd_mutex[bloom_bP_index]);
+#endif
+#endif // not Bloom file write
 			if(i_counter < bsgs_m3)	{
 				if(!FLAGREADEDFILE3)	{
 					memcpy(bPtable[i_counter].value,rawvalue+16,BSGS_XVALUE_RAM);
 					bPtable[i_counter].index = i_counter;
 				}
+#if defined(_BLOOM_FILE)			
 				if(!FLAGREADEDFILE4)	{
 #if defined(_WIN64) && !defined(__CYGWIN__)
 					WaitForSingleObject(bloom_bPx3rd_mutex[bloom_bP_index], INFINITE);
@@ -4719,7 +5127,9 @@ void *thread_bPload_2blooms(void *vargp)	{
 					pthread_mutex_unlock(&bloom_bPx3rd_mutex[bloom_bP_index]);
 #endif
 				}
+#endif
 			}
+#if defined(_BLOOM_FILE)
 			if(i_counter < bsgs_m2 && !FLAGREADEDFILE2)	{
 #if defined(_WIN64) && !defined(__CYGWIN__)
 					WaitForSingleObject(bloom_bPx2nd_mutex[bloom_bP_index], INFINITE);
@@ -4731,6 +5141,7 @@ void *thread_bPload_2blooms(void *vargp)	{
 					pthread_mutex_unlock(&bloom_bPx2nd_mutex[bloom_bP_index]);
 #endif			
 			}
+#endif
 			i_counter++;
 		}
 		// Next start point (startP + GRP_SIZE*G)
@@ -4750,6 +5161,178 @@ void *thread_bPload_2blooms(void *vargp)	{
 		startP = pp;
 	}
 	delete grp;
+#if defined(_WIN64) && !defined(__CYGWIN__)
+	WaitForSingleObject(bPload_mutex[threadid], INFINITE);
+	tt->finished = 1;
+	ReleaseMutex(bPload_mutex[threadid]);
+#else	
+	pthread_mutex_lock(&bPload_mutex[threadid]);
+	tt->finished = 1;
+	pthread_mutex_unlock(&bPload_mutex[threadid]);
+	pthread_exit(NULL);
+#endif
+	return NULL;
+}
+#if defined(_WIN64) && !defined(__CYGWIN__)
+DWORD WINAPI thread_Fuseload(LPVOID vargp)
+{
+#else
+void *thread_Fuseload(void *vargp)
+{
+#endif
+	struct Fuseload *tt;
+	int i_fuse, threadid;
+	tt = (struct Fuseload *)vargp;
+	threadid = tt->threadid;
+	i_fuse = tt->fuse_i;
+#if defined(_WIN64) && !defined(__CYGWIN__)
+	WaitForSingleObject(bloom_bPx3rd_mutex[i_fuse], INFINITE);
+#else
+	pthread_mutex_lock(&bloom_bPx3rd_mutex[i_fuse]);
+#endif
+	char buffer_fuse_file[1024];
+	snprintf(buffer_fuse_file, 1024, "fuse_file_%02d.bin", i_fuse);
+	fuse_file[i_fuse] = fopen(buffer_fuse_file, "rb");
+	const size_t BUF_WORDS = 1024 / sizeof(uint64_t);
+	uint64_t buffer[BUF_WORDS];
+	size_t index = 0;
+	std::vector<uint64_t> hexvals;
+	hexvals.reserve(fuse_file_cnt[i_fuse]);
+	std::vector<uint64_t> counterVal;
+	counterVal.reserve(fuse_file_cnt[i_fuse]);
+	items_fuse += fuse_file_cnt[i_fuse];
+	while (true)
+	{
+		size_t count = fread(buffer, sizeof(uint64_t), BUF_WORDS, fuse_file[i_fuse]);
+		if (count == 0)
+			break;
+		for (size_t i = 0; i < count; ++i)
+		{
+			if ((index & 1) == 0)
+			{
+				hexvals.push_back(buffer[i]);
+			}
+			else
+			{
+				counterVal.push_back(buffer[i]);
+			}
+			index++;
+		}
+	}
+	fclose(fuse_file[i_fuse]);
+	if (!binary_fuse20_allocate(hexvals.size(), &fuse_filter[i_fuse]))
+	{
+		printf("binary_fuse20_allocate failed to allocate memory.\n");
+	}
+	if (!binary_fuse20_populate(hexvals.data(), hexvals.size(), &fuse_filter[i_fuse]))
+	{
+		printf("binary_fuse20_populate failed to build the filter, do you have sufficient memory?\n");
+	}
+	bloom_bP_totalbytes += sizeof(fuse_filter[i_fuse]) + ceil(Fuse_Elem_Bytes * fuse_filter[i_fuse].ArrayLength);
+	for (size_t i = 0; i < hexvals.size(); i++)
+	{
+		if (!binary_fuse20_contain(hexvals[i], &fuse_filter[i_fuse]))
+		{
+			printf("binary_fuse20_contain detected a false negative. You probably have a bug. "
+				   "Aborting.\n");
+		}
+	}
+	snprintf(buffer_fuse_file, 1024, "fuse_filter_%03d.local", i_fuse);
+	FILE *fuse_file_local = fopen(buffer_fuse_file, "wb");
+	if (fuse_file_local == NULL)
+	{
+		printf("Unable to open file %s for writing.\n", buffer_fuse_file);
+	}
+	else
+	{
+		uint8_t *temp_p = fuse_filter[i_fuse].Fingerprints;
+		fuse_filter[i_fuse].Fingerprints = nullptr;
+		fwrite(&fuse_filter[i_fuse],sizeof(binary_fuse20_t),1,fuse_file_local);
+		fwrite(temp_p,ceil(fuse_filter[i_fuse].ArrayLength*Fuse_Elem_Bytes),1,fuse_file_local);
+		fclose(fuse_file_local);
+		free(temp_p); // Remove From Memory after writing to file - load back in later
+	}
+	erase_elements_conditional(hexvals, counterVal, bsgs_m2);
+	items_fuse2 += hexvals.size();
+	if (!binary_fuse20_allocate(hexvals.size(), &fuse_filterx2nd[i_fuse]))
+	{
+		printf("binary_fuse20_allocate failed to allocate memory.\n");
+	}
+	if (!binary_fuse20_populate(hexvals.data(), hexvals.size(), &fuse_filterx2nd[i_fuse]))
+	{
+		printf("binary_fuse20_populate failed to build the filter, do you have sufficient memory?\n");
+	}
+	bloom_bP2_totalbytes += sizeof(fuse_filterx2nd[i_fuse]) + ceil(Fuse_Elem_Bytes * fuse_filterx2nd[i_fuse].ArrayLength);
+	for (size_t i = 0; i < hexvals.size(); i++)
+	{
+		if (!binary_fuse20_contain(hexvals[i], &fuse_filterx2nd[i_fuse]))
+		{
+			printf("binary_fuse20_contain detected a false negative. You probably have a bug. "
+				   "Aborting.\n");
+		}
+	}
+	snprintf(buffer_fuse_file, 1024, "fuse_filterx2nd_%03d.local", i_fuse);
+	fuse_file_local = fopen(buffer_fuse_file, "wb");
+	if (fuse_file_local == NULL)
+	{
+		printf("Unable to open file %s for writing.\n", buffer_fuse_file);
+	}
+	else
+	{
+		uint8_t *temp_p = fuse_filterx2nd[i_fuse].Fingerprints;
+		fuse_filterx2nd[i_fuse].Fingerprints = nullptr;
+		fwrite(&fuse_filterx2nd[i_fuse],sizeof(binary_fuse20_t),1,fuse_file_local);
+		fwrite(temp_p,ceil(fuse_filterx2nd[i_fuse].ArrayLength*Fuse_Elem_Bytes),1,fuse_file_local);
+		fclose(fuse_file_local);
+		free(temp_p); // Remove From Memory after writing to file - load back in later
+	}
+	erase_elements_conditional(hexvals, counterVal, bsgs_m3);
+	items_fuse3 += hexvals.size();
+	if (!binary_fuse20_allocate(hexvals.size(), &fuse_filterx3rd[i_fuse]))
+	{
+		printf("binary_fuse20_allocate failed to allocate memory.\n");
+	}
+	if (!binary_fuse20_populate(hexvals.data(), hexvals.size(), &fuse_filterx3rd[i_fuse]))
+	{
+		printf("binary_fuse20_populate failed to build the filter, do you have sufficient memory?\n");
+	}
+	bloom_bP3_totalbytes += sizeof(fuse_filterx3rd[i_fuse]) + ceil(Fuse_Elem_Bytes * fuse_filterx3rd[i_fuse].ArrayLength);
+	for (size_t i = 0; i < hexvals.size(); i++)
+	{
+		if (!binary_fuse20_contain(hexvals[i], &fuse_filterx3rd[i_fuse]))
+		{
+			printf("binary_fuse20_contain detected a false negative. You probably have a bug. "
+				   "Aborting.\n");
+		}
+	}
+	snprintf(buffer_fuse_file, 1024, "fuse_filterx3rd_%03d.local", i_fuse);
+	fuse_file_local = fopen(buffer_fuse_file, "wb");
+	if (fuse_file_local == NULL)
+	{
+		printf("Unable to open file %s for writing.\n", buffer_fuse_file);
+	}
+	else
+	{
+		uint8_t *temp_p = fuse_filterx3rd[i_fuse].Fingerprints;
+		fuse_filterx3rd[i_fuse].Fingerprints = nullptr;
+		fwrite(&fuse_filterx3rd[i_fuse],sizeof(binary_fuse20_t),1,fuse_file_local);
+		fwrite(temp_p,ceil(fuse_filterx3rd[i_fuse].ArrayLength*Fuse_Elem_Bytes),1,fuse_file_local);
+		fclose(fuse_file_local);
+		free(temp_p); // Remove From Memory after writing to file - load back in later
+	}
+	snprintf(buffer_fuse_file, 1024, "fuse_file_%02d.bin", i_fuse);
+	if (remove(buffer_fuse_file) == 0)
+	{
+	}
+	else
+	{
+		printf("[W] Unable to delete temporary file %s\n", buffer_fuse_file);
+	}
+#if defined(_WIN64) && !defined(__CYGWIN__)
+	ReleaseMutex(bloom_bPx3rd_mutex[i_fuse]);
+#else
+	pthread_mutex_unlock(&bloom_bPx3rd_mutex[i_fuse]);
+#endif
 #if defined(_WIN64) && !defined(__CYGWIN__)
 	WaitForSingleObject(bPload_mutex[threadid], INFINITE);
 	tt->finished = 1;
@@ -5032,6 +5615,7 @@ pn.y.ModAdd(&GSn[i].y);
 								}
 								if(salir)	{
 									printf("All points were found\n");
+									clearFuseFilters();
 									exit(EXIT_FAILURE);
 								}
 							} //End if second check
@@ -5290,6 +5874,7 @@ pn.y.ModAdd(&GSn[i].y);
 								}
 								if(salir)	{
 									printf("All points were found\n");
+									clearFuseFilters();
 									exit(EXIT_FAILURE);
 								}
 							} //End if second check
@@ -5574,6 +6159,7 @@ void *thread_process_bsgs_both(void *vargp)	{
 									}
 									if(salir)	{
 										printf("All points were found\n");
+										clearFuseFilters();
 										exit(EXIT_FAILURE);
 									}
 								} //End if second check
@@ -5982,6 +6568,7 @@ int minimum_same_bytes(unsigned char* A,unsigned char* B, int length) {
 void checkpointer(void *ptr,const char *file,const char *function,const  char *name,int line)	{
 	if(ptr == NULL)	{
 		fprintf(stderr,"[E] error in file %s, %s pointer %s on line %i\n",file,function,name,line); 
+		clearFuseFilters();
 		exit(EXIT_FAILURE);
 	}
 }
@@ -6586,6 +7173,7 @@ void writeFileIfNeeded(const char *fileName)	{
 		uint64_t dataSize;
 		if(!sha256_file((const char*)fileName,checksum)){
 			fprintf(stderr,"[E] sha256_file error line %i\n",__LINE__ - 1);
+			clearFuseFilters();
 			exit(EXIT_FAILURE);
 		}
 		tohex_dst((char*)checksum,4,(char*)hexPrefix); // we save the prefix (last fourt bytes) hexadecimal value
@@ -6616,6 +7204,7 @@ void writeFileIfNeeded(const char *fileName)	{
 			bytesWrite = fwrite(bloomChecksum,1,32,fileDescriptor);
 			if(bytesWrite != 32)	{
 				fprintf(stderr,"[E] Errore writing file, code line %i\n",__LINE__ - 2);
+				clearFuseFilters();
 				exit(EXIT_FAILURE);
 			}
 			printf(".");
@@ -6623,6 +7212,7 @@ void writeFileIfNeeded(const char *fileName)	{
 			bytesWrite = fwrite(&bloom,1,sizeof(struct bloom),fileDescriptor);
 			if(bytesWrite != sizeof(struct bloom))	{
 				fprintf(stderr,"[E] Error writing file, code line %i\n",__LINE__ - 2);
+				clearFuseFilters();
 				exit(EXIT_FAILURE);
 			}
 			printf(".");
@@ -6631,6 +7221,7 @@ void writeFileIfNeeded(const char *fileName)	{
 			if(bytesWrite != bloom.bytes)	{
 				fprintf(stderr,"[E] Error writing file, code line %i\n",__LINE__ - 2);
 				fclose(fileDescriptor);
+				clearFuseFilters();
 				exit(EXIT_FAILURE);
 			}
 			printf(".");
@@ -6652,6 +7243,7 @@ void writeFileIfNeeded(const char *fileName)	{
 			bytesWrite = fwrite(dataChecksum,1,32,fileDescriptor);
 			if(bytesWrite != 32)	{
 				fprintf(stderr,"[E] Errore writing file, code line %i\n",__LINE__ - 2);
+				clearFuseFilters();
 				exit(EXIT_FAILURE);
 			}
 			printf(".");	
@@ -6659,6 +7251,7 @@ void writeFileIfNeeded(const char *fileName)	{
 			bytesWrite = fwrite(&dataSize,1,sizeof(uint64_t),fileDescriptor);
 			if(bytesWrite != sizeof(uint64_t))	{
 				fprintf(stderr,"[E] Errore writing file, code line %i\n",__LINE__ - 2);
+				clearFuseFilters();
 				exit(EXIT_FAILURE);
 			}
 			printf(".");
@@ -6666,6 +7259,7 @@ void writeFileIfNeeded(const char *fileName)	{
 			bytesWrite = fwrite(addressTable,1,dataSize,fileDescriptor);
 			if(bytesWrite != dataSize)	{
 				fprintf(stderr,"[E] Error writing file, code line %i\n",__LINE__ - 2);
+				clearFuseFilters();
 				exit(EXIT_FAILURE);
 			}
 			printf(".");

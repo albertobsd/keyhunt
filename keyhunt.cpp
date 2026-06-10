@@ -3091,7 +3091,11 @@ void *thread_process(void *vargp)	{
 				pp.y.ModMulK1(&_s);
 				pp.y.ModSub(&_2Gn.y);
 				startP = pp;
-			}while(count < N_SEQUENTIAL_MAX && continue_flag);
+			/* fork puzzle: no modo sequencial, para ao atingir o fim do range (-r ...:TO).
+			   keyhunt original varre um lote inteiro de N_SEQUENTIAL_MAX (4 bi) ignorando o
+			   TO; isso fazia o worker varrer muito além do bloco e nunca encerrar. Random
+			   (FLAGRANDOM) segue sem limite, como antes. */
+			}while(count < N_SEQUENTIAL_MAX && continue_flag && (FLAGRANDOM || key_mpz.IsLower(&n_range_end)));
 		}
 	} while(continue_flag);
 	ends[thread_number] = 1;
@@ -3528,7 +3532,11 @@ void *thread_process_vanity(void *vargp)	{
 				pp.y.ModMulK1(&_s);
 				pp.y.ModSub(&_2Gn.y);
 				startP = pp;
-			}while(count < N_SEQUENTIAL_MAX && continue_flag);
+			/* fork puzzle: no modo sequencial, para ao atingir o fim do range (-r ...:TO).
+			   keyhunt original varre um lote inteiro de N_SEQUENTIAL_MAX (4 bi) ignorando o
+			   TO; isso fazia o worker varrer muito além do bloco e nunca encerrar. Random
+			   (FLAGRANDOM) segue sem limite, como antes. */
+			}while(count < N_SEQUENTIAL_MAX && continue_flag && (FLAGRANDOM || key_mpz.IsLower(&n_range_end)));
 		}
 	} while(continue_flag);
 	ends[thread_number] = 1;

@@ -19,11 +19,36 @@
 #include <sys/stat.h>
 #include <inttypes.h>
 #include <sys/types.h>
+
+#if defined(_WIN64) && !defined(__CYGWIN__)
+/* Windows / MSVC: no <unistd.h> or <pthread.h>. Provide the POSIX file-I/O
+   names used below via the MSVC CRT (<io.h>) and a ssize_t typedef. */
+#include <windows.h>
+#include <io.h>
+#include <basetsd.h>
+typedef SSIZE_T ssize_t;
+#ifndef O_BINARY
+#define O_BINARY _O_BINARY
+#endif
+#else
 #include <unistd.h>
 #include <pthread.h>
+#ifndef O_BINARY
+#define O_BINARY 0
+#endif
+#endif
 
 #include "bloom.h"
 #include "../xxhash/xxhash.h"
+
+#if defined(_WIN64) && !defined(__CYGWIN__)
+/* Map the POSIX descriptor calls used in this file to the MSVC CRT.
+   Defined after all includes so the macros cannot clobber library headers. */
+#define open  _open
+#define read  _read
+#define write _write
+#define close _close
+#endif
 
 #define MAKESTRING(n) STRING(n)
 #define STRING(n) #n
@@ -193,7 +218,7 @@ int bloom_save(struct bloom * bloom, char * filename)
     return 1;
   }
 
-  int fd = open(filename, O_WRONLY | O_CREAT, 0644);
+  int fd = open(filename, O_WRONLY | O_CREAT | O_BINARY, 0644);
   if (fd < 0) {
     return 1;
   }
@@ -230,7 +255,7 @@ int bloom_load(struct bloom * bloom, char * filename)
 
   memset(bloom, 0, sizeof(struct bloom));
 
-  int fd = open(filename, O_RDONLY);
+  int fd = open(filename, O_RDONLY | O_BINARY);
   if (fd < 0) { return 3; }
 
   char line[30];

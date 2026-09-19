@@ -17,6 +17,15 @@
 
 #ifndef SHA256_H
 #define SHA256_H
+
+/* Cross-platform: MSVC only predefines _WIN64 on 64-bit Windows, but this
+   codebase gates its Windows-specific paths on the bare macro WIN64.
+   Normalize it so the sources build with MSVC (and MinGW) without relying
+   on a build-system -DWIN64 flag. */
+#if defined(_WIN64) && !defined(WIN64)
+#define WIN64
+#endif
+
 #include <string>
 #include <string.h>
 #include <stdio.h>

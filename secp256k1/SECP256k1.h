@@ -18,6 +18,14 @@
 #ifndef SECP256K1H
 #define SECP256K1H
 
+/* Cross-platform: MSVC only predefines _WIN64 on 64-bit Windows, but this
+   codebase gates its Windows-specific paths on the bare macro WIN64.
+   Normalize it so the sources build with MSVC (and MinGW) without relying
+   on a build-system -DWIN64 flag. */
+#if defined(_WIN64) && !defined(WIN64)
+#define WIN64
+#endif
+
 #include "Point.h"
 #include <vector>
 

@@ -37,6 +37,9 @@
   #error Unsuported size
 #endif
 
+extern char FileName[64];
+extern char FilePath[128];
+
 class Int {
 
 public:

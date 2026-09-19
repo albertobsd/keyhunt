@@ -1,0 +1,48 @@
+# ---------------------------------------------------------------------------
+# NMAKE makefile for keyhunt on Windows with MSVC (Visual Studio 2017+).
+#
+# Open an "x64 Native Tools Command Prompt for VS 2017" (so cl.exe targets
+# x64 - this project requires 64-bit) and run:
+#
+#     nmake /f MakefileW
+#
+# Produces keyhunt.exe.  "nmake /f MakefileW clean" removes the build output.
+#
+# Note: keyhunt uses 64-bit intrinsics and MUST be built for x64. Do not use
+# the 32-bit (x86) tools prompt.
+#
+# CMake (CMakeLists.txt) and the Visual Studio project (keyhunt.vcxproj) are
+# also provided and are the recommended ways to build.
+# ---------------------------------------------------------------------------
+
+CXXFLAGS = /nologo /O2 /EHsc /MD /DWIN64 /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_DEPRECATE /DNOMINMAX /I. /std:c++14
+
+# C++ translation units (.cpp, plus .c files that are really C++: they include
+# <cstring> and/or link against C++ callers, so force /Tp on them).
+CPPSRC = keyhunt.cpp \
+	oldbloom\oldbloom.cpp \
+	bloom\bloom.cpp \
+	secp256k1\Random.cpp \
+	hash\ripemd160.cpp \
+	hash\sha256.cpp \
+	hash\ripemd160_sse.cpp \
+	hash\sha256_sse.cpp \
+	secp256k1\Int.cpp \
+	secp256k1\Point.cpp \
+	secp256k1\SECP256K1.cpp \
+	secp256k1\IntMod.cpp \
+	secp256k1\IntGroup.cpp
+
+CPPSRC_C = /Tputil.c /Tpsha3\sha3.c /Tpsha3\keccak.c
+
+# Pure C translation units (their headers expose extern "C" to C++ callers).
+CSRC = /Tcbase58\base58.c /Tcrmd160\rmd160.c /Tcxxhash\xxhash.c /Tcgetopt.c
+
+all: keyhunt.exe
+
+keyhunt.exe:
+	cl $(CXXFLAGS) /Fekeyhunt.exe $(CPPSRC) $(CPPSRC_C) $(CSRC)
+
+clean:
+	-del *.obj 2>nul
+	-del keyhunt.exe 2>nul

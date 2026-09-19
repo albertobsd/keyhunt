@@ -42,9 +42,9 @@ Int::Int(Int *a) {
 
 Int::Int(int32_t i32) {
   if (i32 < 0) {
-	  CLEARFF();
+          CLEARFF();
   } else {
-	  CLEAR();
+          CLEAR();
   }
   bits[0] = i32;
 }
@@ -52,9 +52,9 @@ Int::Int(int32_t i32) {
 Int::Int(int64_t i64) {
 
   if (i64 < 0) {
-	  CLEARFF();
+          CLEARFF();
   } else {
-	  CLEAR();
+          CLEAR();
   }
   bits64[0] = i64;
 }
@@ -80,7 +80,7 @@ void Int::CLEARFF() {
 
 void Int::Set(Int *a) {
   for (int i = 0; i<NB64BLOCK; i++)
-  	bits64[i] = a->bits64[i];
+        bits64[i] = a->bits64[i];
 }
 
 // ------------------------------------------------
@@ -106,12 +106,12 @@ void Int::Add(Int *a) {
 
 void Int::Add(uint64_t a) {
 
-	unsigned char c = 0;
-	c = _addcarry_u64(c, bits64[0], a, bits64 + 0);
-	c = _addcarry_u64(c, bits64[1], 0, bits64 + 1);
-	c = _addcarry_u64(c, bits64[2], 0, bits64 + 2);
-	c = _addcarry_u64(c, bits64[3], 0, bits64 + 3);
-	c = _addcarry_u64(c, bits64[4], 0, bits64 + 4);
+        unsigned char c = 0;
+        c = _addcarry_u64(c, bits64[0], a, bits64 + 0);
+        c = _addcarry_u64(c, bits64[1], 0, bits64 + 1);
+        c = _addcarry_u64(c, bits64[2], 0, bits64 + 2);
+        c = _addcarry_u64(c, bits64[3], 0, bits64 + 3);
+        c = _addcarry_u64(c, bits64[4], 0, bits64 + 4);
 #if NB64BLOCK > 5
 	c = _addcarry_u64(c, bits64[5], 0, bits64 + 5);
 	c = _addcarry_u64(c, bits64[6], 0, bits64 + 6);
@@ -165,7 +165,7 @@ bool Int::IsGreater(Int *a) {
 
   for(i=NB64BLOCK-1;i>=0;) {
     if( a->bits64[i]!= bits64[i] )
-		break;
+                break;
     i--;
   }
 
@@ -317,8 +317,8 @@ void Int::Get32Bytes(unsigned char *buff) {
 
 void Int::SetByte(int n,unsigned char byte) {
 
-	unsigned char *bbPtr = (unsigned char *)bits;
-	bbPtr[n] = byte;
+        unsigned char *bbPtr = (unsigned char *)bits;
+        bbPtr[n] = byte;
 
 }
 
@@ -331,7 +331,7 @@ void Int::SetDWord(int n,uint32_t b) {
 // ------------------------------------------------
 
 void Int::SetQWord(int n, uint64_t b) {
-	bits64[n] = b;
+        bits64[n] = b;
 }
 
 // ------------------------------------------------
@@ -422,9 +422,9 @@ bool Int::IsNegative() {
 
 bool Int::IsStrictPositive() {
   if( IsPositive() )
-	  return !IsZero();
+          return !IsZero();
   else
-	  return false;
+          return false;
 }
 
 // ------------------------------------------------
@@ -443,12 +443,12 @@ bool Int::IsOdd() {
 
 void Int::Neg() {
 
-	volatile unsigned char c=0;
-	c = _subborrow_u64(c, 0, bits64[0], bits64 + 0);
-	c = _subborrow_u64(c, 0, bits64[1], bits64 + 1);
-	c = _subborrow_u64(c, 0, bits64[2], bits64 + 2);
-	c = _subborrow_u64(c, 0, bits64[3], bits64 + 3);
-	c = _subborrow_u64(c, 0, bits64[4], bits64 + 4);
+        volatile unsigned char c=0;
+        c = _subborrow_u64(c, 0, bits64[0], bits64 + 0);
+        c = _subborrow_u64(c, 0, bits64[1], bits64 + 1);
+        c = _subborrow_u64(c, 0, bits64[2], bits64 + 2);
+        c = _subborrow_u64(c, 0, bits64[3], bits64 + 3);
+        c = _subborrow_u64(c, 0, bits64[4], bits64 + 4);
 #if NB64BLOCK > 5
 	c = _subborrow_u64(c, 0, bits64[5], bits64 + 5);
 	c = _subborrow_u64(c, 0, bits64[6], bits64 + 6);
@@ -473,10 +473,10 @@ void Int::ShiftL32Bit() {
 
 void Int::ShiftL64Bit() {
 
-	for (int i = NB64BLOCK-1 ; i>0; i--) {
-		bits64[i] = bits64[i - 1];
-	}
-	bits64[0] = 0;
+        for (int i = NB64BLOCK-1 ; i>0; i--) {
+                bits64[i] = bits64[i - 1];
+        }
+        bits64[0] = 0;
 
 }
 
@@ -502,12 +502,12 @@ void Int::ShiftL32BitAndSub(Int *a,int n) {
 void Int::ShiftL(uint32_t n) {
 
   if( n<64 ) {
-	shiftL((unsigned char)n, bits64);
+        shiftL((unsigned char)n, bits64);
   } else {
     uint32_t nb64 = n/64;
     uint32_t nb   = n%64;
     for(uint32_t i=0;i<nb64;i++) ShiftL64Bit();
-	  shiftL((unsigned char)nb, bits64);
+          shiftL((unsigned char)nb, bits64);
   }
 
 }
@@ -530,13 +530,13 @@ void Int::ShiftR32Bit() {
 
 void Int::ShiftR64Bit() {
 
-	for (int i = 0; i<NB64BLOCK - 1; i++) {
-		bits64[i] = bits64[i + 1];
-	}
-	if (((int64_t)bits64[NB64BLOCK - 2])<0)
-		bits64[NB64BLOCK - 1] = 0xFFFFFFFFFFFFFFFF;
-	else
-		bits64[NB64BLOCK - 1] = 0;
+        for (int i = 0; i<NB64BLOCK - 1; i++) {
+                bits64[i] = bits64[i + 1];
+        }
+        if (((int64_t)bits64[NB64BLOCK - 2])<0)
+                bits64[NB64BLOCK - 1] = 0xFFFFFFFFFFFFFFFF;
+        else
+                bits64[NB64BLOCK - 1] = 0;
 
 }
 
@@ -550,7 +550,7 @@ void Int::ShiftR(uint32_t n) {
     uint32_t nb64 = n/64;
     uint32_t nb   = n%64;
     for(uint32_t i=0;i<nb64;i++) ShiftR64Bit();
-	  shiftR((unsigned char)nb, bits64);
+          shiftR((unsigned char)nb, bits64);
   }
 
 }
@@ -568,13 +568,13 @@ void Int::Mult(Int *a) {
 
 void Int::IMult(int64_t a) {
 
-	// Make a positive
-	if (a < 0LL) {
-		a = -a;
-		Neg();
-	}
+        // Make a positive
+        if (a < 0LL) {
+                a = -a;
+                Neg();
+        }
 
-	imm_mul(bits64, a, bits64);
+        imm_mul(bits64, a, bits64);
 
 }
 
@@ -582,7 +582,7 @@ void Int::IMult(int64_t a) {
 
 void Int::Mult(uint64_t a) {
 
-	imm_mul(bits64, a, bits64);
+        imm_mul(bits64, a, bits64);
 
 }
 // ------------------------------------------------
@@ -593,8 +593,8 @@ void Int::IMult(Int *a, int64_t b) {
 
   // Make b positive
   if (b < 0LL) {
-	Neg();
-	b = -b;
+        Neg();
+        b = -b;
   }
   imm_mul(bits64, b, bits64);
 
@@ -660,7 +660,7 @@ int Int::GetBitLength() {
 
   Int t(this);
   if(IsNegative())
-	  t.Neg();
+          t.Neg();
 
   int i=NB32BLOCK-1;
   while(i>=0 && t.bits[i]==0) i--;
@@ -716,7 +716,7 @@ int Int::GetLowestBit() {
 void Int::MaskByte(int n) {
 
   for (int i = n; i < NB32BLOCK; i++)
-	  bits[i] = 0;
+          bits[i] = 0;
 
 }
 
@@ -733,7 +733,7 @@ void Int::Abs() {
 
 void Int::Rand(int nbit) {
 
-	CLEAR();
+        CLEAR();
 
 	uint32_t nb = nbit/32;
 	uint32_t leftBit = nbit%32;
@@ -741,21 +741,21 @@ void Int::Rand(int nbit) {
 	mask = (mask << leftBit) - 1;
 	uint32_t i=0;
 	for(;i<nb;i++)
-		bits[i]=rndl();
+	        bits[i]=rndl();
 	bits[i]=rndl()&mask;
 
 }
 
 void Int::Rand(Int *min,Int *max) {
-	CLEAR();
+        CLEAR();
   Int diff;
   int nbit = 256;
   uint32_t nb = nbit/32;
   diff.Set(max);
   diff.Sub(min);
-	uint32_t i=0;
-	for(;i<nb;i++)
-		bits[i]=rndl();
+        uint32_t i=0;
+        for(;i<nb;i++)
+                bits[i]=rndl();
   this->Mod(&diff);
   this->Add(min);
 }
@@ -956,14 +956,14 @@ char* Int::GetBase16() {
 
 char* Int::GetBlockStr() {
   char *tmp =  (char*) calloc(1,256);
-	char bStr[256];
-	tmp[0] = 0;
-	for (int i = NB32BLOCK-3; i>=0 ; i--) {
-	  sprintf(bStr, "%08X", bits[i]);
-	  strcat(tmp, bStr);
-	  if(i!=0) strcat(tmp, " ");
-	}
-	return tmp;
+        char bStr[256];
+        tmp[0] = 0;
+        for (int i = NB32BLOCK-3; i>=0 ; i--) {
+          sprintf(bStr, "%08X", bits[i]);
+          strcat(tmp, bStr);
+          if(i!=0) strcat(tmp, " ");
+        }
+        return tmp;
 }
 
 // ------------------------------------------------
@@ -1001,7 +1001,7 @@ void  Int::SetBaseN(int n,const char *charset,const char *value) {
   for(int i=lgth-1;i>=0;i--) {
     char *p = strchr((char*)charset,toupper(value[i]));
     if(!p) {
-		printf("Invalid charset !!\n");
+                printf("Invalid charset !!\n");
       return;
     }
     int id = (int)(p-charset);

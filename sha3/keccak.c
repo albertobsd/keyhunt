@@ -55,22 +55,23 @@ keccakf1600_theta(secret uint64_t A[25])
 	unsigned y;
 
 	C0 = C1 = C2 = C3 = C4 = 0;
-#pragma GCC diagnostic ignored "-Wpedantic"
-	FOR5(y, {
+	/* Unrolled over y = 0..4. Written as explicit loops (instead of the
+	   FOR5 macro with a brace-block argument) so MSVC's preprocessor can
+	   parse it as well as GCC/Clang. */
+	for (y = 0; y < 5; y++) {
 		C0 ^= A[0 + 5*y];
 		C1 ^= A[1 + 5*y];
 		C2 ^= A[2 + 5*y];
 		C3 ^= A[3 + 5*y];
 		C4 ^= A[4 + 5*y];
-	});
-	FOR5(y, {
+	}
+	for (y = 0; y < 5; y++) {
 		A[0 + 5*y] ^= C4 ^ rol64(C1, 1);
 		A[1 + 5*y] ^= C0 ^ rol64(C2, 1);
 		A[2 + 5*y] ^= C1 ^ rol64(C3, 1);
 		A[3 + 5*y] ^= C2 ^ rol64(C4, 1);
 		A[4 + 5*y] ^= C3 ^ rol64(C0, 1);
-	});
-#pragma GCC diagnostic pop
+	}
 }
 
 static inline void
@@ -115,8 +116,8 @@ keccakf1600_chi(secret uint64_t A[25])
 	secret uint64_t B0, B1, B2, B3, B4;
 	unsigned y;
 
-#pragma GCC diagnostic ignored "-Wpedantic"
-	FOR5(y, {
+	/* Unrolled over y = 0..4 as an explicit loop (see keccakf1600_theta). */
+	for (y = 0; y < 5; y++) {
 		B0 = A[0 + 5*y];
 		B1 = A[1 + 5*y];
 		B2 = A[2 + 5*y];
@@ -127,8 +128,7 @@ keccakf1600_chi(secret uint64_t A[25])
 		A[2 + 5*y] ^= ~B3 & B4;
 		A[3 + 5*y] ^= ~B4 & B0;
 		A[4 + 5*y] ^= ~B0 & B1;
-	});
-#pragma GCC diagnostic pop
+	}
 }
 
 static void

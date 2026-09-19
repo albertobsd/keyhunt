@@ -31,6 +31,9 @@
 #include<stdint.h>
 #include<gmp.h>
 
+extern char FileName[64];
+extern char FilePath[128];
+
 class Int {
 public:
 	mpz_t num;
